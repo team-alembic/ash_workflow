@@ -28,3 +28,7 @@ config :spark,
     ],
     "Ash.Domain": [section_order: [:resources, :policies, :authorization, :domain, :execution]]
   ]
+
+if Mix.env() == :test do
+  config :ash_workflow, ash_domains: [AshWorkflowTest.Domain]
+end
