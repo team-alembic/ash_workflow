@@ -10,6 +10,9 @@ defmodule AshWorkflowTest.Workflow do
     workflow(:sub_workflow, AshWorkflowTest.SubWorkflow)
   end
 
+  actions do
+  end
+
   attributes do
     uuid_v7_primary_key :id
   end
