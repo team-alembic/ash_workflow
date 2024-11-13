@@ -1,13 +1,11 @@
-defmodule AshWorkflowTest.Workflow do
+defmodule AshWorkflowTest.SubWorkflow do
   use Ash.Resource,
     domain: AshWorkflowTest.Domain,
     data_layer: Ash.DataLayer.Ets,
     extensions: [AshWorkflow]
 
   workflow do
-    step(:create_step1_resource, :create, AshWorkflowTest.Step1)
-
-    workflow(:sub_workflow, AshWorkflowTest.SubWorkflow)
+    step(:create_step2_resource, :create, AshWorkflowTest.Step2)
   end
 
   attributes do

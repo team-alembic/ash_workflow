@@ -3,21 +3,36 @@ defmodule AshWorkflow do
   `Ash.Workflow` is an extension for Ash that provides a way to define workflows
   by chaining together actions.
   """
-  @steps %Spark.Dsl.Entity{
+  alias AshWorkflow.Entities
+
+  @step %Spark.Dsl.Entity{
     name: :step,
     describe: """
-    Declares an attribute on the resource.
+    Declares an step in the workflow.
     """,
     examples: [
       """
-      attribute :name, :string do
-        allow_nil? false
-      end
+      step :name, :action, Resource
       """
     ],
-    target: AshWorkflow.Step,
-    args: [:name, :type],
-    schema: AshWorkflow.Step.attribute_schema()
+    target: Entities.Step,
+    args: [:name, :action, :resource],
+    schema: Entities.Step.attribute_schema()
+  }
+
+  @sub_workflow %Spark.Dsl.Entity{
+    name: :workflow,
+    describe: """
+    Declares an sub workflow in the workflow.
+    """,
+    examples: [
+      """
+      workflow :name, Workflow
+      """
+    ],
+    target: Entities.Workflow,
+    args: [:name, :workflow],
+    schema: Entities.Workflow.attribute_schema()
   }
 
   @workflow %Spark.Dsl.Section{
@@ -25,7 +40,8 @@ defmodule AshWorkflow do
     describe: "Define a workflow by chaining together actions",
     schema: [],
     entities: [
-      @steps
+      @step,
+      @sub_workflow
     ]
   }
 

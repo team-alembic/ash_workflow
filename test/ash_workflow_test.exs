@@ -3,6 +3,6 @@ defmodule AshWorkflowTest do
   doctest AshWorkflow
 
   test "greets the world" do
-    assert AshWorkflowTest.Workflow.spark_dsl_config()
+    assert {:ok, _workflow} = AshWorkflowTest.Workflow.start()
   end
 end
