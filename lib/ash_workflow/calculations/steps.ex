@@ -1,6 +1,7 @@
 defmodule AshWorkflow.Calculations.Steps do
   use Ash.Resource.Calculation
 
+  alias AshWorkflow.Resources
   alias AshWorkflow.Entities.Workflow
   alias AshWorkflow.Entities.Step
 
@@ -18,12 +19,18 @@ defmodule AshWorkflow.Calculations.Steps do
   end
 
   defp steps(%Step{} = step) do
-    [step]
+    [create_step_resource(step)]
   end
 
   defp steps(%Workflow{} = workflow) do
     workflow
     |> Map.get(:workflow)
     |> calculate()
+  end
+
+  defp create_step_resource(step) do
+    Resources.Step
+    |> Ash.Changeset.for_create(:from_step, %{step: step})
+    |> Ash.create!()
   end
 end

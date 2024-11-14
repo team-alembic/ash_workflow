@@ -5,12 +5,9 @@ defmodule AshWorkflowTest.Workflow do
     extensions: [AshWorkflow]
 
   workflow do
-    step(:create_step1_resource, :create, AshWorkflowTest.Step1)
+    action_step(:create_step1_resource, :create, AshWorkflowTest.Step1)
 
-    workflow(:sub_workflow, AshWorkflowTest.SubWorkflow)
-  end
-
-  actions do
+    workflow_step(:sub_workflow, AshWorkflowTest.SubWorkflow)
   end
 
   attributes do

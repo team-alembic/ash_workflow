@@ -105,9 +105,9 @@ defmodule AshWorkflow.Transformer do
     |> Transformer.add_entity([:calculations], calculation)
   end
 
-  defp debug_workflow(dsl, statment) do
+  defp debug_workflow(dsl, statement) do
     if(Ash.Resource.Info.short_name(dsl) == :workflow) do
-      dbg(statment)
+      dbg(statement)
     end
   end
 

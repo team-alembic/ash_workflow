@@ -5,8 +5,6 @@ defmodule AshWorkflow.Changes.ExecuteStep do
   def atomic(changeset, _opts, context) do
     {:atomic,
      Ash.Changeset.after_action(changeset, fn changeset, record ->
-       dbg([changeset.data, record])
-
        %{resource: resource, action: action} =
          Enum.at(
            AshWorkflow.Calculations.Steps.calculate(record),

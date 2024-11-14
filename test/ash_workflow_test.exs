@@ -1,4 +1,5 @@
 defmodule AshWorkflowTest do
+  alias AshWorkflowTest.Step1
   use ExUnit.Case
   doctest AshWorkflow
 
@@ -10,14 +11,25 @@ defmodule AshWorkflowTest do
     {:ok, workflow} =
       workflow
       |> Ash.load(:steps)
-      |> dbg()
 
-    assert Enum.count(workflow.steps) == 2
+    assert Enum.count(dbg(workflow.steps)) == 2
 
     {:ok, workflow} =
       workflow
-      |> AshWorkflowTest.Workflow.next(%{})
+      |> AshWorkflowTest.Workflow.next(%{params: %{name: "Barnabas"}})
 
     assert workflow.current_step_index == 1
+
+
+    {:ok, steps} =
+    Step1
+    |> Ash.Query.for_read(:read)
+    |> Ash.read()
+
+
+    assert Enum.count(dbg(steps)) == 1
+    [step] = steps
+    assert step.name == "Barnabas"
   end
+
 end

@@ -5,8 +5,8 @@ defmodule AshWorkflow do
   """
   alias AshWorkflow.Entities
 
-  @step %Spark.Dsl.Entity{
-    name: :step,
+  @action_step %Spark.Dsl.Entity{
+    name: :action_step,
     describe: """
     Declares an step in the workflow.
     """,
@@ -20,8 +20,8 @@ defmodule AshWorkflow do
     schema: Entities.Step.attribute_schema()
   }
 
-  @sub_workflow %Spark.Dsl.Entity{
-    name: :workflow,
+  @workflow_step %Spark.Dsl.Entity{
+    name: :workflow_step,
     describe: """
     Declares an sub workflow in the workflow.
     """,
@@ -35,13 +35,18 @@ defmodule AshWorkflow do
     schema: Entities.Workflow.attribute_schema()
   }
 
+  # TODO:
+  # make results available as inputs to other steps
+  # conditinals
+  # reactor_step (possible just calling a generic action)
+
   @workflow %Spark.Dsl.Section{
     name: :workflow,
     describe: "Define a workflow by chaining together actions",
     schema: [],
     entities: [
-      @step,
-      @sub_workflow
+      @action_step,
+      @workflow_step
     ]
   }
 
