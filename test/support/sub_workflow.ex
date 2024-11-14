@@ -4,6 +4,10 @@ defmodule AshWorkflowTest.SubWorkflow do
     data_layer: Ash.DataLayer.Ets,
     extensions: [AshWorkflow]
 
+  state_machine do
+    initial_states([:step1])
+  end
+
   workflow do
     action_step(:create_step2_resource, :create, AshWorkflowTest.Step2)
   end

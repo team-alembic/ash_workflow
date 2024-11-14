@@ -5,5 +5,7 @@ defmodule AshWorkflowTest.Step2 do
 
   attributes do
     uuid_v7_primary_key :id
+
+    attribute :name, :string
   end
 end

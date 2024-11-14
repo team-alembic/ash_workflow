@@ -6,7 +6,7 @@ defmodule AshWorkflowTest do
   test "greets the world" do
     {:ok, workflow} = AshWorkflowTest.Workflow.start()
 
-    assert workflow.current_step_index == 0
+    assert workflow.current_step == :create_step1_resource
 
     {:ok, workflow} =
       workflow
@@ -16,20 +16,23 @@ defmodule AshWorkflowTest do
 
     {:ok, workflow} =
       workflow
-      |> AshWorkflowTest.Workflow.next(%{params: %{name: "Barnabas"}})
+      |> AshWorkflowTest.Workflow.next(%{params: %{name: "John Doe"}})
 
-    assert workflow.current_step_index == 1
+    assert workflow.current_step == :sub_workflow
 
+    {:ok, [step]} =
+      Step1
+      |> Ash.Query.for_read(:read)
+      |> Ash.read()
 
-    {:ok, steps} =
-    Step1
-    |> Ash.Query.for_read(:read)
-    |> Ash.read()
+    assert step.name == "John Doe"
 
+    {:ok, workflow} =
+      workflow
+      |> AshWorkflowTest.Workflow.next()
 
-    assert Enum.count(dbg(steps)) == 1
-    [step] = steps
-    assert step.name == "Barnabas"
+    dbg(workflow)
+
+    assert workflow.current_step == :done
   end
-
 end

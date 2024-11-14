@@ -29,6 +29,7 @@ defmodule AshWorkflow.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
+      {:ash_state_machine, "~> 0.2"},
       {:mix_test_watch, "~> 1.0", only: [:dev, :test]},
       {:ash, "~> 3.0"},
       {:igniter, "~> 0.4"}

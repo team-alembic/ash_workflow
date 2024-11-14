@@ -7,11 +7,41 @@ defmodule AshWorkflow.Transformer do
   def transform(dsl) do
     dsl =
       dsl
+      |> add_states()
       |> add_attributes()
       |> add_actions()
       |> add_calculations()
 
     {:ok, dsl}
+  end
+
+  defp add_states(dsl) do
+    [initial_state | extra_states] =
+      states =
+      dsl
+      |> AshWorkflow.Info.steps()
+      |> Enum.map(& &1.name)
+
+    all_states = states ++ [:done]
+
+    List.delete_at(all_states, -1)
+    |> Enum.zip(List.delete_at(all_states, 0))
+    |> Enum.reduce([], fn {from, to}, transistions ->
+      [
+        Transformer.build_entity!(AshStateMachine, [:state_machine, :transitions], :transition,
+          action: :next,
+          from: from,
+          to: to
+        )
+        | transistions
+      ]
+    end)
+    |> Enum.reduce(dsl, &Transformer.add_entity(&2, [:state_machine, :transitions], &1))
+    |> Transformer.set_option([:state_machine], :state_attribute, :current_step)
+    |> Transformer.set_option([:state_machine], :initial_states, [initial_state])
+    |> Transformer.set_option([:state_machine], :extra_states, extra_states ++ [:done])
+    |> Transformer.set_option([:state_machine], :default_initial_state, initial_state)
+    |> Transformer.set_option([:ash_workflow], :ordered_steps, all_states)
   end
 
   defp add_attributes(dsl) do
@@ -81,6 +111,7 @@ defmodule AshWorkflow.Transformer do
       Transformer.build_entity!(Ash.Resource.Dsl, [:actions], :update,
         name: :next,
         primary?: true,
+        require_atomic?: false,
         arguments: [params_argument],
         changes: [change]
       )

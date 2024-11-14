@@ -5,6 +5,8 @@ defmodule AshWorkflow do
   """
   alias AshWorkflow.Entities
 
+  @argument Entities.Argument.__entity__()
+
   @action_step %Spark.Dsl.Entity{
     name: :action_step,
     describe: """
@@ -17,7 +19,8 @@ defmodule AshWorkflow do
     ],
     target: Entities.Step,
     args: [:name, :action, :resource],
-    schema: Entities.Step.attribute_schema()
+    schema: Entities.Step.attribute_schema(),
+    entities: [arguments: [@argument]]
   }
 
   @workflow_step %Spark.Dsl.Entity{
@@ -32,7 +35,8 @@ defmodule AshWorkflow do
     ],
     target: Entities.Workflow,
     args: [:name, :workflow],
-    schema: Entities.Workflow.attribute_schema()
+    schema: Entities.Workflow.attribute_schema(),
+    entities: [arguments: [@argument]]
   }
 
   # TODO:
@@ -52,5 +56,6 @@ defmodule AshWorkflow do
 
   use Spark.Dsl.Extension,
     sections: [@workflow],
-    transformers: [AshWorkflow.Transformer]
+    transformers: [AshWorkflow.Transformer],
+    add_extensions: [AshStateMachine]
 end

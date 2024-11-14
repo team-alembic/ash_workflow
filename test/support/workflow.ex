@@ -7,7 +7,9 @@ defmodule AshWorkflowTest.Workflow do
   workflow do
     action_step(:create_step1_resource, :create, AshWorkflowTest.Step1)
 
-    workflow_step(:sub_workflow, AshWorkflowTest.SubWorkflow)
+    workflow_step :sub_workflow, AshWorkflowTest.SubWorkflow do
+      argument :param, result(:create_step1_resource)
+    end
   end
 
   attributes do

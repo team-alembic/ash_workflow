@@ -4,14 +4,14 @@ defmodule AshWorkflow.Entities.Step do
   @schema [
     name: [
       type: :atom,
-      required: false,
+      required: true,
       doc: """
       The name of the step
       """
     ],
     action: [
       type: :atom,
-      required: false,
+      required: true,
       doc: """
       The name of the action to call on the resource.
       """
