@@ -46,20 +46,18 @@ defmodule AshWorkflow.Transformer do
 
   defp add_attributes(dsl) do
     dsl
-    |> add_current_step_index()
+    |> add_results()
   end
 
-  defp add_current_step_index(dsl) do
-    current_step =
+  defp add_results(dsl) do
+    results =
       Transformer.build_entity!(Ash.Resource.Dsl, [:attributes], :attribute,
-        type: :integer,
-        name: :current_step_index,
-        allow_nil?: false,
-        default: 0
+        type: {:array, :map},
+        name: :results
       )
 
     dsl
-    |> Transformer.add_entity([:attributes], current_step)
+    |> Transformer.add_entity([:attributes], results)
   end
 
   defp add_actions(dsl) do

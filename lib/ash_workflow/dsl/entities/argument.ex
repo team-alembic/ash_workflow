@@ -32,7 +32,7 @@ defmodule AshWorkflow.Entities.Argument do
       argument :key, result(:step_name, :key)
       """
     ],
-    imports: [__MODULE__],
+    imports: [Template],
     target: __MODULE__,
     args: [:key, :value],
     schema: @schema
@@ -40,10 +40,4 @@ defmodule AshWorkflow.Entities.Argument do
 
   @doc false
   def __entity__, do: @entity
-
-  @spec result(atom, [any]) :: Template.Result.t()
-  def result(step_name, sub_path \\ [])
-
-  def result(step_name, sub_path),
-    do: %Template.Result{name: step_name, sub_path: List.wrap(sub_path)}
 end

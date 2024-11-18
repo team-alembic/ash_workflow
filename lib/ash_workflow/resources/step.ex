@@ -6,7 +6,7 @@ defmodule AshWorkflow.Resources.Step do
     create :from_step do
       argument :step, :struct do
         allow_nil? false
-        constraints instance_of: AshWorkflow.Entities.Step
+        constraints instance_of: AshWorkflow.Entities.ActionStep
       end
 
       change {__MODULE__.FromStep, []}

@@ -10,6 +10,10 @@ defmodule AshWorkflowTest.SubWorkflow do
 
   workflow do
     action_step(:create_step2_resource, :create, AshWorkflowTest.Step2)
+
+    action_step :update_step2_resource, :update, AshWorkflowTest.Step2 do
+      initial(result(:create_step2_resource))
+    end
   end
 
   attributes do

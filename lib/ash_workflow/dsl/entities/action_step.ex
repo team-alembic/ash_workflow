@@ -1,5 +1,7 @@
-defmodule AshWorkflow.Entities.Step do
-  defstruct [:name, :action, :resource]
+defmodule AshWorkflow.Entities.ActionStep do
+  alias AshWorkflow.Template
+
+  defstruct [:name, :action, :resource, :initial]
 
   @schema [
     name: [
@@ -22,6 +24,11 @@ defmodule AshWorkflow.Entities.Step do
       doc: """
       The resource to call the action on.
       """
+    ],
+    initial: [
+      type: Template.type(),
+      required: false,
+      doc: "The record to update."
     ]
   ]
 

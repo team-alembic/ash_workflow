@@ -12,7 +12,7 @@ defmodule AshWorkflowTest do
       workflow
       |> Ash.load(:steps)
 
-    assert Enum.count(dbg(workflow.steps)) == 2
+    assert Enum.count(workflow.steps) == 3
 
     {:ok, workflow} =
       workflow
@@ -31,7 +31,11 @@ defmodule AshWorkflowTest do
       workflow
       |> AshWorkflowTest.Workflow.next()
 
-    dbg(workflow)
+    assert workflow.current_step == :sub_workflow
+
+    {:ok, workflow} =
+      workflow
+      |> AshWorkflowTest.Workflow.next()
 
     assert workflow.current_step == :done
   end

@@ -4,6 +4,7 @@ defmodule AshWorkflow do
   by chaining together actions.
   """
   alias AshWorkflow.Entities
+  alias AshWorkflow.Template
 
   @argument Entities.Argument.__entity__()
 
@@ -17,10 +18,11 @@ defmodule AshWorkflow do
       step :name, :action, Resource
       """
     ],
-    target: Entities.Step,
+    target: Entities.ActionStep,
     args: [:name, :action, :resource],
-    schema: Entities.Step.attribute_schema(),
-    entities: [arguments: [@argument]]
+    schema: Entities.ActionStep.attribute_schema(),
+    entities: [arguments: [@argument]],
+    imports: [Template]
   }
 
   @workflow_step %Spark.Dsl.Entity{
@@ -33,9 +35,9 @@ defmodule AshWorkflow do
       workflow :name, Workflow
       """
     ],
-    target: Entities.Workflow,
+    target: Entities.WorkflowStep,
     args: [:name, :workflow],
-    schema: Entities.Workflow.attribute_schema(),
+    schema: Entities.WorkflowStep.attribute_schema(),
     entities: [arguments: [@argument]]
   }
 

@@ -1,4 +1,4 @@
-defmodule AshWorkflow.Entities.Workflow do
+defmodule AshWorkflow.Entities.WorkflowStep do
   defstruct [:name, :workflow]
 
   @schema [
