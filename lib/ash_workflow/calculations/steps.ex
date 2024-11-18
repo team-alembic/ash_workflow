@@ -2,8 +2,7 @@ defmodule AshWorkflow.Calculations.Steps do
   use Ash.Resource.Calculation
 
   alias AshWorkflow.Resources
-  alias AshWorkflow.Entities.WorkflowStep
-  alias AshWorkflow.Entities.ActionStep
+  alias AshWorkflow.Dsl.{ActionStep, WorkflowStep, Switch}
 
   @impl true
   def calculate(workflows, _opts, _context) do
@@ -26,6 +25,14 @@ defmodule AshWorkflow.Calculations.Steps do
     workflow
     |> Map.get(:workflow)
     |> calculate()
+  end
+
+  defp steps(%Switch{} = switch) do
+    dbg(switch)
+
+    switch.matches
+    |> Enum.map(& &1.step)
+    |> Enum.concat(List.wrap(switch.default.step))
   end
 
   defp create_step_resource(step) do

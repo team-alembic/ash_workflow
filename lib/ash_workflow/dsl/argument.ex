@@ -1,4 +1,4 @@
-defmodule AshWorkflow.Entities.Argument do
+defmodule AshWorkflow.Dsl.Argument do
   alias AshWorkflow.Template
 
   defstruct [:name, :action, :resource]

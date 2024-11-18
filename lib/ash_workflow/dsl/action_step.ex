@@ -1,5 +1,6 @@
-defmodule AshWorkflow.Entities.ActionStep do
+defmodule AshWorkflow.Dsl.ActionStep do
   alias AshWorkflow.Template
+  alias AshWorkflow.Dsl.Argument
 
   defstruct [:name, :action, :resource, :initial]
 
@@ -32,7 +33,21 @@ defmodule AshWorkflow.Entities.ActionStep do
     ]
   ]
 
-  def attribute_schema do
-    @schema
-  end
+  def __entity__,
+    do: %Spark.Dsl.Entity{
+      name: :action_step,
+      describe: """
+      Declares an step in the workflow.
+      """,
+      examples: [
+        """
+        step :name, :action, Resource
+        """
+      ],
+      target: __MODULE__,
+      args: [:name, :action, :resource],
+      schema: @schema,
+      entities: [arguments: [Argument.__entity__()]],
+      imports: [Template]
+    }
 end
