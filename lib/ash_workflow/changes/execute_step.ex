@@ -20,7 +20,7 @@ defmodule AshWorkflow.Changes.ExecuteStep do
   end
 
   defp run_step(
-         %ActionStep{resource: resource, action: action, name: name} = step,
+         %ActionStep{resource: resource, action: action} = step,
          changeset,
          context,
          _current_state,
@@ -43,9 +43,7 @@ defmodule AshWorkflow.Changes.ExecuteStep do
     |> Ash.Changeset.force_change_attribute(
       :results,
       (Ash.Changeset.get_data(changeset, :results) || []) ++
-        [
-          %{step: name, value: result}
-        ]
+        (result |> to_result(step) |> List.wrap())
     )
   end
 
@@ -66,7 +64,7 @@ defmodule AshWorkflow.Changes.ExecuteStep do
   end
 
   defp run_step(
-         %WorkflowStep{workflow: workflow_module, name: name},
+         %WorkflowStep{workflow: workflow_module, name: name} = step,
          changeset,
          context,
          _current_state,
@@ -100,7 +98,7 @@ defmodule AshWorkflow.Changes.ExecuteStep do
       :results,
       (Ash.Changeset.get_data(changeset, :results) || []) ++
         [
-          %{step: name, value: workflow}
+          to_result(workflow, step)
         ]
     )
   end
@@ -149,8 +147,6 @@ defmodule AshWorkflow.Changes.ExecuteStep do
         inital ->
           inital
       end
-
-    dbg()
 
     inital
     |> Ash.Changeset.for_destroy(name, params || %{}, opts)

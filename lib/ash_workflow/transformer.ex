@@ -1,6 +1,7 @@
 defmodule AshWorkflow.Transformer do
   use Spark.Dsl.Transformer
 
+  alias AshWorkflow.Resources.Result
   alias Spark.Dsl.Transformer
 
   @impl true
@@ -52,7 +53,7 @@ defmodule AshWorkflow.Transformer do
   defp add_results(dsl) do
     results =
       Transformer.build_entity!(Ash.Resource.Dsl, [:attributes], :attribute,
-        type: {:array, :map},
+        type: {:array, Result},
         name: :results
       )
 
