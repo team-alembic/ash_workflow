@@ -35,7 +35,7 @@ defmodule AshWorkflow.Calculations.CurrentStep do
   end
 
   defp current_step(%Switch{} = step, workflow, opts) do
-    step = step_from_switch(step, workflow)
+    step = step_from_switch(step, workflow, opts)
     current_step(step, workflow, opts)
   end
 end

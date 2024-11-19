@@ -57,7 +57,8 @@ defmodule AshWorkflow.Changes.ExecuteStep do
     step =
       step_from_switch(
         step,
-        changeset
+        changeset,
+        Ash.Context.to_opts(context)
       )
 
     run_step(step, changeset, context, current_state, next_state)
@@ -120,7 +121,7 @@ defmodule AshWorkflow.Changes.ExecuteStep do
     inital =
       case inital do
         %Result{name: name, sub_path: sub_path} ->
-          get_result(changeset, name, sub_path)
+          get_result(changeset, name, sub_path, opts)
 
         inital ->
           inital
@@ -142,7 +143,7 @@ defmodule AshWorkflow.Changes.ExecuteStep do
     inital =
       case inital do
         %Result{name: name, sub_path: sub_path} ->
-          get_result(changeset, name, sub_path)
+          get_result(changeset, name, sub_path, opts)
 
         inital ->
           inital

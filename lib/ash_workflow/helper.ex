@@ -8,7 +8,7 @@ defmodule AshWorkflow.Helper do
     do: sub_workflow(changeset.data, step_name, sub_workflow_module, opts)
 
   def sub_workflow(workflow, step_name, sub_workflow_module, opts) do
-    case get_result(workflow, step_name) do
+    case get_result(workflow, step_name, [], opts) do
       nil ->
         :erlang.apply(sub_workflow_module, :start!, [
           opts
@@ -19,22 +19,26 @@ defmodule AshWorkflow.Helper do
     end
   end
 
+  def step_from_switch(switch, changeset_or_workflow, opts \\ [])
+
   def step_from_switch(
         switch,
-        %Ash.Changeset{} = changeset
+        %Ash.Changeset{} = changeset,
+        opts
       ),
-      do: step_from_switch(switch, changeset.data)
+      do: step_from_switch(switch, changeset.data, opts)
 
   def step_from_switch(
         %Switch{matches: matches, on: on} = step,
-        workflow
+        workflow,
+        opts
       ) do
     case Enum.find(matches, fn
            %{predicate: predicate} ->
              on =
                case on do
                  %Result{name: name, sub_path: sub_path} ->
-                   get_result(workflow, name, sub_path)
+                   get_result(workflow, name, sub_path, opts)
 
                  inital ->
                    inital
@@ -47,12 +51,12 @@ defmodule AshWorkflow.Helper do
     end
   end
 
-  def get_result(workflow_or_changeset, step_name, sub_path \\ [])
+  def get_result(workflow_or_changeset, step_name, sub_path \\ [], opts \\ [])
 
-  def get_result(%Ash.Changeset{} = changeset, step_name, sub_path),
-    do: get_result(changeset.data, step_name, sub_path)
+  def get_result(%Ash.Changeset{} = changeset, step_name, sub_path, opts),
+    do: get_result(changeset.data, step_name, sub_path, opts)
 
-  def get_result(workflow, step_name, []) do
+  def get_result(workflow, step_name, sub_path, opts) do
     workflow
     |> Map.get(:results)
     |> List.wrap()
@@ -70,33 +74,34 @@ defmodule AshWorkflow.Helper do
           Ash.Changeset.for_create(
             resource,
             :create,
-            params
+            params,
+            opts
           ),
           fn {key, value}, changeset ->
             Ash.Changeset.force_change_attribute(changeset, key, value)
           end
         )
         |> Ash.create!()
+        |> Ash.load!(sub_path, opts)
+        |> get_at_sub_path(sub_path)
 
       %{type: :reference, value: %{resource: resource, filter: filter}} ->
         %{name: read} = Ash.Resource.Info.primary_action!(resource, :read)
 
         resource
-        |> Ash.Query.for_read(read)
+        |> Ash.Query.for_read(read, %{}, opts)
         |> Ash.Query.do_filter(filter)
+        |> Ash.Query.load(sub_path)
         |> Ash.read_one!()
+        |> get_at_sub_path(sub_path)
 
       nil ->
         nil
     end
   end
 
-  def get_result(workflow, step_name, sub_path) do
-    case get_result(workflow, step_name) do
-      nil -> nil
-      %_struct{} = value -> get_in(Map.from_struct(value), sub_path)
-      value -> get_in(value, sub_path)
-    end
+  defp get_at_sub_path(value, sub_path) do
+    Enum.reduce(sub_path, value, fn key, acc -> Map.get(acc, key) end)
   end
 
   def to_result(:ok, _), do: nil
