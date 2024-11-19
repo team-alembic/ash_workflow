@@ -6,19 +6,22 @@ defmodule AshWorkflowTest do
   test "greets the world" do
     {:ok, workflow} = AshWorkflowTest.Workflow.start()
 
-    assert workflow.current_step == :create_step1_resource
+    assert workflow.state == :create_step1_resource
 
     {:ok, workflow} =
       workflow
-      |> Ash.load(:steps)
+      |> Ash.load([:steps, :current_step])
 
     assert Enum.count(workflow.steps) == 4
+    assert workflow.current_step.name == :create_step1_resource
 
-    {:ok, workflow} =
+    workflow =
       workflow
-      |> AshWorkflowTest.Workflow.next(%{params: %{name: "John Doe"}})
+      |> AshWorkflowTest.Workflow.next!(%{params: %{name: "John Doe"}})
+      |> Ash.load!(:current_step)
 
-    assert workflow.current_step == :sub_workflow
+    assert workflow.state == :sub_workflow
+    assert workflow.current_step.name == :create_step2_resource
 
     {:ok, [step]} =
       Step1
@@ -27,17 +30,20 @@ defmodule AshWorkflowTest do
 
     assert step.name == "John Doe"
 
-    {:ok, workflow} =
+    workflow =
       workflow
-      |> AshWorkflowTest.Workflow.next()
+      |> AshWorkflowTest.Workflow.next!()
+      |> Ash.load!(:current_step)
 
-    assert workflow.current_step == :sub_workflow
+    assert workflow.state == :sub_workflow
+    assert workflow.current_step.name == :destroy_step2_resource
 
-    {:ok, workflow} =
+    workflow =
       workflow
-      |> AshWorkflowTest.Workflow.next()
+      |> AshWorkflowTest.Workflow.next!()
+      |> Ash.load!(:current_step)
 
-    assert workflow.current_step == :done
-    dbg(workflow.results)
+    assert workflow.state == :done
+    refute workflow.current_step
   end
 end

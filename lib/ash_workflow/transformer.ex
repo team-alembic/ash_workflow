@@ -37,7 +37,7 @@ defmodule AshWorkflow.Transformer do
       ]
     end)
     |> Enum.reduce(dsl, &Transformer.add_entity(&2, [:state_machine, :transitions], &1))
-    |> Transformer.set_option([:state_machine], :state_attribute, :current_step)
+    |> Transformer.set_option([:state_machine], :state_attribute, :state)
     |> Transformer.set_option([:state_machine], :initial_states, [initial_state])
     |> Transformer.set_option([:state_machine], :extra_states, extra_states ++ [:done])
     |> Transformer.set_option([:state_machine], :default_initial_state, initial_state)
@@ -123,10 +123,28 @@ defmodule AshWorkflow.Transformer do
   end
 
   defp add_calculations(dsl) do
+    dsl
+    |> add_steps_calculation()
+    |> add_current_step_calculation()
+  end
+
+  defp add_steps_calculation(dsl) do
     calculation =
       Transformer.build_entity!(Ash.Resource.Dsl, [:calculations], :calculate,
         name: :steps,
         calculation: {AshWorkflow.Calculations.Steps, []},
+        type: :struct
+      )
+
+    dsl
+    |> Transformer.add_entity([:calculations], calculation)
+  end
+
+  defp add_current_step_calculation(dsl) do
+    calculation =
+      Transformer.build_entity!(Ash.Resource.Dsl, [:calculations], :calculate,
+        name: :current_step,
+        calculation: {AshWorkflow.Calculations.CurrentStep, []},
         type: :struct
       )
 

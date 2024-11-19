@@ -4,16 +4,18 @@ defmodule AshWorkflow.Changes.ExecuteStep do
   alias AshWorkflow.Template.Result
   alias AshWorkflow.Dsl.{ActionStep, WorkflowStep, Switch}
 
+  import AshWorkflow.Helper
+
   @impl true
   def change(changeset, _opts, context) do
-    current_step = Ash.Changeset.get_data(changeset, :current_step)
-    next_state = AshWorkflow.Info.get_next_step(changeset.data, current_step)
+    current_state = Ash.Changeset.get_data(changeset, :state)
+    next_state = AshWorkflow.Info.get_next_state(changeset.data, current_state)
 
     changeset
     |> Ash.Changeset.before_action(fn changeset ->
-      step = AshWorkflow.Info.steps(changeset.data) |> Enum.find(&(&1.name == current_step))
+      step = AshWorkflow.Info.steps(changeset.data) |> Enum.find(&(&1.name == current_state))
 
-      run_step(step, changeset, context, current_step, next_state)
+      run_step(step, changeset, context, current_state, next_state)
     end)
   end
 
@@ -21,7 +23,7 @@ defmodule AshWorkflow.Changes.ExecuteStep do
          %ActionStep{resource: resource, action: action, name: name} = step,
          changeset,
          context,
-         current_state,
+         _current_state,
          next_state
        ) do
     action = Ash.Resource.Info.action(resource, action)
@@ -48,29 +50,17 @@ defmodule AshWorkflow.Changes.ExecuteStep do
   end
 
   defp run_step(
-         %Switch{matches: matches, on: on} = step,
+         %Switch{} = step,
          changeset,
          context,
          current_state,
          next_state
        ) do
     step =
-      case Enum.find(matches, fn
-             %{predicate: predicate} ->
-               on =
-                 case on do
-                   %Result{name: name, sub_path: sub_path} ->
-                     get_result(changeset, name, sub_path)
-
-                   inital ->
-                     inital
-                 end
-
-               predicate.(on)
-           end) do
-        nil -> step.default.step
-        %{step: step} -> step
-      end
+      step_from_switch(
+        step,
+        changeset
+      )
 
     run_step(step, changeset, context, current_state, next_state)
   end
@@ -79,21 +69,16 @@ defmodule AshWorkflow.Changes.ExecuteStep do
          %WorkflowStep{workflow: workflow_module, name: name},
          changeset,
          context,
-         current_state,
+         _current_state,
          next_state
        ) do
     workflow =
-      case get_result(changeset, name) do
-        nil ->
-          :erlang.apply(workflow_module, :start!, [
-            Ash.Context.to_opts(context)
-          ])
-
-        workflow ->
-          workflow
-      end
-
-    dbg(workflow)
+      sub_workflow(
+        changeset,
+        name,
+        workflow_module,
+        Ash.Context.to_opts(context)
+      )
 
     workflow =
       :erlang.apply(workflow_module, :next!, [
@@ -102,10 +87,8 @@ defmodule AshWorkflow.Changes.ExecuteStep do
         Ash.Context.to_opts(context)
       ])
 
-    dbg(workflow |> Ash.load!(:steps))
-
     changeset =
-      if workflow.current_step == :done do
+      if workflow.state == :done do
         changeset
         |> AshStateMachine.transition_state(next_state)
       else
@@ -172,26 +155,5 @@ defmodule AshWorkflow.Changes.ExecuteStep do
     inital
     |> Ash.Changeset.for_destroy(name, params || %{}, opts)
     |> Ash.destroy!()
-  end
-
-  defp get_result(changeset, step_name, sub_path \\ [])
-
-  defp get_result(changeset, step_name, []) do
-    changeset
-    |> Ash.Changeset.get_data(:results)
-    |> List.wrap()
-    |> Enum.find(&(&1.step == step_name))
-    |> case do
-      nil -> nil
-      %{value: value} -> value
-    end
-  end
-
-  defp get_result(changeset, step_name, sub_path) do
-    case get_result(changeset, step_name) do
-      nil -> nil
-      %_struct{} = value -> get_in(Map.from_struct(value), sub_path)
-      value -> get_in(value, sub_path)
-    end
   end
 end

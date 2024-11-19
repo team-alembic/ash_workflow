@@ -7,12 +7,18 @@ defmodule AshWorkflow.Info do
     |> workflow()
   end
 
-  def get_ordered_steps(dsl) do
+  def step(dsl, name) do
+    dsl
+    |> steps()
+    |> Enum.find(&(&1.name == name))
+  end
+
+  def get_ordered_states(dsl) do
     Extension.get_opt(dsl, [:ash_workflow], :ordered_steps, [])
   end
 
-  def get_previous_step(dsl, step) do
-    get_ordered_steps(dsl)
+  def get_previous_state(dsl, step) do
+    get_ordered_states(dsl)
     |> Enum.reduce_while(
       nil,
       fn
@@ -25,8 +31,8 @@ defmodule AshWorkflow.Info do
     )
   end
 
-  def get_next_step(dsl, step) do
-    get_ordered_steps(dsl)
+  def get_next_state(dsl, step) do
+    get_ordered_states(dsl)
     |> Enum.reverse()
     |> Enum.reduce_while(
       nil,
