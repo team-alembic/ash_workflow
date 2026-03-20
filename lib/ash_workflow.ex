@@ -51,7 +51,9 @@ defmodule AshWorkflow do
       AshWorkflow.Transformers.AddAttributes,
       AshWorkflow.Transformers.AddStateMachine,
       AshWorkflow.Transformers.AddActions,
-      AshWorkflow.Transformers.AddObanTriggers
+      AshWorkflow.Transformers.AddObanTriggers,
+      AshWorkflow.Transformers.AddPolicies,
+      AshWorkflow.Transformers.AddCodeInterface
     ],
     verifiers: [AshWorkflow.Verifiers.ValidateWorkflow]
 end
