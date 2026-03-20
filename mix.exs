@@ -29,11 +29,13 @@ defmodule AshWorkflow.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:mix_test_watch, "~> 1.0", only: [:dev, :test]},
+      {:mix_test_watch, "~> 1.2", only: [:dev, :test]},
       {:ash, "~> 3.0"},
-      {:igniter, "~> 0.4"}
-      # {:dep_from_hexpm, "~> 0.3.0"},
-      # {:dep_from_git, git: "https://github.com/elixir-lang/my_dep.git", tag: "0.1.0"}
+      {:ash_state_machine, "~> 0.2"},
+      {:ash_oban, "~> 0.2"},
+      {:igniter, "~> 0.6"},
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:usage_rules, "~> 0.1", only: :dev}
     ]
   end
 end
