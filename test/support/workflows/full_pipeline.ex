@@ -12,7 +12,7 @@ defmodule AshWorkflowTest.FullPipeline do
   use Ash.Resource,
     domain: AshWorkflowTest.Domain,
     data_layer: Ash.DataLayer.Ets,
-    extensions: [AshWorkflow]
+    extensions: [AshWorkflow, AshStateMachine]
 
   workflow do
     step :intake, action: :run_intake, on_success: :review, on_error: :intake_failed

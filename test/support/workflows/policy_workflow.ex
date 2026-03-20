@@ -9,7 +9,7 @@ defmodule AshWorkflowTest.PolicyWorkflow do
   use Ash.Resource,
     domain: AshWorkflowTest.Domain,
     data_layer: Ash.DataLayer.Ets,
-    extensions: [AshWorkflow]
+    extensions: [AshWorkflow, AshStateMachine]
 
   workflow do
     step :manager_review do

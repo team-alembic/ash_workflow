@@ -2,7 +2,7 @@ defmodule AshWorkflowTest.Workflow do
   use Ash.Resource,
     domain: AshWorkflowTest.Domain,
     data_layer: Ash.DataLayer.Ets,
-    extensions: [AshWorkflow]
+    extensions: [AshWorkflow, AshStateMachine]
 
   workflow do
     step :process_application do
@@ -28,5 +28,15 @@ defmodule AshWorkflowTest.Workflow do
   attributes do
     uuid_v7_primary_key :id
     attribute :candidate_name, :string, allow_nil?: false, public?: true
+  end
+
+  actions do
+    update :process_application do
+      accept []
+    end
+
+    update :send_reminder do
+      accept []
+    end
   end
 end

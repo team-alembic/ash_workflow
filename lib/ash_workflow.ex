@@ -47,5 +47,10 @@ defmodule AshWorkflow do
 
   use Spark.Dsl.Extension,
     sections: [@workflow],
+    transformers: [
+      AshWorkflow.Transformers.AddAttributes,
+      AshWorkflow.Transformers.AddStateMachine,
+      AshWorkflow.Transformers.AddActions
+    ],
     verifiers: [AshWorkflow.Verifiers.ValidateWorkflow]
 end
