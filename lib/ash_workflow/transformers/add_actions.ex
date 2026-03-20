@@ -48,10 +48,13 @@ defmodule AshWorkflow.Transformers.AddActions do
 
   defp add_read_action(dsl) do
     steps = Transformer.get_entities(dsl, [:workflow])
-    has_automatic_steps = Enum.any?(steps, &(not &1.manual and not &1.terminal))
+    has_oban_triggers =
+      Enum.any?(steps, fn step ->
+        (not step.manual and not step.terminal) or step.timeouts != []
+      end)
 
     cond do
-      not has_automatic_steps ->
+      not has_oban_triggers ->
         # No Oban triggers will be generated, so no read action is needed
         dsl
 
