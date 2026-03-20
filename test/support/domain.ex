@@ -9,5 +9,6 @@ defmodule AshWorkflowTest.Domain do
     resource AshWorkflowTest.PolicyWorkflow
     resource AshWorkflowTest.FullPipeline
     resource AshWorkflowTest.LoopbackWorkflow
+    resource AshWorkflowTest.CustomActionWorkflow
   end
 end

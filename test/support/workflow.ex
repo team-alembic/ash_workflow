@@ -7,27 +7,22 @@ defmodule AshWorkflowTest.Workflow do
   workflow do
     step :process_application do
       action :process_application
-      on_success :review
+      on_success(:review)
     end
 
     step :review do
       manual true
 
-      transition :approve, to: :approved
-      transition :reject, to: :rejected
+      transition(:approve, to: :approved)
+      transition(:reject, to: :rejected)
 
-      timeout :reminder, after: {2, :days}, action: :send_reminder
-      timeout :escalation, after: {7, :days}, transition_to: :escalated
+      timeout(:reminder, after: {2, :days}, action: :send_reminder)
+      timeout(:escalation, after: {7, :days}, transition_to: :escalated)
     end
 
-    step :approved, terminal: true
-    step :rejected, terminal: true
-    step :escalated, terminal: true
-  end
-
-  attributes do
-    uuid_v7_primary_key :id
-    attribute :candidate_name, :string, allow_nil?: false, public?: true
+    step(:approved, terminal: true)
+    step(:rejected, terminal: true)
+    step(:escalated, terminal: true)
   end
 
   actions do
@@ -38,5 +33,10 @@ defmodule AshWorkflowTest.Workflow do
     update :send_reminder do
       accept []
     end
+  end
+
+  attributes do
+    uuid_v7_primary_key :id
+    attribute :candidate_name, :string, allow_nil?: false, public?: true
   end
 end

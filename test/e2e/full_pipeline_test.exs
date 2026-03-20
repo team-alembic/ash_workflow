@@ -36,7 +36,15 @@ defmodule AshWorkflowTest.E2E.FullPipelineTest do
 
   describe "generated transition actions" do
     test "has all manual transition actions" do
-      expected_actions = [:advance, :reject_at_review, :hold, :reactivate, :reject_on_hold, :approve, :reject_at_final]
+      expected_actions = [
+        :advance,
+        :reject_at_review,
+        :hold,
+        :reactivate,
+        :reject_on_hold,
+        :approve,
+        :reject_at_final
+      ]
 
       for action_name <- expected_actions do
         assert Ash.Resource.Info.action(FullPipeline, action_name),
@@ -98,7 +106,9 @@ defmodule AshWorkflowTest.E2E.FullPipelineTest do
       {:ok, workflow} = FullPipeline.start(%{title: "test"})
       {:ok, workflow} = Ash.update(workflow, action: :run_intake)
       non_reviewer = %{role: :approver}
-      assert {:error, %Ash.Error.Forbidden{}} = FullPipeline.advance(workflow, actor: non_reviewer)
+
+      assert {:error, %Ash.Error.Forbidden{}} =
+               FullPipeline.advance(workflow, actor: non_reviewer)
     end
 
     test "only approvers can approve at final_review" do
@@ -107,7 +117,9 @@ defmodule AshWorkflowTest.E2E.FullPipelineTest do
       {:ok, workflow} = FullPipeline.advance(workflow, actor: %{role: :reviewer})
       {:ok, workflow} = Ash.update(workflow, action: :run_processing)
       non_approver = %{role: :reviewer}
-      assert {:error, %Ash.Error.Forbidden{}} = FullPipeline.approve(workflow, actor: non_approver)
+
+      assert {:error, %Ash.Error.Forbidden{}} =
+               FullPipeline.approve(workflow, actor: non_approver)
     end
   end
 end

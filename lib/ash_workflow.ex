@@ -19,7 +19,8 @@ defmodule AshWorkflow do
 
   @timeout %Spark.Dsl.Entity{
     name: :timeout,
-    describe: "Declares a time-based action or forced transition if the workflow stays in this step too long.",
+    describe:
+      "Declares a time-based action or forced transition if the workflow stays in this step too long.",
     target: Entities.Timeout,
     args: [:name],
     schema: Entities.Timeout.attribute_schema()
@@ -27,7 +28,8 @@ defmodule AshWorkflow do
 
   @step %Spark.Dsl.Entity{
     name: :step,
-    describe: "Declares a step in the workflow. Each step becomes a state in the generated state machine.",
+    describe:
+      "Declares a step in the workflow. Each step becomes a state in the generated state machine.",
     target: Entities.Step,
     args: [:name],
     schema: Entities.Step.attribute_schema(),

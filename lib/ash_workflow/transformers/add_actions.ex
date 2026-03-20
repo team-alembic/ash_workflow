@@ -53,7 +53,8 @@ defmodule AshWorkflow.Transformers.AddActions do
 
       true ->
         # Required for ash_oban triggers and atomic update operations
-        {:ok, pagination} = Ash.Resource.Builder.build_pagination(keyset?: true, default_limit: 100)
+        {:ok, pagination} =
+          Ash.Resource.Builder.build_pagination(keyset?: true, default_limit: 100)
 
         read_action =
           Transformer.build_entity!(Ash.Resource.Dsl, [:actions], :read,
@@ -82,7 +83,8 @@ defmodule AshWorkflow.Transformers.AddActions do
         accept: accepted_attrs,
         changes: [
           Transformer.build_entity!(Ash.Resource.Dsl, [:actions, :create], :change,
-            change: Ash.Resource.Change.Builtins.set_attribute(:state_entered_at, &DateTime.utc_now/0)
+            change:
+              Ash.Resource.Change.Builtins.set_attribute(:state_entered_at, &DateTime.utc_now/0)
           )
         ]
       )
@@ -102,7 +104,8 @@ defmodule AshWorkflow.Transformers.AddActions do
 
       timestamp_change =
         Transformer.build_entity!(Ash.Resource.Dsl, [:actions, :update], :change,
-          change: Ash.Resource.Change.Builtins.set_attribute(:state_entered_at, &DateTime.utc_now/0)
+          change:
+            Ash.Resource.Change.Builtins.set_attribute(:state_entered_at, &DateTime.utc_now/0)
         )
 
       actions = Transformer.get_entities(dsl, [:actions])
@@ -152,7 +155,8 @@ defmodule AshWorkflow.Transformers.AddActions do
 
           timestamp_change =
             Transformer.build_entity!(Ash.Resource.Dsl, [:actions, :update], :change,
-              change: Ash.Resource.Change.Builtins.set_attribute(:state_entered_at, &DateTime.utc_now/0)
+              change:
+                Ash.Resource.Change.Builtins.set_attribute(:state_entered_at, &DateTime.utc_now/0)
             )
 
           updated_action = %{
@@ -185,7 +189,8 @@ defmodule AshWorkflow.Transformers.AddActions do
               change: AshStateMachine.BuiltinChanges.transition_state(timeout.transition_to)
             ),
             Transformer.build_entity!(Ash.Resource.Dsl, [:actions, :update], :change,
-              change: Ash.Resource.Change.Builtins.set_attribute(:state_entered_at, &DateTime.utc_now/0)
+              change:
+                Ash.Resource.Change.Builtins.set_attribute(:state_entered_at, &DateTime.utc_now/0)
             )
           ]
         )

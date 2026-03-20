@@ -1,5 +1,15 @@
 defmodule AshWorkflow.Entities.Step do
-  defstruct [:name, :action, :on_success, :on_error, :policy, manual: false, terminal: false, transitions: [], timeouts: []]
+  defstruct [
+    :name,
+    :action,
+    :on_success,
+    :on_error,
+    :policy,
+    manual: false,
+    terminal: false,
+    transitions: [],
+    timeouts: []
+  ]
 
   @schema [
     name: [
@@ -9,7 +19,8 @@ defmodule AshWorkflow.Entities.Step do
     ],
     action: [
       type: :atom,
-      doc: "The action to run for automatic steps. Must reference a user-defined update action on the resource."
+      doc:
+        "The action to run for automatic steps. Must reference a user-defined update action on the resource."
     ],
     manual: [
       type: :boolean,
@@ -31,7 +42,8 @@ defmodule AshWorkflow.Entities.Step do
     ],
     policy: [
       type: :any,
-      doc: "An Ash policy check to apply to all transitions in this step. Accepts any {module, opts} tuple implementing Ash.Policy.Check."
+      doc:
+        "An Ash policy check to apply to all transitions in this step. Accepts any {module, opts} tuple implementing Ash.Policy.Check."
     ]
   ]
 

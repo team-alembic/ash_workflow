@@ -34,7 +34,8 @@ defmodule AshWorkflow.Entities.Timeout do
 
   def attribute_schema, do: @schema
 
-  def validate_duration({value, unit}) when is_integer(value) and value > 0 and unit in [:seconds, :minutes, :hours, :days] do
+  def validate_duration({value, unit})
+      when is_integer(value) and value > 0 and unit in [:seconds, :minutes, :hours, :days] do
     {:ok, {value, unit}}
   end
 

@@ -12,19 +12,19 @@ defmodule AshWorkflowTest.LinearWorkflow do
     extensions: [AshWorkflow]
 
   workflow do
-    step :process, action: :do_processing, on_success: :complete, on_error: :failed
-    step :complete, terminal: true
-    step :failed, terminal: true
-  end
-
-  attributes do
-    uuid_v7_primary_key :id
-    attribute :title, :string, allow_nil?: false, public?: true
+    step(:process, action: :do_processing, on_success: :complete, on_error: :failed)
+    step(:complete, terminal: true)
+    step(:failed, terminal: true)
   end
 
   actions do
     update :do_processing do
       accept []
     end
+  end
+
+  attributes do
+    uuid_v7_primary_key :id
+    attribute :title, :string, allow_nil?: false, public?: true
   end
 end

@@ -73,13 +73,22 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
         step_error(step, "Manual step :#{step.name} must have at least one transition.")
 
       step.action != nil ->
-        step_error(step, "Manual step :#{step.name} must not have an action. User actions are defined via transitions.")
+        step_error(
+          step,
+          "Manual step :#{step.name} must not have an action. User actions are defined via transitions."
+        )
 
       step.on_success != nil ->
-        step_error(step, "Manual step :#{step.name} must not have on_success. Use transitions instead.")
+        step_error(
+          step,
+          "Manual step :#{step.name} must not have on_success. Use transitions instead."
+        )
 
       step.on_error != nil ->
-        step_error(step, "Manual step :#{step.name} must not have on_error. Use transitions instead.")
+        step_error(
+          step,
+          "Manual step :#{step.name} must not have on_error. Use transitions instead."
+        )
 
       true ->
         validate_timeouts(step)
@@ -95,7 +104,10 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
         step_error(step, "Automatic step :#{step.name} must have on_success.")
 
       step.transitions != [] ->
-        step_error(step, "Automatic step :#{step.name} must not have transitions. Use on_success/on_error instead.")
+        step_error(
+          step,
+          "Automatic step :#{step.name} must not have transitions. Use on_success/on_error instead."
+        )
 
       true ->
         validate_timeouts(step)
@@ -106,10 +118,18 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
     Enum.reduce_while(step.timeouts, :ok, fn timeout, :ok ->
       cond do
         timeout.action != nil and timeout.transition_to != nil ->
-          {:halt, step_error(step, "Timeout :#{timeout.name} on step :#{step.name} must have either action or transition_to, not both.")}
+          {:halt,
+           step_error(
+             step,
+             "Timeout :#{timeout.name} on step :#{step.name} must have either action or transition_to, not both."
+           )}
 
         timeout.action == nil and timeout.transition_to == nil ->
-          {:halt, step_error(step, "Timeout :#{timeout.name} on step :#{step.name} must have either action or transition_to.")}
+          {:halt,
+           step_error(
+             step,
+             "Timeout :#{timeout.name} on step :#{step.name} must have either action or transition_to."
+           )}
 
         true ->
           {:cont, :ok}
@@ -147,7 +167,11 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
       if MapSet.member?(step_names, transition.to) do
         {:cont, :ok}
       else
-        {:halt, step_error(step, "Transition :#{transition.name} on step :#{step.name} references unknown step :#{transition.to}.")}
+        {:halt,
+         step_error(
+           step,
+           "Transition :#{transition.name} on step :#{step.name} references unknown step :#{transition.to}."
+         )}
       end
     end)
   end
@@ -162,7 +186,11 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
           if MapSet.member?(step_names, target) do
             {:cont, :ok}
           else
-            {:halt, step_error(step, "Timeout :#{timeout.name} on step :#{step.name} transition_to references unknown step :#{target}.")}
+            {:halt,
+             step_error(
+               step,
+               "Timeout :#{timeout.name} on step :#{step.name} transition_to references unknown step :#{target}."
+             )}
           end
       end
     end)
@@ -183,7 +211,8 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
         {:error,
          Spark.Error.DslError.exception(
            path: [:workflow],
-           message: "Transition name :#{name} is used in multiple steps: #{inspect(step_names)}. Transition names must be unique across all steps."
+           message:
+             "Transition name :#{name} is used in multiple steps: #{inspect(step_names)}. Transition names must be unique across all steps."
          )}
     end
   end
@@ -211,7 +240,8 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
       {:error,
        Spark.Error.DslError.exception(
          path: [:workflow],
-         message: "The following steps are not reachable from the first step :#{first_step.name}: #{inspect(unreachable_list)}"
+         message:
+           "The following steps are not reachable from the first step :#{first_step.name}: #{inspect(unreachable_list)}"
        )}
     end
   end
@@ -235,7 +265,9 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
               |> Enum.reject(&is_nil/1)
 
             transition_targets = Enum.map(step.transitions, & &1.to)
-            timeout_targets = step.timeouts |> Enum.map(& &1.transition_to) |> Enum.reject(&is_nil/1)
+
+            timeout_targets =
+              step.timeouts |> Enum.map(& &1.transition_to) |> Enum.reject(&is_nil/1)
 
             successors ++ transition_targets ++ timeout_targets
         end

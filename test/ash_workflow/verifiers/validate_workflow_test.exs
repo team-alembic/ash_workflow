@@ -58,7 +58,10 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflowTest do
     test "manual step with transitions" do
       dsl =
         build_dsl([
-          step(:review, manual: true, transitions: [transition(:approve, :done), transition(:reject, :rejected)]),
+          step(:review,
+            manual: true,
+            transitions: [transition(:approve, :done), transition(:reject, :rejected)]
+          ),
           step(:done, terminal: true),
           step(:rejected, terminal: true)
         ])
@@ -294,7 +297,10 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflowTest do
       dsl =
         build_dsl([
           step(:step_a, manual: true, transitions: [transition(:approve, :done)]),
-          step(:step_b, manual: true, transitions: [transition(:approve, :done), transition(:back, :step_a)]),
+          step(:step_b,
+            manual: true,
+            transitions: [transition(:approve, :done), transition(:back, :step_a)]
+          ),
           step(:done, terminal: true)
         ])
 
@@ -306,7 +312,10 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflowTest do
       # Two different transitions in the same step don't conflict — they're different actions
       dsl =
         build_dsl([
-          step(:review, manual: true, transitions: [transition(:approve, :done), transition(:reject, :rejected)]),
+          step(:review,
+            manual: true,
+            transitions: [transition(:approve, :done), transition(:reject, :rejected)]
+          ),
           step(:done, terminal: true),
           step(:rejected, terminal: true)
         ])

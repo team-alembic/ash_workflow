@@ -40,9 +40,7 @@ defmodule AshWorkflow.Transformers.AddCodeInterface do
       dsl
     else
       define =
-        Transformer.build_entity!(Ash.Resource.Dsl, [:code_interface], :define,
-          name: name
-        )
+        Transformer.build_entity!(Ash.Resource.Dsl, [:code_interface], :define, name: name)
 
       Transformer.add_entity(dsl, [:code_interface], define)
     end

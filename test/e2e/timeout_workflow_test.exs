@@ -17,13 +17,25 @@ defmodule AshWorkflowTest.E2E.TimeoutWorkflowTest do
 
     test "has a trigger for the reminder timeout" do
       triggers = AshOban.Info.oban_triggers(TimeoutWorkflow)
-      reminder = Enum.find(triggers, &(&1.name == :waiting_reminder || String.contains?(to_string(&1.name), "reminder")))
+
+      reminder =
+        Enum.find(
+          triggers,
+          &(&1.name == :waiting_reminder || String.contains?(to_string(&1.name), "reminder"))
+        )
+
       assert reminder
     end
 
     test "has a trigger for the escalation timeout" do
       triggers = AshOban.Info.oban_triggers(TimeoutWorkflow)
-      escalation = Enum.find(triggers, &(&1.name == :waiting_escalation || String.contains?(to_string(&1.name), "escalation")))
+
+      escalation =
+        Enum.find(
+          triggers,
+          &(&1.name == :waiting_escalation || String.contains?(to_string(&1.name), "escalation"))
+        )
+
       assert escalation
     end
   end

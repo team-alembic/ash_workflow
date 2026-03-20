@@ -55,8 +55,17 @@ defmodule AshWorkflow.Transformers.AddObanTriggers do
 
   defp add_step_trigger(dsl, resource, step) do
     step_name = step.name
-    worker_module = Module.concat([resource, AshWorkflow, Workers, Macro.camelize(Atom.to_string(step_name))])
-    scheduler_module = Module.concat([resource, AshWorkflow, Schedulers, Macro.camelize(Atom.to_string(step_name))])
+
+    worker_module =
+      Module.concat([resource, AshWorkflow, Workers, Macro.camelize(Atom.to_string(step_name))])
+
+    scheduler_module =
+      Module.concat([
+        resource,
+        AshWorkflow,
+        Schedulers,
+        Macro.camelize(Atom.to_string(step_name))
+      ])
 
     trigger =
       Transformer.build_entity!(AshOban, [:oban, :triggers], :trigger,
@@ -93,7 +102,10 @@ defmodule AshWorkflow.Transformers.AddObanTriggers do
       Transformer.build_entity!(AshOban, [:oban, :triggers], :trigger,
         name: :"__timeout_trigger_#{timeout_name}",
         action: action,
-        where: Ash.Expr.expr(state == ^step_name and state_entered_at <= ago(^duration_value, ^ago_unit)),
+        where:
+          Ash.Expr.expr(
+            state == ^step_name and state_entered_at <= ago(^duration_value, ^ago_unit)
+          ),
         queue: :workflow,
         worker_module_name: worker_module,
         scheduler_module_name: scheduler_module,

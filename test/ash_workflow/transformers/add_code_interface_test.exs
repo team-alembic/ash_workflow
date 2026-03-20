@@ -20,7 +20,8 @@ defmodule AshWorkflow.Transformers.AddCodeInterfaceTest do
   end
 
   test "generates functions for all transitions in full pipeline" do
-    functions = AshWorkflowTest.FullPipeline.__info__(:functions) |> Keyword.keys() |> MapSet.new()
+    functions =
+      AshWorkflowTest.FullPipeline.__info__(:functions) |> Keyword.keys() |> MapSet.new()
 
     assert :start in functions
     assert :advance in functions
