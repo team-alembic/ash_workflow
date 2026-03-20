@@ -227,6 +227,11 @@ From the workflow DSL, the extension generates:
 
 All generation follows a **generate-if-missing** pattern: if you've already defined a state machine block, Oban triggers, or policies targeting specific actions, the transformer won't overwrite them.
 
+## Examples
+
+- **[Basic: Document Approval](examples/basic/)** — A minimal approval workflow with automatic checks, manual review, and a reminder timeout.
+- **[ATS: Candidate Pipeline](examples/ats/)** — A full applicant tracking system in a single resource: 13 states, 3 roles, timeouts, escalations, and step-level authorization.
+
 ## Installation
 
 Add `ash_workflow` to your dependencies in `mix.exs`:

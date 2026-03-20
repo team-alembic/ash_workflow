@@ -1,0 +1,238 @@
+defmodule ATS.CandidatePipeline do
+  @moduledoc """
+  A full applicant tracking system modeled as a single Ash resource with AshWorkflow.
+
+  This shows how a real hiring pipeline — spanning days or weeks, involving multiple
+  people in different roles — can be expressed declaratively. Every state, transition,
+  timeout, and authorization rule lives in one place.
+
+  ## The pipeline
+
+      start
+        │
+        ▼
+      process_application  (automatic — parse resume, check for duplicates)
+        │
+        ├─ on_success ──▶  recruiter_screen
+        └─ on_error ────▶  application_failed
+        │
+        ▼
+      recruiter_screen  (manual — recruiter reviews application)
+        │
+        ├─ advance ─────▶  phone_screen
+        ├─ reject ──────▶  rejected
+        ├─ hold ────────▶  on_hold
+        │
+        │  timeout: 2 days → send reminder to recruiter
+        │  timeout: 7 days → auto-escalate
+        │
+        ▼
+      phone_screen  (automatic — send scheduling link via Calendly)
+        │
+        ├─ on_success ──▶  awaiting_phone_result
+        └─ on_error ────▶  scheduling_failed
+        │
+        ▼
+      awaiting_phone_result  (manual — recruiter logs outcome)
+        │
+        ├─ pass ────────▶  onsite_interview
+        ├─ fail ────────▶  rejected
+        ├─ reschedule ──▶  phone_screen
+        │
+        │  timeout: 5 days → nudge interviewer
+        │
+        ▼
+      onsite_interview  (automatic — send onsite scheduling email)
+        │
+        ├─ on_success ──▶  awaiting_panel_decision
+        │
+        ▼
+      awaiting_panel_decision  (manual — hiring manager decides)
+        │
+        ├─ offer ───────▶  generate_offer
+        ├─ reject ──────▶  rejected
+        │
+        ▼
+      generate_offer  (automatic — create offer letter, send to candidate)
+        │
+        ├─ on_success ──▶  awaiting_offer_response
+        └─ on_error ────▶  offer_generation_failed
+        │
+        ▼
+      awaiting_offer_response  (manual — candidate responds)
+        │
+        ├─ accept ──────▶  hired
+        ├─ decline ─────▶  offer_declined
+        ├─ negotiate ───▶  generate_offer
+        │
+        │  timeout: 3 days → follow-up email (repeating)
+        │  timeout: 14 days → offer expires
+        │
+        ▼
+      hired  (terminal)
+
+  ## Roles
+
+  - **Recruiter** — screens applications, logs phone screen results, manages pipeline
+  - **Hiring manager** — makes final interview decisions, approves offers
+  - **Candidate** — responds to offers (via external action or webhook)
+
+  ## Usage
+
+      # A new application comes in
+      {:ok, pipeline} = CandidatePipeline.start(%{
+        candidate_name: "Jane Smith",
+        candidate_email: "jane@example.com",
+        position: "Senior Engineer",
+        resume_url: "https://example.com/resume.pdf"
+      })
+
+      # process_application runs automatically via Oban.
+      # If successful, the workflow moves to :recruiter_screen.
+
+      # Recruiter reviews and advances the candidate
+      CandidatePipeline.advance(pipeline, actor: recruiter)
+
+      # phone_screen runs automatically — sends scheduling link.
+      # Recruiter logs the result after the call happens.
+      CandidatePipeline.pass(pipeline, %{notes: "Strong communicator"}, actor: recruiter)
+
+      # onsite_interview runs automatically — sends scheduling email.
+      # Hiring manager makes the call after the panel meets.
+      CandidatePipeline.offer(pipeline, %{salary: 150_000, equity: "0.1%"}, actor: hiring_manager)
+
+      # generate_offer runs automatically — creates and sends the offer letter.
+      # Candidate accepts (could come from a webhook or manual entry).
+      CandidatePipeline.accept(pipeline, actor: candidate)
+      # => state is now :hired
+  """
+
+  use Ash.Resource,
+    domain: ATS.Domain,
+    data_layer: AshPostgres.DataLayer,
+    extensions: [AshWorkflow]
+
+  workflow do
+    # ── Automatic: parse resume, check for duplicate applications ──
+    step :process_application do
+      action :process_application
+      on_success :recruiter_screen
+      on_error :application_failed
+    end
+
+    # ── Manual: recruiter reviews the application ──
+    step :recruiter_screen do
+      manual true
+      policy actor_attribute_equals(:role, :recruiter)
+
+      transition :advance, to: :phone_screen
+      transition :reject, to: :rejected
+      transition :hold, to: :on_hold
+
+      timeout :reminder, after: {2, :days}, action: :send_recruiter_reminder
+      timeout :escalation, after: {7, :days}, transition_to: :escalated
+    end
+
+    # ── Manual: on_hold — recruiter can revisit later ──
+    step :on_hold do
+      manual true
+      policy actor_attribute_equals(:role, :recruiter)
+
+      transition :reactivate, to: :recruiter_screen
+      transition :reject, to: :rejected
+
+      timeout :stale_check, after: {30, :days}, action: :notify_stale_candidate
+    end
+
+    # ── Automatic: send scheduling link for phone screen ──
+    step :phone_screen do
+      action :schedule_phone_screen
+      on_success :awaiting_phone_result
+      on_error :scheduling_failed
+    end
+
+    # ── Manual: recruiter logs the phone screen outcome ──
+    step :awaiting_phone_result do
+      manual true
+      policy actor_attribute_equals(:role, :recruiter)
+
+      transition :pass, to: :onsite_interview
+      transition :fail, to: :rejected
+      transition :reschedule, to: :phone_screen
+
+      timeout :nudge, after: {5, :days}, action: :remind_phone_screen_result
+    end
+
+    # ── Automatic: send onsite interview scheduling email ──
+    step :onsite_interview do
+      action :schedule_onsite
+      on_success :awaiting_panel_decision
+    end
+
+    # ── Manual: hiring manager decides after the panel ──
+    step :awaiting_panel_decision do
+      manual true
+      policy actor_attribute_equals(:role, :hiring_manager)
+
+      transition :offer, to: :generate_offer
+      transition :reject, to: :rejected
+    end
+
+    # ── Automatic: create offer letter, send to candidate ──
+    step :generate_offer do
+      action :generate_and_send_offer
+      on_success :awaiting_offer_response
+      on_error :offer_generation_failed
+    end
+
+    # ── Manual: candidate responds to the offer ──
+    step :awaiting_offer_response do
+      manual true
+
+      transition :accept, to: :hired
+      transition :decline, to: :offer_declined
+      transition :negotiate, to: :generate_offer
+
+      timeout :follow_up, after: {3, :days}, action: :send_offer_follow_up, repeat: true
+      timeout :expire, after: {14, :days}, transition_to: :offer_expired
+    end
+
+    # ── Terminal states ──
+    step :hired, terminal: true
+    step :rejected, terminal: true
+    step :offer_declined, terminal: true
+    step :offer_expired, terminal: true
+    step :application_failed, terminal: true
+    step :scheduling_failed, terminal: true
+    step :offer_generation_failed, terminal: true
+    step :escalated, terminal: true
+  end
+
+  attributes do
+    uuid_v7_primary_key :id
+
+    attribute :candidate_name, :string, allow_nil?: false
+    attribute :candidate_email, :string, allow_nil?: false
+    attribute :position, :string, allow_nil?: false
+    attribute :resume_url, :string
+
+    attribute :notes, :string
+    attribute :rejection_reason, :string
+    attribute :salary, :integer
+    attribute :equity, :string
+  end
+
+  actions do
+    update :pass do
+      accept [:notes]
+    end
+
+    update :reject do
+      accept [:rejection_reason]
+    end
+
+    update :offer do
+      accept [:salary, :equity]
+    end
+  end
+end
