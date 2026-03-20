@@ -179,5 +179,8 @@ defmodule AshWorkflow.Transformers.AddActions do
   def before?(AshStateMachine.Transformers.FillInTransitionDefaults), do: true
   def before?(AshStateMachine.Transformers.AddState), do: true
   def before?(AshStateMachine.Transformers.EnsureStateSelected), do: true
+  def before?(AshOban.Transformers.SetDefaults), do: true
+  def before?(AshOban.Transformers.DefineSchedulers), do: true
+  def before?(AshOban.Transformers.DefineActionWorkers), do: true
   def before?(_), do: false
 end
