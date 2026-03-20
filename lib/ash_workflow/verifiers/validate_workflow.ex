@@ -10,7 +10,6 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
     with :ok <- validate_has_steps(steps),
          :ok <- validate_step_configs(steps),
          :ok <- validate_references(steps),
-         :ok <- validate_transition_name_uniqueness(steps),
          :ok <- validate_reachability(steps) do
       :ok
     end
@@ -226,27 +225,6 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
           end
       end
     end)
-  end
-
-  defp validate_transition_name_uniqueness(steps) do
-    steps
-    |> Enum.flat_map(fn step ->
-      Enum.map(step.transitions, fn t -> {t.name, step.name} end)
-    end)
-    |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
-    |> Enum.find(fn {_name, step_names} -> length(step_names) > 1 end)
-    |> case do
-      nil ->
-        :ok
-
-      {name, step_names} ->
-        {:error,
-         Spark.Error.DslError.exception(
-           path: [:workflow],
-           message:
-             "Transition name :#{name} is used in multiple steps: #{inspect(step_names)}. Transition names must be unique across all steps."
-         )}
-    end
   end
 
   defp validate_reachability(steps) do

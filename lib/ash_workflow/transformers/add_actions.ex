@@ -93,66 +93,94 @@ defmodule AshWorkflow.Transformers.AddActions do
   end
 
   defp add_transition_actions(dsl, steps) do
-    steps
-    |> Enum.filter(& &1.manual)
-    |> Enum.flat_map(& &1.transitions)
-    |> Enum.reduce(dsl, fn transition, dsl ->
-      transition_changes = build_transition_changes(transition)
+    # Collect all transitions grouped by name, tracking which step each came from
+    grouped =
+      steps
+      |> Enum.filter(& &1.manual)
+      |> Enum.flat_map(fn step ->
+        Enum.map(step.transitions, &{step.name, &1})
+      end)
+      |> Enum.group_by(fn {_step, t} -> t.name end)
 
-      timestamp_change =
-        Transformer.build_entity!(Ash.Resource.Dsl, [:actions, :update], :change,
-          change:
-            Ash.Resource.Change.Builtins.set_attribute(:state_entered_at, &DateTime.utc_now/0)
-        )
+    Enum.reduce(grouped, dsl, fn {name, step_transitions}, dsl ->
+      add_transition_action(dsl, name, step_transitions)
+    end)
+  end
 
-      changes = transition_changes ++ [timestamp_change]
-      actions = Transformer.get_entities(dsl, [:actions])
+  defp add_transition_action(dsl, name, step_transitions) do
+    routes = build_routes_for_transition(step_transitions)
+    is_conditional = length(routes) > 1 or has_explicit_routes?(step_transitions)
 
-      is_conditional = AshWorkflow.Entities.Transition.conditional?(transition)
+    transition_changes =
+      if is_conditional do
+        [
+          Transformer.build_entity!(Ash.Resource.Dsl, [:actions, :update], :change,
+            change:
+              {AshWorkflow.Changes.ConditionalTransition,
+               routes: routes, transition_name: name}
+          )
+        ]
+      else
+        [route] = routes
 
-      case Enum.find(actions, &(&1.name == transition.name)) do
-        nil ->
-          opts = [name: transition.name, changes: changes]
-          opts = if is_conditional, do: Keyword.put(opts, :require_atomic?, false), else: opts
+        [
+          Transformer.build_entity!(Ash.Resource.Dsl, [:actions, :update], :change,
+            change: AshStateMachine.BuiltinChanges.transition_state(route.to)
+          )
+        ]
+      end
 
-          action = Transformer.build_entity!(Ash.Resource.Dsl, [:actions], :update, opts)
+    timestamp_change =
+      Transformer.build_entity!(Ash.Resource.Dsl, [:actions, :update], :change,
+        change:
+          Ash.Resource.Change.Builtins.set_attribute(:state_entered_at, &DateTime.utc_now/0)
+      )
 
-          Transformer.add_entity(dsl, [:actions], action)
+    changes = transition_changes ++ [timestamp_change]
+    actions = Transformer.get_entities(dsl, [:actions])
 
-        existing_action ->
-          updated_action = %{
-            existing_action
-            | changes: existing_action.changes ++ changes
-          }
+    case Enum.find(actions, &(&1.name == name)) do
+      nil ->
+        opts = [name: name, changes: changes]
+        opts = if is_conditional, do: Keyword.put(opts, :require_atomic?, false), else: opts
+        action = Transformer.build_entity!(Ash.Resource.Dsl, [:actions], :update, opts)
+        Transformer.add_entity(dsl, [:actions], action)
 
-          updated_action =
-            if is_conditional,
-              do: Map.put(updated_action, :require_atomic?, false),
-              else: updated_action
+      existing_action ->
+        updated_action = %{existing_action | changes: existing_action.changes ++ changes}
 
-          dsl
-          |> Transformer.remove_entity([:actions], &(&1.name == transition.name))
-          |> Transformer.add_entity([:actions], updated_action)
+        updated_action =
+          if is_conditional,
+            do: Map.put(updated_action, :require_atomic?, false),
+            else: updated_action
+
+        dsl
+        |> Transformer.remove_entity([:actions], &(&1.name == name))
+        |> Transformer.add_entity([:actions], updated_action)
+    end
+  end
+
+  defp build_routes_for_transition(step_transitions) do
+    # For each (step_name, transition) pair, build routes.
+    # - A transition with explicit routes keeps them as-is
+    # - A static transition from one step = one route
+    # - Same-named static transitions from different steps = routes keyed on state
+    require Ash.Expr
+
+    step_transitions
+    |> Enum.flat_map(fn {step_name, transition} ->
+      if AshWorkflow.Entities.Transition.conditional?(transition) do
+        transition.routes
+      else
+        [%AshWorkflow.Entities.Route{to: transition.to, when: Ash.Expr.expr(state == ^step_name)}]
       end
     end)
   end
 
-  defp build_transition_changes(transition) do
-    if AshWorkflow.Entities.Transition.conditional?(transition) do
-      [
-        Transformer.build_entity!(Ash.Resource.Dsl, [:actions, :update], :change,
-          change:
-            {AshWorkflow.Changes.ConditionalTransition,
-             routes: transition.routes, transition_name: transition.name}
-        )
-      ]
-    else
-      [
-        Transformer.build_entity!(Ash.Resource.Dsl, [:actions, :update], :change,
-          change: AshStateMachine.BuiltinChanges.transition_state(transition.to)
-        )
-      ]
-    end
+  defp has_explicit_routes?(step_transitions) do
+    Enum.any?(step_transitions, fn {_step, t} ->
+      AshWorkflow.Entities.Transition.conditional?(t)
+    end)
   end
 
   defp inject_automatic_step_changes(dsl, steps) do

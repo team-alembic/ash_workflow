@@ -24,12 +24,16 @@ defmodule AshWorkflow.Transformers.AddCodeInterface do
 
     dsl = maybe_add_define(dsl, :start, defined_names)
 
-    dsl =
+    transition_names =
       steps
       |> Enum.filter(& &1.manual)
       |> Enum.flat_map(& &1.transitions)
-      |> Enum.reduce(dsl, fn transition, dsl ->
-        maybe_add_define(dsl, transition.name, defined_names)
+      |> Enum.map(& &1.name)
+      |> Enum.uniq()
+
+    dsl =
+      Enum.reduce(transition_names, dsl, fn name, dsl ->
+        maybe_add_define(dsl, name, defined_names)
       end)
 
     {:ok, dsl}

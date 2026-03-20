@@ -292,24 +292,43 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflowTest do
     end
   end
 
-  describe "transition name uniqueness" do
-    test "duplicate transition names across steps fails" do
+  describe "shared transition names" do
+    test "same transition name across steps with same target is allowed" do
       dsl =
         build_dsl([
-          step(:step_a, manual: true, transitions: [transition(:approve, :done)]),
+          step(:step_a,
+            manual: true,
+            transitions: [transition(:reject, :rejected), transition(:go_to_b, :step_b)]
+          ),
           step(:step_b,
             manual: true,
-            transitions: [transition(:approve, :done), transition(:back, :step_a)]
+            transitions: [transition(:reject, :rejected), transition(:back, :step_a)]
           ),
-          step(:done, terminal: true)
+          step(:rejected, terminal: true)
         ])
 
-      assert {:error, %Spark.Error.DslError{message: message}} = ValidateWorkflow.verify(dsl)
-      assert message =~ "Transition name :approve is used in multiple steps"
+      assert :ok = ValidateWorkflow.verify(dsl)
     end
 
-    test "same transition name within one step is allowed" do
-      # Two different transitions in the same step don't conflict — they're different actions
+    test "same transition name across steps with different targets is allowed" do
+      dsl =
+        build_dsl([
+          step(:step_a,
+            manual: true,
+            transitions: [transition(:complete, :done_a), transition(:go_to_b, :step_b)]
+          ),
+          step(:step_b,
+            manual: true,
+            transitions: [transition(:complete, :done_b), transition(:back, :step_a)]
+          ),
+          step(:done_a, terminal: true),
+          step(:done_b, terminal: true)
+        ])
+
+      assert :ok = ValidateWorkflow.verify(dsl)
+    end
+
+    test "different transitions within one step is fine" do
       dsl =
         build_dsl([
           step(:review,

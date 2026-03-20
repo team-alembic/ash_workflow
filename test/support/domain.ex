@@ -11,5 +11,6 @@ defmodule AshWorkflowTest.Domain do
     resource AshWorkflowTest.LoopbackWorkflow
     resource AshWorkflowTest.CustomActionWorkflow
     resource AshWorkflowTest.ConditionalWorkflow
+    resource AshWorkflowTest.SharedTransitionWorkflow
   end
 end
