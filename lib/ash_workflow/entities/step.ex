@@ -1,31 +1,39 @@
 defmodule AshWorkflow.Entities.Step do
-  defstruct [:name, :action, :resource]
+  defstruct [:name, :action, :on_success, :on_error, :policy, manual: false, terminal: false, transitions: [], timeouts: []]
 
   @schema [
     name: [
       type: :atom,
-      required: false,
-      doc: """
-      The name of the step
-      """
+      required: true,
+      doc: "The name of the step. Becomes a state in the generated state machine."
     ],
     action: [
       type: :atom,
-      required: false,
-      doc: """
-      The name of the action to call on the resource.
-      """
+      doc: "The action to run for automatic steps. Must reference a user-defined update action on the resource."
     ],
-    resource: [
-      type: {:spark, Ash.Resource},
-      required: true,
-      doc: """
-      The resource to call the action on.
-      """
+    manual: [
+      type: :boolean,
+      default: false,
+      doc: "If true, this step waits for a human to trigger a transition action."
+    ],
+    terminal: [
+      type: :boolean,
+      default: false,
+      doc: "If true, this is an end state with no outgoing transitions."
+    ],
+    on_success: [
+      type: :atom,
+      doc: "The step to transition to on successful completion. Required for automatic steps."
+    ],
+    on_error: [
+      type: :atom,
+      doc: "The step to transition to on failure. Optional, for automatic steps."
+    ],
+    policy: [
+      type: :any,
+      doc: "An Ash policy check to apply to all transitions in this step. Accepts any {module, opts} tuple implementing Ash.Policy.Check."
     ]
   ]
 
-  def attribute_schema do
-    @schema
-  end
+  def attribute_schema, do: @schema
 end
