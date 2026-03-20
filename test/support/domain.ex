@@ -10,5 +10,6 @@ defmodule AshWorkflowTest.Domain do
     resource AshWorkflowTest.FullPipeline
     resource AshWorkflowTest.LoopbackWorkflow
     resource AshWorkflowTest.CustomActionWorkflow
+    resource AshWorkflowTest.ConditionalWorkflow
   end
 end

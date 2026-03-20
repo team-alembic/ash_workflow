@@ -164,13 +164,45 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
 
   defp validate_transition_refs(step_names, step) do
     Enum.reduce_while(step.transitions, :ok, fn transition, :ok ->
-      if MapSet.member?(step_names, transition.to) do
+      with :ok <- validate_transition_has_target(step, transition),
+           :ok <- validate_transition_target_refs(step_names, step, transition) do
+        {:cont, :ok}
+      else
+        error -> {:halt, error}
+      end
+    end)
+  end
+
+  defp validate_transition_has_target(step, transition) do
+    cond do
+      transition.to != nil and transition.routes != [] ->
+        step_error(
+          step,
+          "Transition :#{transition.name} on step :#{step.name} has both `to` and conditional routes. Use one or the other."
+        )
+
+      transition.to == nil and transition.routes == [] ->
+        step_error(
+          step,
+          "Transition :#{transition.name} on step :#{step.name} must have either `to` or conditional routes."
+        )
+
+      true ->
+        :ok
+    end
+  end
+
+  defp validate_transition_target_refs(step_names, step, transition) do
+    targets = AshWorkflow.Entities.Transition.all_targets(transition)
+
+    Enum.reduce_while(targets, :ok, fn target, :ok ->
+      if MapSet.member?(step_names, target) do
         {:cont, :ok}
       else
         {:halt,
          step_error(
            step,
-           "Transition :#{transition.name} on step :#{step.name} references unknown step :#{transition.to}."
+           "Transition :#{transition.name} on step :#{step.name} references unknown step :#{target}."
          )}
       end
     end)
@@ -264,7 +296,8 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
               [step.on_success, step.on_error]
               |> Enum.reject(&is_nil/1)
 
-            transition_targets = Enum.map(step.transitions, & &1.to)
+            transition_targets =
+              Enum.flat_map(step.transitions, &AshWorkflow.Entities.Transition.all_targets/1)
 
             timeout_targets =
               step.timeouts |> Enum.map(& &1.transition_to) |> Enum.reject(&is_nil/1)

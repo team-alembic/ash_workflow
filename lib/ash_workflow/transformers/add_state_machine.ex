@@ -71,7 +71,8 @@ defmodule AshWorkflow.Transformers.AddStateMachine do
 
   defp manual_transitions(step) do
     Enum.map(step.transitions, fn transition ->
-      build_transition(transition.name, [step.name], [transition.to])
+      targets = AshWorkflow.Entities.Transition.all_targets(transition)
+      build_transition(transition.name, [step.name], targets)
     end)
   end
 

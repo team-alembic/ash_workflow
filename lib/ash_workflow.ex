@@ -9,12 +9,24 @@ defmodule AshWorkflow do
 
   alias AshWorkflow.Entities
 
+  @route %Spark.Dsl.Entity{
+    name: :route,
+    describe: "A conditional target for a transition. Evaluated at runtime.",
+    target: Entities.Route,
+    imports: [Ash.Expr],
+    args: [:to],
+    schema: Entities.Route.attribute_schema()
+  }
+
   @transition %Spark.Dsl.Entity{
     name: :transition,
     describe: "Declares a named transition from this manual step to another step.",
     target: Entities.Transition,
     args: [:name],
-    schema: Entities.Transition.attribute_schema()
+    schema: Entities.Transition.attribute_schema(),
+    entities: [
+      routes: [@route]
+    ]
   }
 
   @timeout %Spark.Dsl.Entity{
