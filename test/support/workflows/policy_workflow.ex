@@ -9,6 +9,7 @@ defmodule AshWorkflowTest.PolicyWorkflow do
   use Ash.Resource,
     domain: AshWorkflowTest.Domain,
     data_layer: Ash.DataLayer.Ets,
+    authorizers: [Ash.Policy.Authorizer],
     extensions: [AshWorkflow, AshStateMachine]
 
   workflow do

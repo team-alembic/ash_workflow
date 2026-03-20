@@ -11,12 +11,12 @@ defmodule AshWorkflowTest.E2E.PolicyWorkflowTest do
 
   describe "generated policies" do
     test "policies are defined on the resource" do
-      policies = Ash.Policy.Info.policies(PolicyWorkflow)
+      policies = Ash.Policy.Info.policies(AshWorkflowTest.Domain, PolicyWorkflow)
       assert length(policies) > 0
     end
 
     test "transition actions are covered by policies" do
-      policies = Ash.Policy.Info.policies(PolicyWorkflow)
+      policies = Ash.Policy.Info.policies(AshWorkflowTest.Domain, PolicyWorkflow)
 
       transition_actions = [:approve, :reject]
 
@@ -24,8 +24,8 @@ defmodule AshWorkflowTest.E2E.PolicyWorkflowTest do
         matching =
           Enum.find(policies, fn policy ->
             case policy.condition do
-              [{Ash.Policy.Check.Builtins.Action, %{action: actions}}] ->
-                action_name in List.wrap(actions)
+              [{Ash.Policy.Check.Action, opts}] when is_list(opts) ->
+                action_name in List.wrap(opts[:action])
 
               _ ->
                 false

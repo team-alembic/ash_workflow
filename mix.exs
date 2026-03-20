@@ -34,6 +34,7 @@ defmodule AshWorkflow.MixProject do
       {:ash_state_machine, "~> 0.2"},
       {:ash_oban, "~> 0.2"},
       {:igniter, "~> 0.6"},
+      {:simple_sat, "~> 0.1", only: [:dev, :test]},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:usage_rules, "~> 0.1", only: :dev}
     ]

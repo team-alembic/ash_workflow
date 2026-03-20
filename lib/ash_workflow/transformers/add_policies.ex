@@ -34,12 +34,21 @@ defmodule AshWorkflow.Transformers.AddPolicies do
     steps = Transformer.get_entities(dsl, [:workflow])
     existing_policies = Transformer.get_entities(dsl, [:policies])
 
+    steps_with_policy = Enum.filter(steps, &(&1.manual && &1.policy))
+
     dsl =
-      steps
-      |> Enum.filter(&(&1.manual && &1.policy))
-      |> Enum.reduce(dsl, fn step, dsl ->
+      Enum.reduce(steps_with_policy, dsl, fn step, dsl ->
         add_step_policy(dsl, step, existing_policies)
       end)
+
+    # If we generated any policies, add a default "allow everything else" policy
+    # so actions without explicit policies (like :start) aren't blocked
+    dsl =
+      if steps_with_policy != [] do
+        add_default_allow_policy(dsl)
+      else
+        dsl
+      end
 
     {:ok, dsl}
   end
@@ -71,6 +80,21 @@ defmodule AshWorkflow.Transformers.AddPolicies do
 
       Transformer.add_entity(dsl, [:policies], policy)
     end
+  end
+
+  defp add_default_allow_policy(dsl) do
+    authorize_if =
+      Transformer.build_entity!(Ash.Policy.Authorizer, [:policies, :policy], :authorize_if,
+        check: Ash.Policy.Check.Builtins.always()
+      )
+
+    policy =
+      Transformer.build_entity!(Ash.Policy.Authorizer, [:policies], :policy,
+        condition: Ash.Policy.Check.Builtins.always(),
+        policies: [authorize_if]
+      )
+
+    Transformer.add_entity(dsl, [:policies], policy)
   end
 
   defp action_covered?(policy, action_name) do

@@ -30,7 +30,7 @@ defmodule AshWorkflowTest.E2E.FullPipelineTest do
     end
 
     test "initial state is the first step" do
-      assert AshStateMachine.Info.state_machine_initial_states(FullPipeline) == [:intake]
+      assert {:ok, [:intake]} = AshStateMachine.Info.state_machine_initial_states(FullPipeline)
     end
   end
 
@@ -53,12 +53,17 @@ defmodule AshWorkflowTest.E2E.FullPipelineTest do
       {:ok, workflow} = FullPipeline.start(%{title: "test"})
       assert workflow.state == :intake
 
-      # intake is automatic — after Oban processes it, state becomes :review
-      # For e2e we simulate by calling the manual transition from :review
+      # Simulate Oban running the automatic intake step
+      {:ok, workflow} = Ash.update(workflow, action: :run_intake)
+      assert workflow.state == :review
+
       {:ok, workflow} = FullPipeline.advance(workflow, actor: reviewer)
       assert workflow.state == :process
 
-      # process is automatic — after Oban, state becomes :final_review
+      # Simulate Oban running the automatic process step
+      {:ok, workflow} = Ash.update(workflow, action: :run_processing)
+      assert workflow.state == :final_review
+
       {:ok, workflow} = FullPipeline.approve(workflow, actor: approver)
       assert workflow.state == :done
     end
@@ -67,6 +72,8 @@ defmodule AshWorkflowTest.E2E.FullPipelineTest do
   describe "rejection at any manual step" do
     test "reject at review" do
       {:ok, workflow} = FullPipeline.start(%{title: "test"})
+      # Simulate Oban running the automatic intake step
+      {:ok, workflow} = Ash.update(workflow, action: :run_intake)
       {:ok, workflow} = FullPipeline.reject_at_review(workflow, actor: %{role: :reviewer})
       assert workflow.state == :rejected
     end
@@ -77,6 +84,7 @@ defmodule AshWorkflowTest.E2E.FullPipelineTest do
       reviewer = %{role: :reviewer}
 
       {:ok, workflow} = FullPipeline.start(%{title: "test"})
+      {:ok, workflow} = Ash.update(workflow, action: :run_intake)
       {:ok, workflow} = FullPipeline.hold(workflow, actor: reviewer)
       assert workflow.state == :on_hold
 
@@ -88,12 +96,16 @@ defmodule AshWorkflowTest.E2E.FullPipelineTest do
   describe "policy enforcement" do
     test "only reviewers can advance from review" do
       {:ok, workflow} = FullPipeline.start(%{title: "test"})
+      {:ok, workflow} = Ash.update(workflow, action: :run_intake)
       non_reviewer = %{role: :approver}
       assert {:error, %Ash.Error.Forbidden{}} = FullPipeline.advance(workflow, actor: non_reviewer)
     end
 
     test "only approvers can approve at final_review" do
       {:ok, workflow} = FullPipeline.start(%{title: "test"})
+      {:ok, workflow} = Ash.update(workflow, action: :run_intake)
+      {:ok, workflow} = FullPipeline.advance(workflow, actor: %{role: :reviewer})
+      {:ok, workflow} = Ash.update(workflow, action: :run_processing)
       non_approver = %{role: :reviewer}
       assert {:error, %Ash.Error.Forbidden{}} = FullPipeline.approve(workflow, actor: non_approver)
     end

@@ -47,22 +47,12 @@ defmodule AshWorkflow.Transformers.AddActions do
   end
 
   defp add_read_action(dsl) do
-    steps = Transformer.get_entities(dsl, [:workflow])
-    has_oban_triggers =
-      Enum.any?(steps, fn step ->
-        (not step.manual and not step.terminal) or step.timeouts != []
-      end)
-
     cond do
-      not has_oban_triggers ->
-        # No Oban triggers will be generated, so no read action is needed
-        dsl
-
       Ash.Resource.Info.primary_action(dsl, :read) != nil ->
         dsl
 
       true ->
-        # ash_oban triggers require a primary read action with keyset pagination
+        # Required for ash_oban triggers and atomic update operations
         {:ok, pagination} = Ash.Resource.Builder.build_pagination(keyset?: true, default_limit: 100)
 
         read_action =
@@ -77,9 +67,19 @@ defmodule AshWorkflow.Transformers.AddActions do
   end
 
   defp add_start_action(dsl, _steps) do
+    # Accept all writable attributes so callers can pass resource fields
+    accepted_attrs =
+      dsl
+      |> Ash.Resource.Info.attributes()
+      |> Enum.filter(& &1.writable?)
+      |> Enum.reject(& &1.primary_key?)
+      |> Enum.map(& &1.name)
+      |> Enum.reject(&(&1 in [:state, :state_entered_at]))
+
     start_action =
       Transformer.build_entity!(Ash.Resource.Dsl, [:actions], :create,
         name: :start,
+        accept: accepted_attrs,
         changes: [
           Transformer.build_entity!(Ash.Resource.Dsl, [:actions, :create], :change,
             change: Ash.Resource.Change.Builtins.set_attribute(:state_entered_at, &DateTime.utc_now/0)

@@ -12,6 +12,7 @@ defmodule AshWorkflowTest.FullPipeline do
   use Ash.Resource,
     domain: AshWorkflowTest.Domain,
     data_layer: Ash.DataLayer.Ets,
+    authorizers: [Ash.Policy.Authorizer],
     extensions: [AshWorkflow, AshStateMachine, AshOban]
 
   workflow do
