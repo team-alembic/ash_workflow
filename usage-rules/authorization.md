@@ -98,7 +98,15 @@ end
 
 ## Automatic Steps and Authorization
 
-Automatic steps run via Oban background jobs and do not have actors by default. If your automatic step's action requires authorization, you need to configure actor persistence in your Oban setup. Step-level `policy` is only meaningful for manual steps.
+Automatic steps and timeouts run via Oban background jobs without an actor. AshWorkflow automatically injects an `AshOban.Checks.AshObanInteraction` bypass policy so these actions execute without authorization issues. This bypass only applies when the action is invoked by an Oban worker (i.e., `context.private.ash_oban?` is true) — it cannot be triggered by external callers.
+
+Step-level `policy` is only meaningful for manual steps.
+
+## Default Allow for Workflow Actions
+
+When `Ash.Policy.Authorizer` is present on the resource, AshWorkflow injects a default `authorize_if always()` policy scoped to all workflow-generated actions (`:start`, `:read`, transitions, automatic step actions, and timeout actions). This ensures workflow actions work out of the box without users needing to add a blanket allow policy.
+
+Step-level policies are evaluated **in addition to** this default allow, so they act as restrictive gates on specific manual transitions.
 
 ## Calling Transitions with an Actor
 
