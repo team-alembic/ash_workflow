@@ -3,7 +3,11 @@ defmodule AshWorkflowTest.Domain do
 
   resources do
     resource AshWorkflowTest.Workflow
-    resource AshWorkflowTest.SubWorkflow
-    resource AshWorkflowTest.Step1
+    resource AshWorkflowTest.LinearWorkflow
+    resource AshWorkflowTest.ApprovalWorkflow
+    resource AshWorkflowTest.TimeoutWorkflow
+    resource AshWorkflowTest.PolicyWorkflow
+    resource AshWorkflowTest.FullPipeline
+    resource AshWorkflowTest.LoopbackWorkflow
   end
 end
