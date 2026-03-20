@@ -2,7 +2,7 @@ defmodule AshWorkflowTest.Workflow do
   use Ash.Resource,
     domain: AshWorkflowTest.Domain,
     data_layer: Ash.DataLayer.Ets,
-    extensions: [AshWorkflow, AshStateMachine]
+    extensions: [AshWorkflow, AshStateMachine, AshOban]
 
   workflow do
     step :process_application do

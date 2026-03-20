@@ -11,7 +11,7 @@ defmodule AshWorkflowTest.TimeoutWorkflow do
   use Ash.Resource,
     domain: AshWorkflowTest.Domain,
     data_layer: Ash.DataLayer.Ets,
-    extensions: [AshWorkflow, AshStateMachine]
+    extensions: [AshWorkflow, AshStateMachine, AshOban]
 
   workflow do
     step :waiting do

@@ -23,6 +23,10 @@ defmodule AshWorkflow.Transformers.AddActions do
   - **Timeout transition actions** — for timeouts with `transition_to`, generates
     a hidden update action named `__timeout_<name>` that transitions to the target
     state and updates `state_entered_at`.
+
+  - **Primary read action** — if the workflow has automatic steps (which generate
+    Oban triggers) and no primary read action is defined, generates one with
+    keyset pagination enabled (required by ash_oban).
   """
   use Spark.Dsl.Transformer
 
@@ -33,12 +37,40 @@ defmodule AshWorkflow.Transformers.AddActions do
 
     dsl =
       dsl
+      |> add_read_action()
       |> add_start_action(steps)
       |> add_transition_actions(steps)
       |> inject_automatic_step_changes(steps)
       |> add_timeout_actions(steps)
 
     {:ok, dsl}
+  end
+
+  defp add_read_action(dsl) do
+    steps = Transformer.get_entities(dsl, [:workflow])
+    has_automatic_steps = Enum.any?(steps, &(not &1.manual and not &1.terminal))
+
+    cond do
+      not has_automatic_steps ->
+        # No Oban triggers will be generated, so no read action is needed
+        dsl
+
+      Ash.Resource.Info.primary_action(dsl, :read) != nil ->
+        dsl
+
+      true ->
+        # ash_oban triggers require a primary read action with keyset pagination
+        {:ok, pagination} = Ash.Resource.Builder.build_pagination(keyset?: true, default_limit: 100)
+
+        read_action =
+          Transformer.build_entity!(Ash.Resource.Dsl, [:actions], :read,
+            name: :read,
+            primary?: true,
+            pagination: pagination
+          )
+
+        Transformer.add_entity(dsl, [:actions], read_action)
+    end
   end
 
   defp add_start_action(dsl, _steps) do
