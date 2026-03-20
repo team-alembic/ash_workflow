@@ -79,6 +79,27 @@ step :interview do
 end
 ```
 
+### Conditional transitions
+
+A transition can route to different states based on record attributes using conditional routes. The workflow evaluates conditions at runtime and picks the first match:
+
+```elixir
+step :review do
+  manual true
+
+  transition :complete_review do
+    route :fast_track, when: expr(priority == :urgent)
+    route :standard_processing, when: expr(priority == :normal)
+  end
+
+  transition :reject_review, to: :rejected
+end
+```
+
+The user calls `:complete_review` — the workflow checks `priority` and routes accordingly. If no condition matches, the action fails with a clear error.
+
+Conditions use `expr()` — the same Ash expression syntax used in filters and policies. They have access to all record attributes.
+
 ## Terminal steps
 
 Terminal steps are end states with no outgoing transitions, actions, or timeouts:

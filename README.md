@@ -180,6 +180,25 @@ CandidatePipeline.approve(workflow, actor: current_user)
 CandidatePipeline.reject_application(workflow, actor: current_user)
 ```
 
+## Conditional Transitions
+
+Transitions can route to different states based on record attributes:
+
+```elixir
+step :review do
+  manual true
+
+  transition :complete_review do
+    route :fast_track, when: expr(priority == :urgent)
+    route :standard_processing, when: expr(priority == :normal)
+  end
+
+  transition :reject_review, to: :rejected
+end
+```
+
+The user calls `:complete_review` — the workflow evaluates conditions at runtime using `Ash.Expr` and routes to the first match. If no condition matches, the action fails with a clear error. Conditions have access to all record attributes.
+
 ## Authorization
 
 Authorization works at two levels.

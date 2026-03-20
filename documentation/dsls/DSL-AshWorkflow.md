@@ -16,6 +16,7 @@ Define a workflow by declaring steps, transitions, and timeouts.
 ### Nested DSLs
  * [step](#workflow-step)
    * transition
+     * route
    * timeout
 
 
@@ -32,6 +33,7 @@ Declares a step in the workflow. Each step becomes a state in the generated stat
 
 ### Nested DSLs
  * [transition](#workflow-step-transition)
+   * route
  * [timeout](#workflow-step-timeout)
 
 
@@ -62,6 +64,8 @@ transition name
 
 Declares a named transition from this manual step to another step.
 
+### Nested DSLs
+ * [route](#workflow-step-transition-route)
 
 
 
@@ -75,8 +79,39 @@ Declares a named transition from this manual step to another step.
 
 | Name | Type | Default | Docs |
 |------|------|---------|------|
-| [`to`](#workflow-step-transition-to){: #workflow-step-transition-to .spark-required} | `atom` |  | The step to transition to. |
+| [`to`](#workflow-step-transition-to){: #workflow-step-transition-to } | `atom` |  | The step to transition to. Omit when using conditional routes. |
 
+
+## workflow.step.transition.route
+```elixir
+route to
+```
+
+
+A conditional target for a transition. Evaluated at runtime.
+
+
+
+
+
+### Arguments
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`to`](#workflow-step-transition-route-to){: #workflow-step-transition-route-to .spark-required} | `atom` |  | The step to transition to if the condition matches. |
+### Options
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`when`](#workflow-step-transition-route-when){: #workflow-step-transition-route-when .spark-required} | `any` |  | An Ash expression evaluated against the record. Use `expr(attribute == value)`. |
+
+
+
+
+
+### Introspection
+
+Target: `AshWorkflow.Entities.Route`
 
 
 
