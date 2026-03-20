@@ -126,7 +126,7 @@ defmodule ATS.CandidatePipeline do
       policy actor_attribute_equals(:role, :recruiter)
 
       transition :advance, to: :phone_screen
-      transition :reject, to: :rejected
+      transition :reject_application, to: :rejected
       transition :hold, to: :on_hold
 
       timeout :reminder, after: {2, :days}, action: :send_recruiter_reminder
@@ -139,7 +139,7 @@ defmodule ATS.CandidatePipeline do
       policy actor_attribute_equals(:role, :recruiter)
 
       transition :reactivate, to: :recruiter_screen
-      transition :reject, to: :rejected
+      transition :reject_held, to: :rejected
 
       timeout :stale_check, after: {30, :days}, action: :notify_stale_candidate
     end
@@ -175,7 +175,7 @@ defmodule ATS.CandidatePipeline do
       policy actor_attribute_equals(:role, :hiring_manager)
 
       transition :offer, to: :generate_offer
-      transition :reject, to: :rejected
+      transition :reject_candidate, to: :rejected
     end
 
     # ── Automatic: create offer letter, send to candidate ──
@@ -222,17 +222,39 @@ defmodule ATS.CandidatePipeline do
     attribute :equity, :string
   end
 
+  # Automatic steps need user-defined actions with business logic.
+  # The extension injects transition_state and state_entered_at changes.
   actions do
-    update :pass do
-      accept [:notes]
+    update :process_application do
+      accept []
     end
 
-    update :reject do
-      accept [:rejection_reason]
+    update :schedule_phone_screen do
+      accept []
     end
 
-    update :offer do
-      accept [:salary, :equity]
+    update :schedule_onsite do
+      accept []
+    end
+
+    update :generate_and_send_offer do
+      accept []
+    end
+
+    update :send_recruiter_reminder do
+      accept []
+    end
+
+    update :remind_phone_screen_result do
+      accept []
+    end
+
+    update :notify_stale_candidate do
+      accept []
+    end
+
+    update :send_offer_follow_up do
+      accept []
     end
   end
 end

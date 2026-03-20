@@ -63,6 +63,7 @@ defmodule AshWorkflow.Transformers.AddObanTriggers do
         name: step_name,
         action: step.action,
         where: Ash.Expr.expr(state == ^step_name),
+        queue: :workflow,
         worker_module_name: worker_module,
         scheduler_module_name: scheduler_module,
         stream_with: :full_read
@@ -93,6 +94,7 @@ defmodule AshWorkflow.Transformers.AddObanTriggers do
         name: :"__timeout_trigger_#{timeout_name}",
         action: action,
         where: Ash.Expr.expr(state == ^step_name and state_entered_at <= ago(^duration_value, ^ago_unit)),
+        queue: :workflow,
         worker_module_name: worker_module,
         scheduler_module_name: scheduler_module,
         scheduler_cron: timeout.check_interval,

@@ -20,7 +20,7 @@ defmodule BasicWorkflow.DocumentApproval do
 
       # A reviewer approves or rejects
       DocumentApproval.approve(workflow, actor: reviewer)
-      DocumentApproval.reject(workflow, %{reason: "Missing data"}, actor: reviewer)
+      DocumentApproval.reject(workflow, actor: reviewer)
   """
 
   use Ash.Resource,
@@ -57,8 +57,12 @@ defmodule BasicWorkflow.DocumentApproval do
   end
 
   actions do
-    update :reject do
-      accept [:reason]
+    update :run_document_checks do
+      accept []
+    end
+
+    update :send_review_reminder do
+      accept []
     end
   end
 end

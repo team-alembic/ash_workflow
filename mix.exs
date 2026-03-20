@@ -1,15 +1,19 @@
 defmodule AshWorkflow.MixProject do
   use Mix.Project
 
+  @version "0.1.0"
+
   def project do
     [
       app: :ash_workflow,
-      version: "0.1.0",
+      version: @version,
       elixir: "~> 1.15",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       consolidate_protocols: Mix.env() != :dev,
-      deps: deps()
+      deps: deps(),
+      docs: docs(),
+      aliases: aliases()
     ]
   end
 
@@ -36,7 +40,50 @@ defmodule AshWorkflow.MixProject do
       {:igniter, "~> 0.6"},
       {:simple_sat, "~> 0.1", only: [:dev, :test]},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
-      {:usage_rules, "~> 0.1", only: :dev}
+      {:usage_rules, "~> 0.1", only: :dev},
+      {:ex_doc, "~> 0.34", only: :dev, runtime: false}
+    ]
+  end
+
+  defp docs do
+    [
+      main: "readme",
+      source_ref: "v#{@version}",
+      extra_section: "GUIDES",
+      extras: [
+        {"README.md", title: "Home"},
+        "documentation/tutorials/getting-started-with-ash-workflow.md",
+        "documentation/topics/automatic-vs-manual-steps.md",
+        "documentation/topics/timeouts-and-deadlines.md",
+        "documentation/topics/authorization.md",
+        "documentation/dsls/DSL-AshWorkflow.md"
+      ],
+      groups_for_extras: [
+        Tutorials: ~r'documentation/tutorials',
+        Topics: ~r'documentation/topics',
+        DSLs: ~r'documentation/dsls'
+      ],
+      groups_for_modules: [
+        Dsl: [AshWorkflow],
+        Entities: [
+          AshWorkflow.Entities.Step,
+          AshWorkflow.Entities.Transition,
+          AshWorkflow.Entities.Timeout
+        ],
+        Checks: [AshWorkflow.Checks],
+        Internals: ~r/.*/
+      ]
+    ]
+  end
+
+  defp aliases do
+    [
+      docs: [
+        "spark.cheat_sheets",
+        "docs",
+        "spark.replace_doc_links"
+      ],
+      "spark.cheat_sheets": "spark.cheat_sheets --extensions AshWorkflow"
     ]
   end
 end
