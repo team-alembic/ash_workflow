@@ -9,7 +9,7 @@ defmodule AshWorkflowTest.LinearWorkflow do
   use Ash.Resource,
     domain: AshWorkflowTest.Domain,
     data_layer: Ash.DataLayer.Ets,
-    extensions: [AshWorkflow, AshStateMachine, AshOban]
+    extensions: [AshWorkflow]
 
   workflow do
     step :process, action: :do_processing, on_success: :complete, on_error: :failed

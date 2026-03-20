@@ -12,7 +12,7 @@ defmodule AshWorkflowTest.LoopbackWorkflow do
   use Ash.Resource,
     domain: AshWorkflowTest.Domain,
     data_layer: Ash.DataLayer.Ets,
-    extensions: [AshWorkflow, AshStateMachine]
+    extensions: [AshWorkflow]
 
   workflow do
     step :draft do

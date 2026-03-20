@@ -47,6 +47,7 @@ defmodule AshWorkflow do
 
   use Spark.Dsl.Extension,
     sections: [@workflow],
+    add_extensions: [AshStateMachine, AshOban],
     transformers: [
       AshWorkflow.Transformers.AddAttributes,
       AshWorkflow.Transformers.AddStateMachine,

@@ -10,7 +10,7 @@ defmodule AshWorkflowTest.PolicyWorkflow do
     domain: AshWorkflowTest.Domain,
     data_layer: Ash.DataLayer.Ets,
     authorizers: [Ash.Policy.Authorizer],
-    extensions: [AshWorkflow, AshStateMachine]
+    extensions: [AshWorkflow]
 
   workflow do
     step :manager_review do

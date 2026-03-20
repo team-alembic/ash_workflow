@@ -9,7 +9,7 @@ defmodule AshWorkflowTest.ApprovalWorkflow do
   use Ash.Resource,
     domain: AshWorkflowTest.Domain,
     data_layer: Ash.DataLayer.Ets,
-    extensions: [AshWorkflow, AshStateMachine]
+    extensions: [AshWorkflow]
 
   workflow do
     step :review do
