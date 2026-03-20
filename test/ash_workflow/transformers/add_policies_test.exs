@@ -16,7 +16,7 @@ defmodule AshWorkflow.Transformers.AddPoliciesTest do
   test "full pipeline generates policies for each step with policy" do
     policies = Ash.Policy.Info.policies(AshWorkflowTest.Domain, AshWorkflowTest.FullPipeline)
 
-    # Full pipeline has 3 steps with policies + 1 default allow-all policy
-    assert length(policies) == 4
+    # Full pipeline has: 1 AshOban bypass + 3 step policies + 1 default allow = 5
+    assert length(policies) == 5
   end
 end

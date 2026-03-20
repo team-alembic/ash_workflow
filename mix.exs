@@ -56,6 +56,7 @@ defmodule AshWorkflow.MixProject do
         "documentation/topics/automatic-vs-manual-steps.md",
         "documentation/topics/timeouts-and-deadlines.md",
         "documentation/topics/authorization.md",
+        "documentation/topics/workflows-and-relationships.md",
         "documentation/dsls/DSL-AshWorkflow.md"
       ],
       groups_for_extras: [

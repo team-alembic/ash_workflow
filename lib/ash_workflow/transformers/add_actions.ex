@@ -95,20 +95,38 @@ defmodule AshWorkflow.Transformers.AddActions do
     |> Enum.filter(& &1.manual)
     |> Enum.flat_map(& &1.transitions)
     |> Enum.reduce(dsl, fn transition, dsl ->
-      action =
-        Transformer.build_entity!(Ash.Resource.Dsl, [:actions], :update,
-          name: transition.name,
-          changes: [
-            Transformer.build_entity!(Ash.Resource.Dsl, [:actions, :update], :change,
-              change: AshStateMachine.BuiltinChanges.transition_state(transition.to)
-            ),
-            Transformer.build_entity!(Ash.Resource.Dsl, [:actions, :update], :change,
-              change: Ash.Resource.Change.Builtins.set_attribute(:state_entered_at, &DateTime.utc_now/0)
-            )
-          ]
+      transition_change =
+        Transformer.build_entity!(Ash.Resource.Dsl, [:actions, :update], :change,
+          change: AshStateMachine.BuiltinChanges.transition_state(transition.to)
         )
 
-      Transformer.add_entity(dsl, [:actions], action)
+      timestamp_change =
+        Transformer.build_entity!(Ash.Resource.Dsl, [:actions, :update], :change,
+          change: Ash.Resource.Change.Builtins.set_attribute(:state_entered_at, &DateTime.utc_now/0)
+        )
+
+      actions = Transformer.get_entities(dsl, [:actions])
+
+      case Enum.find(actions, &(&1.name == transition.name)) do
+        nil ->
+          action =
+            Transformer.build_entity!(Ash.Resource.Dsl, [:actions], :update,
+              name: transition.name,
+              changes: [transition_change, timestamp_change]
+            )
+
+          Transformer.add_entity(dsl, [:actions], action)
+
+        existing_action ->
+          updated_action = %{
+            existing_action
+            | changes: existing_action.changes ++ [transition_change, timestamp_change]
+          }
+
+          dsl
+          |> Transformer.remove_entity([:actions], &(&1.name == transition.name))
+          |> Transformer.add_entity([:actions], updated_action)
+      end
     end)
   end
 
