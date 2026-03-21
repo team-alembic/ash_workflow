@@ -63,19 +63,31 @@ MyResource.reject(record)
 Ash.update(record, action: :approve)
 ```
 
-### Transition name uniqueness
+### Shared transition names
 
-Transition names must be unique across all steps in the workflow, since each becomes an Ash action. If multiple steps need a "reject" transition, name them distinctly:
+The same transition name can be used across multiple steps. They merge into a single Ash action. If the targets are the same, the state machine handles routing via `from:` lists. If the targets differ, the action automatically routes based on the current state at runtime:
 
 ```elixir
+# Same name, same target — one action, state machine enforces valid from: states
 step :screening do
   manual true
-  transition :reject_at_screening, to: :rejected
+  transition :reject, to: :rejected
 end
 
 step :interview do
   manual true
-  transition :reject_at_interview, to: :rejected
+  transition :reject, to: :rejected
+end
+
+# Same name, different targets — one action, routes based on current state
+step :initial_review do
+  manual true
+  transition :complete, to: :detailed_review
+end
+
+step :detailed_review do
+  manual true
+  transition :complete, to: :done
 end
 ```
 

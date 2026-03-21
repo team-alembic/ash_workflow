@@ -7,7 +7,7 @@ AshWorkflow generates [ash_state_machine](https://hexdocs.pm/ash_state_machine) 
 ## Concepts
 
 - **Step** — a state the workflow can be in. Some steps run automatically (background work via Oban), others wait for a human to trigger a transition.
-- **Transition** — a named outcome from a manual step that moves the workflow to a new state. Each transition becomes a callable Ash action. Transition names must be unique across all steps.
+- **Transition** — a named outcome from a manual step that moves the workflow to a new state. Each transition becomes a callable Ash action. The same transition name can be used across multiple steps — they merge into a single action that routes based on the current state.
 - **Timeout** — a time-based rule: "if the workflow has been in this state for N days, do X." Timeouts can run actions (reminders) or force transitions (escalations).
 - **Terminal step** — an end state with no outgoing transitions (e.g., `:rejected`, `:completed`).
 

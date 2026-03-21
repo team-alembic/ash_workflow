@@ -98,10 +98,10 @@ step :failed, terminal: true
 
 ## Transitions
 
-Each transition declared inside a manual step becomes an Ash update action. Transition names must be unique across ALL steps in the workflow (not just within a single step).
+Each transition declared inside a manual step becomes an Ash update action. The same transition name can be used across multiple steps — they merge into a single action.
 
 ```elixir
-# Good — unique names
+# Same name, same target — merged into one action
 step :review do
   manual true
   transition :approve, to: :approved
@@ -110,21 +110,21 @@ end
 
 step :escalated_review do
   manual true
-  transition :escalation_approve, to: :approved
-  transition :escalation_reject, to: :rejected
+  transition :approve, to: :approved
+  transition :reject, to: :rejected
 end
 ```
 
 ```elixir
-# Bad — duplicate :approve across steps (compile error)
-step :review do
+# Same name, different targets — auto-routes based on current state
+step :initial_review do
   manual true
-  transition :approve, to: :approved
+  transition :complete, to: :detailed_review
 end
 
-step :escalated_review do
+step :detailed_review do
   manual true
-  transition :approve, to: :approved  # ERROR: duplicate transition name
+  transition :complete, to: :done
 end
 ```
 
@@ -317,13 +317,12 @@ AshWorkflow validates your workflow at compile time and raises clear errors for:
 - Invalid step configuration (e.g., manual step with `action`, automatic step with `transitions`)
 - Timeouts with both `action` and `transition_to` (or neither)
 - References to undefined steps (in `on_success`, `on_error`, `transition :to`, `timeout :transition_to`)
-- Duplicate transition names across steps
 - Unreachable steps (not connected to the first step via any path)
 
 ## Important Caveats
 
 - **Do not add `AshStateMachine` or `AshOban` to your extensions list** — AshWorkflow injects their DSL automatically. Adding them manually will cause conflicts.
-- **Transition names are global** — they must be unique across the entire workflow, not just within a step.
+- **Shared transition names merge** — same-named transitions across steps become one action that routes based on current state.
 - **The first non-terminal step is the initial state** — order matters for the first step.
 - **Automatic steps use Oban** — ensure your application has Oban configured and running.
 - **`state_entered_at` is managed automatically** — do not set it manually in your actions.
