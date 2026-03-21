@@ -17,14 +17,14 @@ defmodule AshWorkflowTest.TimeoutWorkflow do
     step :waiting do
       manual true
 
-      transition(:resolve, to: :resolved)
+      transition :resolve, to: :resolved
 
-      timeout(:reminder, after: {2, :days}, action: :send_reminder)
-      timeout(:escalation, after: {7, :days}, transition_to: :escalated)
+      timeout :reminder, after: {2, :days}, action: :send_reminder
+      timeout :escalation, after: {7, :days}, transition_to: :escalated
     end
 
-    step(:resolved, terminal: true)
-    step(:escalated, terminal: true)
+    step :resolved, terminal: true
+    step :escalated, terminal: true
   end
 
   actions do

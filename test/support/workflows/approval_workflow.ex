@@ -15,12 +15,12 @@ defmodule AshWorkflowTest.ApprovalWorkflow do
     step :review do
       manual true
 
-      transition(:approve, to: :approved)
-      transition(:reject, to: :rejected)
+      transition :approve, to: :approved
+      transition :reject, to: :rejected
     end
 
-    step(:approved, terminal: true)
-    step(:rejected, terminal: true)
+    step :approved, terminal: true
+    step :rejected, terminal: true
   end
 
   attributes do

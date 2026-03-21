@@ -12,9 +12,9 @@ defmodule AshWorkflowTest.LinearWorkflow do
     extensions: [AshWorkflow]
 
   workflow do
-    step(:process, action: :do_processing, on_success: :complete, on_error: :failed)
-    step(:complete, terminal: true)
-    step(:failed, terminal: true)
+    step :process, action: :do_processing, on_success: :complete, on_error: :failed
+    step :complete, terminal: true
+    step :failed, terminal: true
   end
 
   actions do

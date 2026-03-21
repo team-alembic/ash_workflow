@@ -127,7 +127,8 @@ defmodule AshWorkflow.ConditionalTransitionTest do
 
   describe "state machine generation" do
     test "conditional transition generates state machine transition with all targets" do
-      transitions = AshStateMachine.Info.state_machine_transitions(AshWorkflowTest.ConditionalWorkflow)
+      transitions =
+        AshStateMachine.Info.state_machine_transitions(AshWorkflowTest.ConditionalWorkflow)
 
       complete_transition =
         Enum.find(transitions, fn t -> t.action == :complete end)
@@ -154,7 +155,9 @@ defmodule AshWorkflow.ConditionalTransitionTest do
     end
 
     test "static transition on same step also generates an action" do
-      action = Ash.Resource.Info.action(AshWorkflowTest.ConditionalWorkflow, :reject_at_compliance)
+      action =
+        Ash.Resource.Info.action(AshWorkflowTest.ConditionalWorkflow, :reject_at_compliance)
+
       assert action
       assert action.type == :update
     end

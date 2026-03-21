@@ -41,6 +41,10 @@ defmodule AshWorkflowTest.ConditionalWorkflow do
   attributes do
     uuid_v7_primary_key :id
     attribute :title, :string, allow_nil?: false
-    attribute :path_type, :atom, allow_nil?: false, constraints: [one_of: [:full, :abbreviated]], public?: true
+
+    attribute :path_type, :atom,
+      allow_nil?: false,
+      constraints: [one_of: [:full, :abbreviated]],
+      public?: true
   end
 end

@@ -116,8 +116,7 @@ defmodule AshWorkflow.Transformers.AddActions do
         [
           Transformer.build_entity!(Ash.Resource.Dsl, [:actions, :update], :change,
             change:
-              {AshWorkflow.Changes.ConditionalTransition,
-               routes: routes, transition_name: name}
+              {AshWorkflow.Changes.ConditionalTransition, routes: routes, transition_name: name}
           )
         ]
       else
@@ -132,8 +131,7 @@ defmodule AshWorkflow.Transformers.AddActions do
 
     timestamp_change =
       Transformer.build_entity!(Ash.Resource.Dsl, [:actions, :update], :change,
-        change:
-          Ash.Resource.Change.Builtins.set_attribute(:state_entered_at, &DateTime.utc_now/0)
+        change: Ash.Resource.Change.Builtins.set_attribute(:state_entered_at, &DateTime.utc_now/0)
       )
 
     changes = transition_changes ++ [timestamp_change]

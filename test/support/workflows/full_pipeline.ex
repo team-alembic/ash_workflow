@@ -16,42 +16,42 @@ defmodule AshWorkflowTest.FullPipeline do
     extensions: [AshWorkflow]
 
   workflow do
-    step(:intake, action: :run_intake, on_success: :review, on_error: :intake_failed)
+    step :intake, action: :run_intake, on_success: :review, on_error: :intake_failed
 
     step :review do
       manual true
       policy actor_attribute_equals(:role, :reviewer)
 
-      transition(:advance, to: :process)
-      transition(:reject_at_review, to: :rejected)
-      transition(:hold, to: :on_hold)
+      transition :advance, to: :process
+      transition :reject_at_review, to: :rejected
+      transition :hold, to: :on_hold
 
-      timeout(:reminder, after: {2, :days}, action: :send_review_reminder)
-      timeout(:escalation, after: {7, :days}, transition_to: :escalated)
+      timeout :reminder, after: {2, :days}, action: :send_review_reminder
+      timeout :escalation, after: {7, :days}, transition_to: :escalated
     end
 
     step :on_hold do
       manual true
       policy actor_attribute_equals(:role, :reviewer)
 
-      transition(:reactivate, to: :review)
-      transition(:reject_on_hold, to: :rejected)
+      transition :reactivate, to: :review
+      transition :reject_on_hold, to: :rejected
     end
 
-    step(:process, action: :run_processing, on_success: :final_review)
+    step :process, action: :run_processing, on_success: :final_review
 
     step :final_review do
       manual true
       policy actor_attribute_equals(:role, :approver)
 
-      transition(:approve, to: :done)
-      transition(:reject_at_final, to: :rejected)
+      transition :approve, to: :done
+      transition :reject_at_final, to: :rejected
     end
 
-    step(:done, terminal: true)
-    step(:rejected, terminal: true)
-    step(:intake_failed, terminal: true)
-    step(:escalated, terminal: true)
+    step :done, terminal: true
+    step :rejected, terminal: true
+    step :intake_failed, terminal: true
+    step :escalated, terminal: true
   end
 
   actions do

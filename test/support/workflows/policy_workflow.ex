@@ -17,12 +17,12 @@ defmodule AshWorkflowTest.PolicyWorkflow do
       manual true
       policy actor_attribute_equals(:role, :manager)
 
-      transition(:approve, to: :approved)
-      transition(:reject, to: :rejected)
+      transition :approve, to: :approved
+      transition :reject, to: :rejected
     end
 
-    step(:approved, terminal: true)
-    step(:rejected, terminal: true)
+    step :approved, terminal: true
+    step :rejected, terminal: true
   end
 
   attributes do
