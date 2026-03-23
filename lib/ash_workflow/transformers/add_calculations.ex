@@ -11,6 +11,7 @@ defmodule AshWorkflow.Transformers.AddCalculations do
   """
   use Spark.Dsl.Transformer
 
+  alias Ash.Resource.Builder
   alias Spark.Dsl.Transformer
 
   def transform(dsl) do
@@ -23,7 +24,7 @@ defmodule AshWorkflow.Transformers.AddCalculations do
         {step.name, Enum.map(step.transitions, & &1.name)}
       end)
 
-    Ash.Resource.Builder.add_new_calculation(
+    Builder.add_new_calculation(
       dsl,
       :available_actions,
       {:array, :atom},

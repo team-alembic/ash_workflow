@@ -3,12 +3,14 @@ defmodule AshWorkflow.Info do
   Introspection helpers for AshWorkflow resources.
   """
 
+  alias Spark.Dsl.Extension
+
   @doc """
   Returns all workflow step entities for a resource.
   """
   @spec steps(Ash.Resource.t()) :: [AshWorkflow.Entities.Step.t()]
   def steps(resource) do
-    Spark.Dsl.Extension.get_entities(resource, [:workflow])
+    Extension.get_entities(resource, [:workflow])
   end
 
   @doc """
