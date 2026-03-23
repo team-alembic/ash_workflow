@@ -17,5 +17,6 @@ defmodule AshWorkflowTest.Domain do
     resource AshWorkflowTest.AcceptWorkflow
     resource AshWorkflowTest.InitialFlagWorkflow
     resource AshWorkflowTest.RepeatingTimeoutWorkflow
+    resource AshWorkflowTest.CustomQueueWorkflow
   end
 end

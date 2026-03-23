@@ -34,12 +34,13 @@ defmodule AshWorkflow.Transformers.AddObanTriggers do
   def transform(dsl) do
     steps = Transformer.get_entities(dsl, [:workflow])
     resource = Transformer.get_persisted(dsl, :module)
+    queue = Transformer.get_option(dsl, [:workflow], :queue)
 
     dsl =
       steps
       |> Enum.reject(&(&1.manual || &1.terminal))
       |> Enum.reduce(dsl, fn step, dsl ->
-        add_step_trigger(dsl, resource, step)
+        add_step_trigger(dsl, resource, step, queue)
       end)
 
     dsl =
@@ -47,13 +48,13 @@ defmodule AshWorkflow.Transformers.AddObanTriggers do
       |> Enum.reject(& &1.terminal)
       |> Enum.flat_map(fn step -> Enum.map(step.timeouts, &{step, &1}) end)
       |> Enum.reduce(dsl, fn {step, timeout}, dsl ->
-        add_timeout_trigger(dsl, resource, step, timeout)
+        add_timeout_trigger(dsl, resource, step, timeout, queue)
       end)
 
     {:ok, dsl}
   end
 
-  defp add_step_trigger(dsl, resource, step) do
+  defp add_step_trigger(dsl, resource, step, queue) do
     step_name = step.name
 
     worker_module =
@@ -72,7 +73,7 @@ defmodule AshWorkflow.Transformers.AddObanTriggers do
         name: step_name,
         action: step.action,
         where: Ash.Expr.expr(state == ^step_name),
-        queue: :workflow,
+        queue: queue,
         worker_module_name: worker_module,
         scheduler_module_name: scheduler_module,
         stream_with: :full_read
@@ -81,7 +82,7 @@ defmodule AshWorkflow.Transformers.AddObanTriggers do
     Transformer.add_entity(dsl, [:oban, :triggers], trigger)
   end
 
-  defp add_timeout_trigger(dsl, resource, step, timeout) do
+  defp add_timeout_trigger(dsl, resource, step, timeout, queue) do
     step_name = step.name
     timeout_name = timeout.name
     {duration_value, duration_unit} = timeout.after
@@ -111,7 +112,7 @@ defmodule AshWorkflow.Transformers.AddObanTriggers do
           Ash.Expr.expr(
             state == ^step_name and state_entered_at <= ago(^duration_value, ^ago_unit)
           ),
-        queue: :workflow,
+        queue: queue,
         trigger_once?: trigger_once?,
         worker_module_name: worker_module,
         scheduler_module_name: scheduler_module,
