@@ -8,6 +8,7 @@ spark_locals_without_parens = [
   route: 1,
   route: 2,
   action: 1,
+  initial: 1,
   manual: 1,
   terminal: 1,
   policy: 1,

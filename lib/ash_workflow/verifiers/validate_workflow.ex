@@ -3,6 +3,7 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
 
   use Spark.Dsl.Verifier
 
+  alias AshWorkflow.Entities.Step
   alias AshWorkflow.Entities.Transition
   alias Spark.Dsl.Verifier
   alias Spark.Error.DslError
@@ -12,6 +13,7 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
     steps = Verifier.get_entities(dsl, [:workflow])
 
     with :ok <- validate_has_steps(steps),
+         :ok <- validate_single_initial(steps),
          :ok <- validate_step_configs(steps),
          :ok <- validate_references(steps) do
       validate_reachability(steps)
@@ -35,6 +37,31 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
        )}
     else
       :ok
+    end
+  end
+
+  defp validate_single_initial(steps) do
+    initial_steps = Enum.filter(steps, & &1.initial)
+
+    case initial_steps do
+      [_, _ | _] ->
+        names = Enum.map(initial_steps, & &1.name)
+
+        {:error,
+         DslError.exception(
+           path: [:workflow],
+           message: "Only one step can have initial: true, but found: #{inspect(names)}"
+         )}
+
+      [%{terminal: true, name: name}] ->
+        {:error,
+         DslError.exception(
+           path: [:workflow, :step, name],
+           message: "Terminal step :#{name} cannot have initial: true."
+         )}
+
+      _ ->
+        :ok
     end
   end
 
@@ -235,11 +262,9 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
   end
 
   defp validate_reachability(steps) do
-    non_terminal = Enum.reject(steps, & &1.terminal)
-
-    case non_terminal do
-      [] -> :ok
-      [first | _] -> do_validate_reachability(first, steps)
+    case Step.find_initial(steps) do
+      nil -> :ok
+      initial -> do_validate_reachability(initial, steps)
     end
   end
 

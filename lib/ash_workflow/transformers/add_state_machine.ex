@@ -4,8 +4,8 @@ defmodule AshWorkflow.Transformers.AddStateMachine do
 
   Injects the following into the resource's `state_machine` DSL:
 
-  - **`initial_states`** — set to the first non-terminal step by declaration order.
-    In future, an `initial: true` flag on step may allow explicit override.
+  - **`initial_states`** — set to the step with `initial: true`, or the first
+    non-terminal step by declaration order if none is marked.
   - **`default_initial_state`** — same as above
   - **Transitions** for each step type:
     - *Automatic steps* — `transition :step_action, from: [:step_name], to: [:on_success]`.
@@ -20,12 +20,13 @@ defmodule AshWorkflow.Transformers.AddStateMachine do
   """
   use Spark.Dsl.Transformer
 
+  alias AshWorkflow.Entities.Step
   alias AshWorkflow.Entities.Transition
   alias Spark.Dsl.Transformer
 
   def transform(dsl) do
     steps = Transformer.get_entities(dsl, [:workflow])
-    first_step = steps |> Enum.reject(& &1.terminal) |> List.first()
+    first_step = Step.find_initial(steps)
 
     dsl =
       dsl
