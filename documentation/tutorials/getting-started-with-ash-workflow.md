@@ -148,6 +148,20 @@ AshWorkflow.Info.available_actions(MyApp.DocumentApproval, :approved)
 #=> []
 ```
 
+### Step metadata calculations
+
+Every workflow resource also gets `:steps` and `:current_step` calculations:
+
+```elixir
+doc = Ash.load!(doc, [:steps, :current_step])
+doc.steps
+#=> [:auto_check, :review, :approved, :rejected, :check_failed]
+doc.current_step
+#=> :review
+```
+
+These are useful for rendering progress bars, step lists, or workflow visualisations.
+
 ### Runtime calculation
 
 Every workflow resource gets a generated `:available_actions` calculation. Load it on a record to get the transitions for its current state:
