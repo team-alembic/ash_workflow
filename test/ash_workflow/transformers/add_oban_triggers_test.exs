@@ -45,6 +45,49 @@ defmodule AshWorkflow.Transformers.AddObanTriggersTest do
     end
   end
 
+  describe "timeout repeat behavior" do
+    test "non-repeating action timeout generates trigger_once? true" do
+      triggers = AshOban.Info.oban_triggers(AshWorkflowTest.TimeoutWorkflow)
+
+      reminder_trigger =
+        Enum.find(triggers, &(&1.name == :__timeout_trigger_reminder))
+
+      assert reminder_trigger.trigger_once? == true
+    end
+
+    test "repeating action timeout does not set trigger_once?" do
+      triggers = AshOban.Info.oban_triggers(AshWorkflowTest.RepeatingTimeoutWorkflow)
+
+      follow_up_trigger =
+        Enum.find(triggers, &(&1.name == :__timeout_trigger_follow_up))
+
+      assert follow_up_trigger.trigger_once? == false
+    end
+
+    test "repeating action timeout injects state_entered_at reset into action" do
+      action =
+        Ash.Resource.Info.action(AshWorkflowTest.RepeatingTimeoutWorkflow, :send_follow_up)
+
+      assert Enum.any?(action.changes, fn
+               %{change: {Ash.Resource.Change.SetAttribute, opts}} ->
+                 opts[:attribute] == :state_entered_at
+
+               _ ->
+                 false
+             end)
+    end
+
+    test "transition timeouts are not affected by repeat flag" do
+      triggers = AshOban.Info.oban_triggers(AshWorkflowTest.TimeoutWorkflow)
+
+      escalation_trigger =
+        Enum.find(triggers, &(&1.name == :__timeout_trigger_escalation))
+
+      # Transition timeouts naturally fire once since the state changes
+      assert escalation_trigger.trigger_once? == false
+    end
+  end
+
   describe "read action generation" do
     test "generates primary read action for resources with automatic steps" do
       action = Ash.Resource.Info.primary_action(AshWorkflowTest.LinearWorkflow, :read)

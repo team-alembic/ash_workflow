@@ -16,5 +16,6 @@ defmodule AshWorkflowTest.Domain do
     resource AshWorkflowTest.SharedConditionalWorkflow
     resource AshWorkflowTest.AcceptWorkflow
     resource AshWorkflowTest.InitialFlagWorkflow
+    resource AshWorkflowTest.RepeatingTimeoutWorkflow
   end
 end

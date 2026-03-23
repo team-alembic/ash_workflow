@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `initial true` flag on steps — explicit control over the initial state with verifier enforcement
+- `repeat: true` on action timeouts — re-fires at the timeout interval by resetting `state_entered_at`
+
+### Fixed
+
+- Non-repeating action timeouts now use `trigger_once?` to prevent re-firing on every scheduler cycle
 
 ## [0.1.0] - 2026-03-20
 
