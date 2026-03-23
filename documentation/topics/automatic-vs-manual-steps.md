@@ -63,6 +63,27 @@ MyResource.reject(record)
 Ash.update(record, action: :approve)
 ```
 
+### Accepting inputs on transitions
+
+By default, generated transition actions don't accept any inputs. Use `accept` to allow callers to pass data when triggering a transition:
+
+```elixir
+step :review do
+  manual true
+
+  transition :approve, to: :approved
+  transition :reject, to: :rejected, accept: [:reason]
+end
+```
+
+The generated `:reject` action will accept the `:reason` attribute:
+
+```elixir
+MyResource.reject(record, %{reason: "Not qualified"})
+```
+
+If you need more control (custom changes, validations), define the action yourself — the extension merges its changes into your action.
+
 ### Shared transition names
 
 The same transition name can be used across multiple steps. They merge into a single Ash action. If the targets are the same, the state machine handles routing via `from:` lists. If the targets differ, the action automatically routes based on the current state at runtime:
