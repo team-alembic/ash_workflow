@@ -12,5 +12,6 @@ defmodule AshWorkflowTest.Domain do
     resource AshWorkflowTest.CustomActionWorkflow
     resource AshWorkflowTest.ConditionalWorkflow
     resource AshWorkflowTest.SharedTransitionWorkflow
+    resource AshWorkflowTest.SharedConditionalWorkflow
   end
 end

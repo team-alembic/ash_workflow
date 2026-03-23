@@ -168,7 +168,10 @@ defmodule AshWorkflow.Transformers.AddActions do
     step_transitions
     |> Enum.flat_map(fn {step_name, transition} ->
       if AshWorkflow.Entities.Transition.conditional?(transition) do
-        transition.routes
+        # Scope each conditional route to only match when in the originating step
+        Enum.map(transition.routes, fn route ->
+          %{route | when: Ash.Expr.expr(state == ^step_name and ^route.when)}
+        end)
       else
         [%AshWorkflow.Entities.Route{to: transition.to, when: Ash.Expr.expr(state == ^step_name)}]
       end
