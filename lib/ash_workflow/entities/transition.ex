@@ -15,7 +15,7 @@ defmodule AshWorkflow.Entities.Transition do
 
   A transition must have either `to` or at least one route, not both.
   """
-  defstruct [:name, :to, routes: []]
+  defstruct [:name, :to, accept: [], routes: []]
 
   @schema [
     name: [
@@ -26,6 +26,11 @@ defmodule AshWorkflow.Entities.Transition do
     to: [
       type: :atom,
       doc: "The step to transition to. Omit when using conditional routes."
+    ],
+    accept: [
+      type: {:list, :atom},
+      default: [],
+      doc: "List of resource attributes the generated transition action should accept as input."
     ]
   ]
 

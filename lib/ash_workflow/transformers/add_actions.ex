@@ -135,11 +135,17 @@ defmodule AshWorkflow.Transformers.AddActions do
       )
 
     changes = transition_changes ++ [timestamp_change]
+
+    accepted =
+      step_transitions
+      |> Enum.flat_map(fn {_step, t} -> t.accept end)
+      |> Enum.uniq()
+
     actions = Transformer.get_entities(dsl, [:actions])
 
     case Enum.find(actions, &(&1.name == name)) do
       nil ->
-        opts = [name: name, changes: changes]
+        opts = [name: name, accept: accepted, changes: changes]
         opts = if is_conditional, do: Keyword.put(opts, :require_atomic?, false), else: opts
         action = Transformer.build_entity!(Ash.Resource.Dsl, [:actions], :update, opts)
         Transformer.add_entity(dsl, [:actions], action)
