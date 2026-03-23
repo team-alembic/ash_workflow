@@ -132,6 +132,42 @@ config :my_app, Oban,
   queues: [default: 10, workflow: 5]
 ```
 
+## Querying available actions
+
+AshWorkflow provides two ways to discover what actions can be taken at a given step.
+
+### Static introspection
+
+Use `AshWorkflow.Info` to look up available transitions at compile time or from a module:
+
+```elixir
+AshWorkflow.Info.available_actions(MyApp.DocumentApproval, :review)
+#=> [:approve, :reject]
+
+AshWorkflow.Info.available_actions(MyApp.DocumentApproval, :approved)
+#=> []
+```
+
+### Runtime calculation
+
+Every workflow resource gets a generated `:available_actions` calculation. Load it on a record to get the transitions for its current state:
+
+```elixir
+doc = Ash.load!(doc, :available_actions)
+doc.available_actions
+#=> [:approve, :reject]
+```
+
+When an actor is provided, the calculation filters to only the actions that actor is authorized to perform:
+
+```elixir
+doc = Ash.load!(doc, :available_actions, actor: current_user)
+doc.available_actions
+#=> [:approve]  # only actions this user can perform
+```
+
+This is useful for building dynamic UIs that only show relevant buttons, or for agents and APIs that need to discover available actions without hard-coding workflow knowledge.
+
 ## Next steps
 
 - See [Automatic vs Manual Steps](documentation/topics/automatic-vs-manual-steps.md) for a deeper dive

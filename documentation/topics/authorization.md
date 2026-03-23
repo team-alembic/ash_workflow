@@ -75,6 +75,28 @@ use Ash.Resource,
 
 Without the authorizer, policies are defined but not enforced.
 
+## Querying permitted actions
+
+The generated `:available_actions` calculation is authorization-aware. When loaded with an actor, it returns only the actions that actor is permitted to perform:
+
+```elixir
+# Without actor — returns all transitions for the current step
+doc = Ash.load!(doc, :available_actions)
+doc.available_actions
+#=> [:approve, :reject]
+
+# With actor — filtered by policies
+doc = Ash.load!(doc, :available_actions, actor: %{role: :viewer})
+doc.available_actions
+#=> []
+
+doc = Ash.load!(doc, :available_actions, actor: %{role: :manager})
+doc.available_actions
+#=> [:approve, :reject]
+```
+
+This uses `Ash.can?/2` under the hood to check each action against the actor's permissions.
+
 ## SAT solver dependency
 
 Ash's policy authorizer requires a SAT solver at compile time. Add one of these to your `mix.exs`:
