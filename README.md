@@ -289,6 +289,7 @@ From the workflow DSL, the extension generates:
 | **Timeout actions** | Hidden `__timeout_*` update actions | For timeouts with `transition_to` |
 | **Policies** | Step-level `policy` declarations | Ash policies on generated transition actions |
 | **Code interface** | `start/1`, plus each transition name | Ash code interface definitions |
+| **Calculations** | `:steps`, `:current_step`, `:available_actions` | Workflow introspection |
 | **Attributes** | `state_entered_at` | Added if not already defined |
 
 The initial state is the first non-terminal step by declaration order.

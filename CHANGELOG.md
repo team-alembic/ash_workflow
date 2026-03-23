@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `:steps` calculation — returns all workflow step names
+- `:current_step` calculation — returns the record's current step name
+
 ## [0.1.0] - 2026-03-20
 
 ### Added
