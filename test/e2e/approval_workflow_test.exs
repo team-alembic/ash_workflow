@@ -1,6 +1,7 @@
 defmodule AshWorkflowTest.E2E.ApprovalWorkflowTest do
   use ExUnit.Case
 
+  alias Ash.Resource.Info, as: ResourceInfo
   alias AshWorkflowTest.ApprovalWorkflow
 
   describe "DSL compilation" do
@@ -11,16 +12,16 @@ defmodule AshWorkflowTest.E2E.ApprovalWorkflowTest do
 
   describe "generated transition actions" do
     test "has an approve action" do
-      assert Ash.Resource.Info.action(ApprovalWorkflow, :approve)
+      assert ResourceInfo.action(ApprovalWorkflow, :approve)
     end
 
     test "has a reject action" do
-      assert Ash.Resource.Info.action(ApprovalWorkflow, :reject)
+      assert ResourceInfo.action(ApprovalWorkflow, :reject)
     end
 
     test "transition actions are update actions" do
-      approve = Ash.Resource.Info.action(ApprovalWorkflow, :approve)
-      reject = Ash.Resource.Info.action(ApprovalWorkflow, :reject)
+      approve = ResourceInfo.action(ApprovalWorkflow, :approve)
+      reject = ResourceInfo.action(ApprovalWorkflow, :reject)
       assert approve.type == :update
       assert reject.type == :update
     end

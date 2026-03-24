@@ -1,4 +1,5 @@
 defmodule AshWorkflowTest.Workflow do
+  @moduledoc false
   use Ash.Resource,
     domain: AshWorkflowTest.Domain,
     data_layer: Ash.DataLayer.Ets,

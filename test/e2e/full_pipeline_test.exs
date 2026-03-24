@@ -1,6 +1,8 @@
 defmodule AshWorkflowTest.E2E.FullPipelineTest do
   use ExUnit.Case
 
+  alias Ash.Resource.Info, as: ResourceInfo
+  alias AshStateMachine.Info, as: StateMachineInfo
   alias AshWorkflowTest.FullPipeline
 
   describe "DSL compilation" do
@@ -24,13 +26,13 @@ defmodule AshWorkflowTest.E2E.FullPipelineTest do
       ]
 
       for state <- expected_states do
-        assert state in AshStateMachine.Info.state_machine_all_states(FullPipeline),
+        assert state in StateMachineInfo.state_machine_all_states(FullPipeline),
                "Expected #{state} to be a valid state"
       end
     end
 
     test "initial state is the first step" do
-      assert {:ok, [:intake]} = AshStateMachine.Info.state_machine_initial_states(FullPipeline)
+      assert {:ok, [:intake]} = StateMachineInfo.state_machine_initial_states(FullPipeline)
     end
   end
 
@@ -47,7 +49,7 @@ defmodule AshWorkflowTest.E2E.FullPipelineTest do
       ]
 
       for action_name <- expected_actions do
-        assert Ash.Resource.Info.action(FullPipeline, action_name),
+        assert ResourceInfo.action(FullPipeline, action_name),
                "Expected action #{action_name} to be generated"
       end
     end

@@ -20,6 +20,7 @@ defmodule AshWorkflow.Transformers.AddStateMachine do
   """
   use Spark.Dsl.Transformer
 
+  alias AshWorkflow.Entities.Transition
   alias Spark.Dsl.Transformer
 
   def transform(dsl) do
@@ -71,7 +72,7 @@ defmodule AshWorkflow.Transformers.AddStateMachine do
 
   defp manual_transitions(step) do
     Enum.map(step.transitions, fn transition ->
-      targets = AshWorkflow.Entities.Transition.all_targets(transition)
+      targets = Transition.all_targets(transition)
       build_transition(transition.name, [step.name], targets)
     end)
   end

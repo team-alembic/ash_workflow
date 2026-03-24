@@ -7,7 +7,7 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflowTest do
   """
   use ExUnit.Case
 
-  alias AshWorkflow.Entities.{Step, Transition, Timeout}
+  alias AshWorkflow.Entities.{Step, Timeout, Transition}
   alias AshWorkflow.Verifiers.ValidateWorkflow
 
   defp build_dsl(steps) do

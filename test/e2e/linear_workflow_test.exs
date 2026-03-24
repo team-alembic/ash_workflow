@@ -1,6 +1,7 @@
 defmodule AshWorkflowTest.E2E.LinearWorkflowTest do
   use ExUnit.Case
 
+  alias Ash.Resource.Info, as: ResourceInfo
   alias AshWorkflowTest.LinearWorkflow
 
   describe "DSL compilation" do
@@ -11,26 +12,26 @@ defmodule AshWorkflowTest.E2E.LinearWorkflowTest do
 
   describe "generated attributes" do
     test "has a state attribute" do
-      assert Ash.Resource.Info.attribute(LinearWorkflow, :state)
+      assert ResourceInfo.attribute(LinearWorkflow, :state)
     end
 
     test "state attribute defaults to first step name" do
-      attr = Ash.Resource.Info.attribute(LinearWorkflow, :state)
+      attr = ResourceInfo.attribute(LinearWorkflow, :state)
       assert attr.default == :process
     end
 
     test "has a state_entered_at timestamp" do
-      assert Ash.Resource.Info.attribute(LinearWorkflow, :state_entered_at)
+      assert ResourceInfo.attribute(LinearWorkflow, :state_entered_at)
     end
   end
 
   describe "generated actions" do
     test "has a start create action" do
-      assert Ash.Resource.Info.action(LinearWorkflow, :start)
+      assert ResourceInfo.action(LinearWorkflow, :start)
     end
 
     test "start action is a create action" do
-      action = Ash.Resource.Info.action(LinearWorkflow, :start)
+      action = ResourceInfo.action(LinearWorkflow, :start)
       assert action.type == :create
     end
   end

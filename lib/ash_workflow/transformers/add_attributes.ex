@@ -17,10 +17,13 @@ defmodule AshWorkflow.Transformers.AddAttributes do
   """
   use Spark.Dsl.Transformer
 
+  alias Ash.Resource.Builder
+  alias Ash.Resource.Info, as: ResourceInfo
+
   def transform(dsl) do
-    case Ash.Resource.Info.attribute(dsl, :state_entered_at) do
+    case ResourceInfo.attribute(dsl, :state_entered_at) do
       nil ->
-        Ash.Resource.Builder.add_attribute(dsl, :state_entered_at, :utc_datetime_usec,
+        Builder.add_attribute(dsl, :state_entered_at, :utc_datetime_usec,
           allow_nil?: true,
           writable?: true,
           public?: true

@@ -1,6 +1,7 @@
 defmodule AshWorkflowTest.E2E.LoopbackWorkflowTest do
   use ExUnit.Case
 
+  alias Ash.Resource.Info, as: ResourceInfo
   alias AshWorkflowTest.LoopbackWorkflow
 
   describe "DSL compilation" do
@@ -11,19 +12,19 @@ defmodule AshWorkflowTest.E2E.LoopbackWorkflowTest do
 
   describe "generated transition actions" do
     test "has submit action (draft → review)" do
-      assert Ash.Resource.Info.action(LoopbackWorkflow, :submit)
+      assert ResourceInfo.action(LoopbackWorkflow, :submit)
     end
 
     test "has approve action (review → published)" do
-      assert Ash.Resource.Info.action(LoopbackWorkflow, :approve)
+      assert ResourceInfo.action(LoopbackWorkflow, :approve)
     end
 
     test "has revise action (review → draft)" do
-      assert Ash.Resource.Info.action(LoopbackWorkflow, :revise)
+      assert ResourceInfo.action(LoopbackWorkflow, :revise)
     end
 
     test "has reject action (review → rejected)" do
-      assert Ash.Resource.Info.action(LoopbackWorkflow, :reject)
+      assert ResourceInfo.action(LoopbackWorkflow, :reject)
     end
   end
 

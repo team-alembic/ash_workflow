@@ -1,4 +1,6 @@
 defmodule AshWorkflow.Entities.Step do
+  @moduledoc "Defines a workflow step entity with its configuration schema."
+
   defstruct [
     :name,
     :action,

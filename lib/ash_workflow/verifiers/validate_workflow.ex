@@ -1,7 +1,11 @@
 defmodule AshWorkflow.Verifiers.ValidateWorkflow do
+  @moduledoc "Verifies that workflow step declarations are valid and internally consistent."
+
   use Spark.Dsl.Verifier
 
+  alias AshWorkflow.Entities.Transition
   alias Spark.Dsl.Verifier
+  alias Spark.Error.DslError
 
   @impl true
   def verify(dsl) do
@@ -9,15 +13,14 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
 
     with :ok <- validate_has_steps(steps),
          :ok <- validate_step_configs(steps),
-         :ok <- validate_references(steps),
-         :ok <- validate_reachability(steps) do
-      :ok
+         :ok <- validate_references(steps) do
+      validate_reachability(steps)
     end
   end
 
   defp validate_has_steps([]) do
     {:error,
-     Spark.Error.DslError.exception(
+     DslError.exception(
        path: [:workflow],
        message: "Workflow must have at least one non-terminal step."
      )}
@@ -26,7 +29,7 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
   defp validate_has_steps(steps) do
     if Enum.all?(steps, & &1.terminal) do
       {:error,
-       Spark.Error.DslError.exception(
+       DslError.exception(
          path: [:workflow],
          message: "Workflow must have at least one non-terminal step."
        )}
@@ -192,7 +195,7 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
   end
 
   defp validate_transition_target_refs(step_names, step, transition) do
-    targets = AshWorkflow.Entities.Transition.all_targets(transition)
+    targets = Transition.all_targets(transition)
 
     Enum.reduce_while(targets, :ok, fn target, :ok ->
       if MapSet.member?(step_names, target) do
@@ -214,17 +217,21 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
           {:cont, :ok}
 
         target ->
-          if MapSet.member?(step_names, target) do
-            {:cont, :ok}
-          else
-            {:halt,
-             step_error(
-               step,
-               "Timeout :#{timeout.name} on step :#{step.name} transition_to references unknown step :#{target}."
-             )}
-          end
+          validate_timeout_target(step_names, step, timeout, target)
       end
     end)
+  end
+
+  defp validate_timeout_target(step_names, step, timeout, target) do
+    if MapSet.member?(step_names, target) do
+      {:cont, :ok}
+    else
+      {:halt,
+       step_error(
+         step,
+         "Timeout :#{timeout.name} on step :#{step.name} transition_to references unknown step :#{target}."
+       )}
+    end
   end
 
   defp validate_reachability(steps) do
@@ -248,7 +255,7 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
       unreachable_list = unreachable |> MapSet.to_list() |> Enum.sort()
 
       {:error,
-       Spark.Error.DslError.exception(
+       DslError.exception(
          path: [:workflow],
          message:
            "The following steps are not reachable from the first step :#{first_step.name}: #{inspect(unreachable_list)}"
@@ -275,7 +282,7 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
               |> Enum.reject(&is_nil/1)
 
             transition_targets =
-              Enum.flat_map(step.transitions, &AshWorkflow.Entities.Transition.all_targets/1)
+              Enum.flat_map(step.transitions, &Transition.all_targets/1)
 
             timeout_targets =
               step.timeouts |> Enum.map(& &1.transition_to) |> Enum.reject(&is_nil/1)
@@ -289,7 +296,7 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
 
   defp step_error(step, message) do
     {:error,
-     Spark.Error.DslError.exception(
+     DslError.exception(
        path: [:workflow, :step, step.name],
        message: message
      )}

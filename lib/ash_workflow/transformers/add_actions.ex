@@ -10,7 +10,7 @@ defmodule AshWorkflow.Transformers.AddActions do
 
   - **Transition actions** (for manual steps) — one `:update` action per declared
     `transition` entity. Each includes:
-    - `AshStateMachine.BuiltinChanges.transition_state(target)` to move the state
+    - `BuiltinChanges.transition_state(target)` to move the state
     - `set_attribute(:state_entered_at, &DateTime.utc_now/0)` to track when the
       new state was entered
 
@@ -30,7 +30,16 @@ defmodule AshWorkflow.Transformers.AddActions do
   """
   use Spark.Dsl.Transformer
 
+  alias Ash.Resource.Builder
+  alias Ash.Resource.Change.Builtins, as: ChangeBuiltins
+  alias Ash.Resource.Dsl, as: ResourceDsl
+  alias Ash.Resource.Info, as: ResourceInfo
+  alias AshStateMachine.BuiltinChanges
+  alias AshWorkflow.Changes.ConditionalTransition
+  alias AshWorkflow.Entities.Route
+  alias AshWorkflow.Entities.Transition
   alias Spark.Dsl.Transformer
+  alias Spark.Error.DslError
 
   def transform(dsl) do
     steps = Transformer.get_entities(dsl, [:workflow])
@@ -47,23 +56,20 @@ defmodule AshWorkflow.Transformers.AddActions do
   end
 
   defp add_read_action(dsl) do
-    cond do
-      Ash.Resource.Info.primary_action(dsl, :read) != nil ->
-        dsl
+    if ResourceInfo.primary_action(dsl, :read) != nil do
+      dsl
+    else
+      {:ok, pagination} =
+        Builder.build_pagination(keyset?: true, default_limit: 100)
 
-      true ->
-        # Required for ash_oban triggers and atomic update operations
-        {:ok, pagination} =
-          Ash.Resource.Builder.build_pagination(keyset?: true, default_limit: 100)
+      read_action =
+        Transformer.build_entity!(ResourceDsl, [:actions], :read,
+          name: :read,
+          primary?: true,
+          pagination: pagination
+        )
 
-        read_action =
-          Transformer.build_entity!(Ash.Resource.Dsl, [:actions], :read,
-            name: :read,
-            primary?: true,
-            pagination: pagination
-          )
-
-        Transformer.add_entity(dsl, [:actions], read_action)
+      Transformer.add_entity(dsl, [:actions], read_action)
     end
   end
 
@@ -71,20 +77,19 @@ defmodule AshWorkflow.Transformers.AddActions do
     # Accept all writable attributes so callers can pass resource fields
     accepted_attrs =
       dsl
-      |> Ash.Resource.Info.attributes()
+      |> ResourceInfo.attributes()
       |> Enum.filter(& &1.writable?)
       |> Enum.reject(& &1.primary_key?)
       |> Enum.map(& &1.name)
       |> Enum.reject(&(&1 in [:state, :state_entered_at]))
 
     start_action =
-      Transformer.build_entity!(Ash.Resource.Dsl, [:actions], :create,
+      Transformer.build_entity!(ResourceDsl, [:actions], :create,
         name: :start,
         accept: accepted_attrs,
         changes: [
-          Transformer.build_entity!(Ash.Resource.Dsl, [:actions, :create], :change,
-            change:
-              Ash.Resource.Change.Builtins.set_attribute(:state_entered_at, &DateTime.utc_now/0)
+          Transformer.build_entity!(ResourceDsl, [:actions, :create], :change,
+            change: ChangeBuiltins.set_attribute(:state_entered_at, &DateTime.utc_now/0)
           )
         ]
       )
@@ -114,24 +119,23 @@ defmodule AshWorkflow.Transformers.AddActions do
     transition_changes =
       if is_conditional do
         [
-          Transformer.build_entity!(Ash.Resource.Dsl, [:actions, :update], :change,
-            change:
-              {AshWorkflow.Changes.ConditionalTransition, routes: routes, transition_name: name}
+          Transformer.build_entity!(ResourceDsl, [:actions, :update], :change,
+            change: {ConditionalTransition, routes: routes, transition_name: name}
           )
         ]
       else
         [route] = routes
 
         [
-          Transformer.build_entity!(Ash.Resource.Dsl, [:actions, :update], :change,
-            change: AshStateMachine.BuiltinChanges.transition_state(route.to)
+          Transformer.build_entity!(ResourceDsl, [:actions, :update], :change,
+            change: BuiltinChanges.transition_state(route.to)
           )
         ]
       end
 
     timestamp_change =
-      Transformer.build_entity!(Ash.Resource.Dsl, [:actions, :update], :change,
-        change: Ash.Resource.Change.Builtins.set_attribute(:state_entered_at, &DateTime.utc_now/0)
+      Transformer.build_entity!(ResourceDsl, [:actions, :update], :change,
+        change: ChangeBuiltins.set_attribute(:state_entered_at, &DateTime.utc_now/0)
       )
 
     changes = transition_changes ++ [timestamp_change]
@@ -147,7 +151,7 @@ defmodule AshWorkflow.Transformers.AddActions do
       nil ->
         opts = [name: name, accept: accepted, changes: changes]
         opts = if is_conditional, do: Keyword.put(opts, :require_atomic?, false), else: opts
-        action = Transformer.build_entity!(Ash.Resource.Dsl, [:actions], :update, opts)
+        action = Transformer.build_entity!(ResourceDsl, [:actions], :update, opts)
         Transformer.add_entity(dsl, [:actions], action)
 
       existing_action ->
@@ -171,28 +175,28 @@ defmodule AshWorkflow.Transformers.AddActions do
   end
 
   defp build_routes_for_transition(step_transitions) do
-    # For each (step_name, transition) pair, build routes.
-    # - A transition with explicit routes keeps them as-is
-    # - A static transition from one step = one route
-    # - Same-named static transitions from different steps = routes keyed on state
     require Ash.Expr
 
-    step_transitions
-    |> Enum.flat_map(fn {step_name, transition} ->
-      if AshWorkflow.Entities.Transition.conditional?(transition) do
-        # Scope each conditional route to only match when in the originating step
-        Enum.map(transition.routes, fn route ->
-          %{route | when: Ash.Expr.expr(state == ^step_name and ^route.when)}
-        end)
-      else
-        [%AshWorkflow.Entities.Route{to: transition.to, when: Ash.Expr.expr(state == ^step_name)}]
-      end
+    Enum.flat_map(step_transitions, fn {step_name, transition} ->
+      build_step_routes(step_name, transition)
     end)
+  end
+
+  defp build_step_routes(step_name, transition) do
+    require Ash.Expr
+
+    if Transition.conditional?(transition) do
+      Enum.map(transition.routes, fn route ->
+        %{route | when: Ash.Expr.expr(state == ^step_name and ^route.when)}
+      end)
+    else
+      [%Route{to: transition.to, when: Ash.Expr.expr(state == ^step_name)}]
+    end
   end
 
   defp has_explicit_routes?(step_transitions) do
     Enum.any?(step_transitions, fn {_step, t} ->
-      AshWorkflow.Entities.Transition.conditional?(t)
+      Transition.conditional?(t)
     end)
   end
 
@@ -205,21 +209,20 @@ defmodule AshWorkflow.Transformers.AddActions do
       case Enum.find(actions, &(&1.name == step.action)) do
         nil ->
           # Defensive — verifiers can't catch this since they run after transformers
-          raise Spark.Error.DslError,
+          raise DslError,
             path: [:workflow, :step, step.name],
             message:
               "Automatic step :#{step.name} references action :#{step.action}, but no such action is defined on the resource."
 
         existing_action ->
           transition_change =
-            Transformer.build_entity!(Ash.Resource.Dsl, [:actions, :update], :change,
-              change: AshStateMachine.BuiltinChanges.transition_state(step.on_success)
+            Transformer.build_entity!(ResourceDsl, [:actions, :update], :change,
+              change: BuiltinChanges.transition_state(step.on_success)
             )
 
           timestamp_change =
-            Transformer.build_entity!(Ash.Resource.Dsl, [:actions, :update], :change,
-              change:
-                Ash.Resource.Change.Builtins.set_attribute(:state_entered_at, &DateTime.utc_now/0)
+            Transformer.build_entity!(ResourceDsl, [:actions, :update], :change,
+              change: ChangeBuiltins.set_attribute(:state_entered_at, &DateTime.utc_now/0)
             )
 
           updated_action = %{
@@ -245,15 +248,14 @@ defmodule AshWorkflow.Transformers.AddActions do
       action_name = :"__timeout_#{timeout.name}"
 
       action =
-        Transformer.build_entity!(Ash.Resource.Dsl, [:actions], :update,
+        Transformer.build_entity!(ResourceDsl, [:actions], :update,
           name: action_name,
           changes: [
-            Transformer.build_entity!(Ash.Resource.Dsl, [:actions, :update], :change,
-              change: AshStateMachine.BuiltinChanges.transition_state(timeout.transition_to)
+            Transformer.build_entity!(ResourceDsl, [:actions, :update], :change,
+              change: BuiltinChanges.transition_state(timeout.transition_to)
             ),
-            Transformer.build_entity!(Ash.Resource.Dsl, [:actions, :update], :change,
-              change:
-                Ash.Resource.Change.Builtins.set_attribute(:state_entered_at, &DateTime.utc_now/0)
+            Transformer.build_entity!(ResourceDsl, [:actions, :update], :change,
+              change: ChangeBuiltins.set_attribute(:state_entered_at, &DateTime.utc_now/0)
             )
           ]
         )
