@@ -238,29 +238,67 @@ defmodule AshWorkflow.Transformers.AddActions do
   end
 
   defp add_timeout_actions(dsl, steps) do
+    dsl =
+      steps
+      |> Enum.flat_map(fn step ->
+        step.timeouts
+        |> Enum.filter(& &1.transition_to)
+        |> Enum.map(fn timeout -> {step, timeout} end)
+      end)
+      |> Enum.reduce(dsl, fn {_step, timeout}, dsl ->
+        action_name = :"__timeout_#{timeout.name}"
+
+        action =
+          Transformer.build_entity!(ResourceDsl, [:actions], :update,
+            name: action_name,
+            changes: [
+              Transformer.build_entity!(ResourceDsl, [:actions, :update], :change,
+                change: BuiltinChanges.transition_state(timeout.transition_to)
+              ),
+              Transformer.build_entity!(ResourceDsl, [:actions, :update], :change,
+                change: ChangeBuiltins.set_attribute(:state_entered_at, &DateTime.utc_now/0)
+              )
+            ]
+          )
+
+        Transformer.add_entity(dsl, [:actions], action)
+      end)
+
+    inject_repeating_timeout_changes(dsl, steps)
+  end
+
+  defp inject_repeating_timeout_changes(dsl, steps) do
     steps
     |> Enum.flat_map(fn step ->
       step.timeouts
-      |> Enum.filter(& &1.transition_to)
-      |> Enum.map(fn timeout -> {step, timeout} end)
+      |> Enum.filter(&(&1.repeat && &1.action != nil))
+      |> Enum.map(&{step, &1})
     end)
-    |> Enum.reduce(dsl, fn {_step, timeout}, dsl ->
-      action_name = :"__timeout_#{timeout.name}"
+    |> Enum.reduce(dsl, fn {step, timeout}, dsl ->
+      actions = Transformer.get_entities(dsl, [:actions])
 
-      action =
-        Transformer.build_entity!(ResourceDsl, [:actions], :update,
-          name: action_name,
-          changes: [
-            Transformer.build_entity!(ResourceDsl, [:actions, :update], :change,
-              change: BuiltinChanges.transition_state(timeout.transition_to)
-            ),
+      case Enum.find(actions, &(&1.name == timeout.action)) do
+        nil ->
+          raise DslError,
+            path: [:workflow, :step, step.name],
+            message:
+              "Repeating timeout :#{timeout.name} on step :#{step.name} references action :#{timeout.action}, but no such action is defined on the resource."
+
+        existing_action ->
+          timestamp_change =
             Transformer.build_entity!(ResourceDsl, [:actions, :update], :change,
               change: ChangeBuiltins.set_attribute(:state_entered_at, &DateTime.utc_now/0)
             )
-          ]
-        )
 
-      Transformer.add_entity(dsl, [:actions], action)
+          updated_action = %{
+            existing_action
+            | changes: existing_action.changes ++ [timestamp_change]
+          }
+
+          dsl
+          |> Transformer.remove_entity([:actions], &(&1.name == timeout.action))
+          |> Transformer.add_entity([:actions], updated_action)
+      end
     end)
   end
 

@@ -98,6 +98,11 @@ defmodule AshWorkflow.Transformers.AddObanTriggers do
     worker_module = Module.concat([resource, AshWorkflow, Workers, Timeouts, label])
     scheduler_module = Module.concat([resource, AshWorkflow, Schedulers, Timeouts, label])
 
+    # For action timeouts (no state change), trigger_once? prevents re-firing
+    # unless repeat: true is set. Transition timeouts naturally fire once since
+    # the state changes, so trigger_once? is not needed.
+    trigger_once? = not timeout.repeat and timeout.action != nil
+
     trigger =
       Transformer.build_entity!(AshOban, [:oban, :triggers], :trigger,
         name: :"__timeout_trigger_#{timeout_name}",
@@ -107,6 +112,7 @@ defmodule AshWorkflow.Transformers.AddObanTriggers do
             state == ^step_name and state_entered_at <= ago(^duration_value, ^ago_unit)
           ),
         queue: :workflow,
+        trigger_once?: trigger_once?,
         worker_module_name: worker_module,
         scheduler_module_name: scheduler_module,
         scheduler_cron: timeout.check_interval,

@@ -312,4 +312,4 @@ You do **not** need to add `ash_state_machine` or `ash_oban` to your extensions 
 
 ## Status
 
-This library is in active development. The core DSL and generation pipeline are functional — state machine, actions, Oban triggers, timeouts, policies, and code interface are all implemented. `repeat: true` on timeouts is accepted but not yet fully implemented.
+This library is in active development. The core DSL and generation pipeline are functional — state machine, actions, Oban triggers, timeouts, policies, and code interface are all implemented.

@@ -53,6 +53,27 @@ step :escalated, terminal: true
 
 The extension generates a hidden update action (`:__timeout_escalation`) that performs the state transition. You don't need to define this action yourself.
 
+## Repeating timeouts
+
+By default, action timeouts fire once. Set `repeat: true` to keep firing on every scheduler cycle while the workflow remains in that state:
+
+```elixir
+step :awaiting_response do
+  manual true
+  transition :respond, to: :next_step
+
+  # Fires once after 3 days
+  timeout :reminder, after: {3, :days}, action: :send_reminder
+
+  # Fires after 3 days, then on every check_interval while still waiting
+  timeout :follow_up, after: {3, :days}, action: :send_follow_up, repeat: true
+end
+```
+
+When a repeating timeout fires, the extension resets `state_entered_at` to the current time. This restarts the duration window — so `after: {3, :days}` means the action fires every 3 days, not every scheduler cycle.
+
+Non-repeating timeouts (the default) use Oban's `trigger_once?` to prevent re-firing after the action completes. Transition timeouts (with `transition_to`) don't need either mechanism since the state change naturally prevents re-firing.
+
 ## Duration units
 
 Supported units: `:seconds`, `:minutes`, `:hours`, `:days`.
