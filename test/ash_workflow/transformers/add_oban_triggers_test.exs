@@ -88,6 +88,29 @@ defmodule AshWorkflow.Transformers.AddObanTriggersTest do
     end
   end
 
+  describe "configurable queue" do
+    test "default queue is :workflow" do
+      triggers = AshOban.Info.oban_triggers(AshWorkflowTest.LinearWorkflow)
+      trigger = Enum.find(triggers, &(&1.name == :process))
+
+      assert trigger.queue == :workflow
+    end
+
+    test "custom queue is applied to step triggers" do
+      triggers = AshOban.Info.oban_triggers(AshWorkflowTest.CustomQueueWorkflow)
+      step_trigger = Enum.find(triggers, &(&1.name == :process))
+
+      assert step_trigger.queue == :hiring_pipeline
+    end
+
+    test "custom queue is applied to timeout triggers" do
+      triggers = AshOban.Info.oban_triggers(AshWorkflowTest.CustomQueueWorkflow)
+      timeout_trigger = Enum.find(triggers, &(&1.name == :__timeout_trigger_reminder))
+
+      assert timeout_trigger.queue == :hiring_pipeline
+    end
+  end
+
   describe "read action generation" do
     test "generates primary read action for resources with automatic steps" do
       action = Ash.Resource.Info.primary_action(AshWorkflowTest.LinearWorkflow, :read)

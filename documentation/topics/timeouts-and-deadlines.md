@@ -95,12 +95,23 @@ timeout :daily_report, after: {3, :days}, action: :generate_report, check_interv
 
 ## Oban queue configuration
 
-All workflow triggers (both automatic steps and timeouts) use the `:workflow` queue. Ensure it's configured in your Oban setup:
+By default, all workflow triggers use the `:workflow` queue. You can override this at the workflow level:
+
+```elixir
+workflow do
+  queue :hiring_pipeline
+
+  step :process, action: :run_processing, on_success: :review
+  # ...
+end
+```
+
+All generated triggers (automatic steps and timeouts) will use the specified queue. Ensure it's configured in your Oban setup:
 
 ```elixir
 config :my_app, Oban,
   repo: MyApp.Repo,
-  queues: [default: 10, workflow: 5]
+  queues: [default: 10, hiring_pipeline: 5]
 ```
 
 ## The `state_entered_at` attribute

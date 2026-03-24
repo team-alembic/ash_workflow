@@ -55,7 +55,13 @@ defmodule AshWorkflow do
   @workflow %Spark.Dsl.Section{
     name: :workflow,
     describe: "Define a workflow by declaring steps, transitions, and timeouts.",
-    schema: [],
+    schema: [
+      queue: [
+        type: :atom,
+        default: :workflow,
+        doc: "The Oban queue to use for all generated triggers. Defaults to :workflow."
+      ]
+    ],
     entities: [@step]
   }
 

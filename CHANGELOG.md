@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `initial true` flag on steps — explicit control over the initial state with verifier enforcement
 - `repeat: true` on action timeouts — re-fires at the timeout interval by resetting `state_entered_at`
+- `queue` option on workflow section — configurable Oban queue for all generated triggers (default: `:workflow`)
 
 ### Fixed
 
