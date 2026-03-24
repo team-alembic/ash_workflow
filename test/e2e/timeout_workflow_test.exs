@@ -1,6 +1,7 @@
 defmodule AshWorkflowTest.E2E.TimeoutWorkflowTest do
   use ExUnit.Case
 
+  alias AshOban.Info, as: ObanInfo
   alias AshWorkflowTest.TimeoutWorkflow
 
   describe "DSL compilation" do
@@ -11,12 +12,12 @@ defmodule AshWorkflowTest.E2E.TimeoutWorkflowTest do
 
   describe "generated oban triggers for timeouts" do
     test "has oban triggers defined" do
-      triggers = AshOban.Info.oban_triggers(TimeoutWorkflow)
-      assert length(triggers) > 0
+      triggers = ObanInfo.oban_triggers(TimeoutWorkflow)
+      assert triggers != []
     end
 
     test "has a trigger for the reminder timeout" do
-      triggers = AshOban.Info.oban_triggers(TimeoutWorkflow)
+      triggers = ObanInfo.oban_triggers(TimeoutWorkflow)
 
       reminder =
         Enum.find(
@@ -28,7 +29,7 @@ defmodule AshWorkflowTest.E2E.TimeoutWorkflowTest do
     end
 
     test "has a trigger for the escalation timeout" do
-      triggers = AshOban.Info.oban_triggers(TimeoutWorkflow)
+      triggers = ObanInfo.oban_triggers(TimeoutWorkflow)
 
       escalation =
         Enum.find(

@@ -1,7 +1,9 @@
 defmodule AshWorkflow.ConditionalTransitionTest do
   use ExUnit.Case
 
-  alias AshWorkflow.Entities.{Step, Transition, Route}
+  alias Ash.Resource.Info, as: ResourceInfo
+  alias AshStateMachine.Info, as: StateMachineInfo
+  alias AshWorkflow.Entities.{Route, Step, Transition}
   alias AshWorkflow.Verifiers.ValidateWorkflow
 
   defp build_dsl(steps) do
@@ -128,7 +130,7 @@ defmodule AshWorkflow.ConditionalTransitionTest do
   describe "state machine generation" do
     test "conditional transition generates state machine transition with all targets" do
       transitions =
-        AshStateMachine.Info.state_machine_transitions(AshWorkflowTest.ConditionalWorkflow)
+        StateMachineInfo.state_machine_transitions(AshWorkflowTest.ConditionalWorkflow)
 
       complete_transition =
         Enum.find(transitions, fn t -> t.action == :complete end)
@@ -140,7 +142,7 @@ defmodule AshWorkflow.ConditionalTransitionTest do
     end
 
     test "all conditional targets are valid states" do
-      states = AshStateMachine.Info.state_machine_all_states(AshWorkflowTest.ConditionalWorkflow)
+      states = StateMachineInfo.state_machine_all_states(AshWorkflowTest.ConditionalWorkflow)
 
       assert :training in states
       assert :fast_track in states
@@ -149,14 +151,14 @@ defmodule AshWorkflow.ConditionalTransitionTest do
 
   describe "generated actions" do
     test "conditional transition generates an action" do
-      action = Ash.Resource.Info.action(AshWorkflowTest.ConditionalWorkflow, :complete)
+      action = ResourceInfo.action(AshWorkflowTest.ConditionalWorkflow, :complete)
       assert action
       assert action.type == :update
     end
 
     test "static transition on same step also generates an action" do
       action =
-        Ash.Resource.Info.action(AshWorkflowTest.ConditionalWorkflow, :reject_at_compliance)
+        ResourceInfo.action(AshWorkflowTest.ConditionalWorkflow, :reject_at_compliance)
 
       assert action
       assert action.type == :update

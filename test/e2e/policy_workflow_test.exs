@@ -1,6 +1,7 @@
 defmodule AshWorkflowTest.E2E.PolicyWorkflowTest do
   use ExUnit.Case
 
+  alias Ash.Policy.Info, as: PolicyInfo
   alias AshWorkflowTest.PolicyWorkflow
 
   describe "DSL compilation" do
@@ -11,12 +12,12 @@ defmodule AshWorkflowTest.E2E.PolicyWorkflowTest do
 
   describe "generated policies" do
     test "policies are defined on the resource" do
-      policies = Ash.Policy.Info.policies(AshWorkflowTest.Domain, PolicyWorkflow)
-      assert length(policies) > 0
+      policies = PolicyInfo.policies(AshWorkflowTest.Domain, PolicyWorkflow)
+      assert policies != []
     end
 
     test "transition actions are covered by policies" do
-      policies = Ash.Policy.Info.policies(AshWorkflowTest.Domain, PolicyWorkflow)
+      policies = PolicyInfo.policies(AshWorkflowTest.Domain, PolicyWorkflow)
 
       transition_actions = [:approve, :reject]
 

@@ -2,7 +2,7 @@ defmodule AshWorkflow.Transformers.AddPolicies do
   @moduledoc """
   Generates Ash policies from workflow step declarations.
 
-  Ensures workflow resources work out of the box when `Ash.Policy.Authorizer`
+  Ensures workflow resources work out of the box when `Authorizer`
   is present by injecting three layers of policies:
 
   1. **AshOban bypass** — allows Oban-triggered actions (automatic steps and
@@ -29,19 +29,19 @@ defmodule AshWorkflow.Transformers.AddPolicies do
      workflow-generated action names, so actions like `:start` and automatic
      steps aren't blocked by other policies on the resource.
 
-  Skips all policy generation if `Ash.Policy.Authorizer` is not configured
+  Skips all policy generation if `Authorizer` is not configured
   on the resource.
   """
   use Spark.Dsl.Transformer
 
+  alias Ash.Policy.Authorizer
+  alias Ash.Policy.Check.Builtins, as: PolicyBuiltins
   alias Spark.Dsl.Transformer
 
   def transform(dsl) do
     authorizers = Transformer.get_persisted(dsl, :authorizers) || []
 
-    unless Ash.Policy.Authorizer in authorizers do
-      {:ok, dsl}
-    else
+    if Authorizer in authorizers do
       steps = Transformer.get_entities(dsl, [:workflow])
       existing_policies = Transformer.get_entities(dsl, [:policies])
 
@@ -64,6 +64,8 @@ defmodule AshWorkflow.Transformers.AddPolicies do
 
       dsl = add_default_allow_policy(dsl, workflow_action_names)
 
+      {:ok, dsl}
+    else
       {:ok, dsl}
     end
   end
@@ -120,14 +122,14 @@ defmodule AshWorkflow.Transformers.AddPolicies do
 
   defp add_oban_bypass(dsl, oban_action_names) do
     authorize_if =
-      Transformer.build_entity!(Ash.Policy.Authorizer, [:policies, :policy], :authorize_if,
-        check: Ash.Policy.Check.Builtins.always()
+      Transformer.build_entity!(Authorizer, [:policies, :policy], :authorize_if,
+        check: PolicyBuiltins.always()
       )
 
     bypass =
-      Transformer.build_entity!(Ash.Policy.Authorizer, [:policies], :bypass,
+      Transformer.build_entity!(Authorizer, [:policies], :bypass,
         condition: [
-          Ash.Policy.Check.Builtins.action(oban_action_names),
+          PolicyBuiltins.action(oban_action_names),
           {AshOban.Checks.AshObanInteraction, []}
         ],
         policies: [authorize_if]
@@ -150,13 +152,13 @@ defmodule AshWorkflow.Transformers.AddPolicies do
       dsl
     else
       authorize_if =
-        Transformer.build_entity!(Ash.Policy.Authorizer, [:policies, :policy], :authorize_if,
+        Transformer.build_entity!(Authorizer, [:policies, :policy], :authorize_if,
           check: step.policy
         )
 
       policy =
-        Transformer.build_entity!(Ash.Policy.Authorizer, [:policies], :policy,
-          condition: Ash.Policy.Check.Builtins.action(uncovered_actions),
+        Transformer.build_entity!(Authorizer, [:policies], :policy,
+          condition: PolicyBuiltins.action(uncovered_actions),
           policies: [authorize_if]
         )
 
@@ -166,13 +168,13 @@ defmodule AshWorkflow.Transformers.AddPolicies do
 
   defp add_default_allow_policy(dsl, workflow_action_names) do
     authorize_if =
-      Transformer.build_entity!(Ash.Policy.Authorizer, [:policies, :policy], :authorize_if,
-        check: Ash.Policy.Check.Builtins.always()
+      Transformer.build_entity!(Authorizer, [:policies, :policy], :authorize_if,
+        check: PolicyBuiltins.always()
       )
 
     policy =
-      Transformer.build_entity!(Ash.Policy.Authorizer, [:policies], :policy,
-        condition: Ash.Policy.Check.Builtins.action(workflow_action_names),
+      Transformer.build_entity!(Authorizer, [:policies], :policy,
+        condition: PolicyBuiltins.action(workflow_action_names),
         policies: [authorize_if]
       )
 
