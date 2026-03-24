@@ -292,7 +292,7 @@ From the workflow DSL, the extension generates:
 | **Calculations** | `:steps`, `:current_step`, `:available_actions` | Workflow introspection |
 | **Attributes** | `state_entered_at` | Added if not already defined |
 
-The initial state is the first non-terminal step by declaration order.
+The initial state is the step with `initial true`, or the first non-terminal step by declaration order if none is marked.
 
 All generation follows a **generate-if-missing** pattern: if you've already defined a read action, policies targeting specific actions, or code interface definitions, the transformers won't overwrite them.
 

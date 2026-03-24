@@ -7,6 +7,7 @@ defmodule AshWorkflow.Entities.Step do
     :on_success,
     :on_error,
     :policy,
+    initial: false,
     manual: false,
     terminal: false,
     transitions: [],
@@ -29,6 +30,12 @@ defmodule AshWorkflow.Entities.Step do
       default: false,
       doc: "If true, this step waits for a human to trigger a transition action."
     ],
+    initial: [
+      type: :boolean,
+      default: false,
+      doc:
+        "If true, this step is the initial state. At most one step can be marked initial. If none are, the first non-terminal step by declaration order is used."
+    ],
     terminal: [
       type: :boolean,
       default: false,
@@ -50,4 +57,14 @@ defmodule AshWorkflow.Entities.Step do
   ]
 
   def attribute_schema, do: @schema
+
+  @doc """
+  Finds the initial step from a list of steps.
+
+  Returns the step with `initial: true`, or falls back to the first
+  non-terminal step by declaration order.
+  """
+  def find_initial(steps) do
+    Enum.find(steps, & &1.initial) || steps |> Enum.reject(& &1.terminal) |> List.first()
+  end
 end

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `initial true` flag on steps — explicit control over the initial state with verifier enforcement
+
 ## [0.1.0] - 2026-03-20
 
 ### Added

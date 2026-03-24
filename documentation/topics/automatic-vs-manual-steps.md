@@ -144,16 +144,14 @@ step :rejected, terminal: true
 
 ## Initial state
 
-The first non-terminal step in declaration order becomes the initial state. The extension sets `default_initial_state` and `initial_states` on the generated state machine.
+By default, the first non-terminal step in declaration order becomes the initial state. You can override this with `initial true`:
 
 ```elixir
 workflow do
-  step :intake do        # ← this is the initial state
-    action :run_intake
-    on_success :review
-  end
+  step :intake, action: :run_intake, on_success: :review
 
   step :review do
+    initial true   # ← this is the initial state, despite being declared second
     manual true
     transition :approve, to: :done
   end
@@ -161,3 +159,7 @@ workflow do
   step :done, terminal: true
 end
 ```
+
+At most one step can have `initial true`. If none do, the first non-terminal step is used.
+
+The extension sets `default_initial_state` and `initial_states` on the generated state machine.
