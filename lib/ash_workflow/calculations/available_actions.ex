@@ -13,7 +13,7 @@ defmodule AshWorkflow.Calculations.AvailableActions do
 
   @impl true
   def calculate(records, opts, context) do
-    steps_map = opts[:steps_map]
+    steps_map = Keyword.fetch!(opts, :steps_map)
 
     Enum.map(records, fn record ->
       steps_map

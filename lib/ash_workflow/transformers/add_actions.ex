@@ -151,7 +151,13 @@ defmodule AshWorkflow.Transformers.AddActions do
         Transformer.add_entity(dsl, [:actions], action)
 
       existing_action ->
-        updated_action = %{existing_action | changes: existing_action.changes ++ changes}
+        merged_accept = Enum.uniq(existing_action.accept ++ accepted)
+
+        updated_action = %{
+          existing_action
+          | accept: merged_accept,
+            changes: existing_action.changes ++ changes
+        }
 
         updated_action =
           if is_conditional,

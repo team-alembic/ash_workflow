@@ -8,7 +8,7 @@ defmodule AshWorkflow.Calculations.Steps do
 
   @impl true
   def calculate(records, opts, _context) do
-    step_names = opts[:step_names]
+    step_names = Keyword.fetch!(opts, :step_names)
     Enum.map(records, fn _record -> step_names end)
   end
 end
