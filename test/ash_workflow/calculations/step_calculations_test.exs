@@ -34,4 +34,15 @@ defmodule AshWorkflow.Calculations.StepCalculationsTest do
       assert record.current_step == :approved
     end
   end
+
+  describe "loading all calculations together" do
+    test "steps, current_step, and available_actions compose in a single load" do
+      {:ok, record} = AshWorkflowTest.ApprovalWorkflow.start(%{title: "test"})
+      record = Ash.load!(record, [:steps, :current_step, :available_actions])
+
+      assert record.steps == [:review, :approved, :rejected]
+      assert record.current_step == :review
+      assert record.available_actions == [:approve, :reject]
+    end
+  end
 end
