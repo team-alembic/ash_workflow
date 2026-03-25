@@ -111,9 +111,7 @@ defmodule AshWorkflow.Transformers.AddObanTriggers do
         name: :"__timeout_trigger_#{timeout_name}",
         action: action,
         where:
-          Ash.Expr.expr(
-            state == ^step_name and ^ref(field) <= ago(^duration_value, ^ago_unit)
-          ),
+          Ash.Expr.expr(state == ^step_name and ^ref(field) <= ago(^duration_value, ^ago_unit)),
         queue: queue,
         trigger_once?: trigger_once?,
         worker_module_name: worker_module,

@@ -18,7 +18,8 @@ defmodule AshWorkflowTest.FieldTimeoutWorkflow do
 
       transition :deactivate, to: :inactive
 
-      timeout :inactivity, after: {3, :days},
+      timeout :inactivity,
+        after: {3, :days},
         field: :last_session_date,
         transition_to: :inactive_review
     end
