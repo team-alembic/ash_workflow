@@ -16,7 +16,8 @@ defmodule AshWorkflow.Transformers.AddObanTriggers do
 
   For each timeout on any step, adds an Oban trigger that:
 
-  - Matches records where `state == :step_name` AND `state_entered_at <= ago(duration)`
+  - Matches records where `state == :step_name` AND `<field> <= ago(duration)`,
+    where `<field>` defaults to `state_entered_at` but can be overridden per timeout
   - For action timeouts: calls the user-defined action (does not change state)
   - For transition timeouts: calls the generated `__timeout_<name>` action
   - Uses a configurable `scheduler_cron` (default: every minute) to poll

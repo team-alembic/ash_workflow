@@ -77,5 +77,8 @@ defmodule AshWorkflow do
       AshWorkflow.Transformers.AddCodeInterface,
       AshWorkflow.Transformers.AddCalculations
     ],
-    verifiers: [AshWorkflow.Verifiers.ValidateWorkflow]
+    verifiers: [
+      AshWorkflow.Verifiers.ValidateWorkflow,
+      AshWorkflow.Verifiers.ValidateTimeoutFields
+    ]
 end

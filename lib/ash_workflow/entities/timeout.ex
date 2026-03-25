@@ -1,7 +1,15 @@
 defmodule AshWorkflow.Entities.Timeout do
   @moduledoc "Defines a workflow timeout entity with its configuration schema."
 
-  defstruct [:name, :after, :action, :transition_to, :check_interval, :field, repeat: false]
+  defstruct [
+    :name,
+    :after,
+    :action,
+    :transition_to,
+    :check_interval,
+    field: :state_entered_at,
+    repeat: false
+  ]
 
   @schema [
     name: [

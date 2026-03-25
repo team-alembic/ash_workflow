@@ -11,9 +11,7 @@ defmodule AshWorkflow.Transformers.AddFieldTimeoutTriggersTest do
       assert trigger
       assert trigger.action == :__timeout_inactivity
 
-      where_expr = trigger.where
-      assert inspect(where_expr) =~ "last_session_date"
-      refute inspect(where_expr) =~ "state_entered_at"
+      assert {:_ref, [], :last_session_date} in trigger.where.right.args
     end
 
     test "default field uses state_entered_at" do
@@ -23,8 +21,7 @@ defmodule AshWorkflow.Transformers.AddFieldTimeoutTriggersTest do
         Enum.find(triggers, &(&1.name == :__timeout_trigger_reminder))
 
       assert trigger
-      where_expr = trigger.where
-      assert inspect(where_expr) =~ "state_entered_at"
+      assert {:_ref, [], :state_entered_at} in trigger.where.right.args
     end
   end
 end
