@@ -23,6 +23,14 @@ Define a workflow by declaring steps, transitions, and timeouts.
 
 
 
+### Options
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`queue`](#workflow-queue){: #workflow-queue } | `atom` | `:workflow` | The Oban queue to use for all generated triggers. Defaults to :workflow. |
+
+
+
 ## workflow.step
 ```elixir
 step name
@@ -50,6 +58,7 @@ Declares a step in the workflow. Each step becomes a state in the generated stat
 |------|------|---------|------|
 | [`action`](#workflow-step-action){: #workflow-step-action } | `atom` |  | The action to run for automatic steps. Must reference a user-defined update action on the resource. |
 | [`manual`](#workflow-step-manual){: #workflow-step-manual } | `boolean` | `false` | If true, this step waits for a human to trigger a transition action. |
+| [`initial`](#workflow-step-initial){: #workflow-step-initial } | `boolean` | `false` | If true, this step is the initial state. At most one step can be marked initial. If none are, the first non-terminal step by declaration order is used. |
 | [`terminal`](#workflow-step-terminal){: #workflow-step-terminal } | `boolean` | `false` | If true, this is an end state with no outgoing transitions. |
 | [`on_success`](#workflow-step-on_success){: #workflow-step-on_success } | `atom` |  | The step to transition to on successful completion. Required for automatic steps. |
 | [`on_error`](#workflow-step-on_error){: #workflow-step-on_error } | `atom` |  | The step to transition to on failure. Optional, for automatic steps. |
@@ -80,6 +89,7 @@ Declares a named transition from this manual step to another step.
 | Name | Type | Default | Docs |
 |------|------|---------|------|
 | [`to`](#workflow-step-transition-to){: #workflow-step-transition-to } | `atom` |  | The step to transition to. Omit when using conditional routes. |
+| [`accept`](#workflow-step-transition-accept){: #workflow-step-transition-accept } | `list(atom)` | `[]` | List of resource attributes the generated transition action should accept as input. |
 
 
 ## workflow.step.transition.route
@@ -142,6 +152,7 @@ Declares a time-based action or forced transition if the workflow stays in this 
 | Name | Type | Default | Docs |
 |------|------|---------|------|
 | [`after`](#workflow-step-timeout-after){: #workflow-step-timeout-after .spark-required} | `any` |  | Duration tuple, e.g. `{3, :days}` or `{2, :hours}`. |
+| [`field`](#workflow-step-timeout-field){: #workflow-step-timeout-field } | `atom` | `:state_entered_at` | The datetime attribute or calculation to measure `after` against. Defaults to `:state_entered_at`. |
 | [`action`](#workflow-step-timeout-action){: #workflow-step-timeout-action } | `atom` |  | Action to run when the timeout fires. Does not change state. |
 | [`transition_to`](#workflow-step-timeout-transition_to){: #workflow-step-timeout-transition_to } | `atom` |  | Step to force-transition to when the timeout fires. |
 | [`repeat`](#workflow-step-timeout-repeat){: #workflow-step-timeout-repeat } | `boolean` | `false` | If true, re-fire the timeout on the same interval. |

@@ -16,7 +16,8 @@ defmodule AshWorkflow.Transformers.AddObanTriggers do
 
   For each timeout on any step, adds an Oban trigger that:
 
-  - Matches records where `state == :step_name` AND `state_entered_at <= ago(duration)`
+  - Matches records where `state == :step_name` AND `<field> <= ago(duration)`,
+    where `<field>` defaults to `state_entered_at` but can be overridden per timeout
   - For action timeouts: calls the user-defined action (does not change state)
   - For transition timeouts: calls the generated `__timeout_<name>` action
   - Uses a configurable `scheduler_cron` (default: every minute) to poll
@@ -29,6 +30,7 @@ defmodule AshWorkflow.Transformers.AddObanTriggers do
   use Spark.Dsl.Transformer
 
   alias Spark.Dsl.Transformer
+  import Ash.Expr, only: [ref: 1]
   require Ash.Expr
 
   def transform(dsl) do
@@ -87,6 +89,7 @@ defmodule AshWorkflow.Transformers.AddObanTriggers do
     timeout_name = timeout.name
     {duration_value, duration_unit} = timeout.after
     ago_unit = singular_unit(duration_unit)
+    field = timeout.field
 
     action =
       if timeout.transition_to do
@@ -109,9 +112,7 @@ defmodule AshWorkflow.Transformers.AddObanTriggers do
         name: :"__timeout_trigger_#{timeout_name}",
         action: action,
         where:
-          Ash.Expr.expr(
-            state == ^step_name and state_entered_at <= ago(^duration_value, ^ago_unit)
-          ),
+          Ash.Expr.expr(state == ^step_name and ^ref(field) <= ago(^duration_value, ^ago_unit)),
         queue: queue,
         trigger_once?: trigger_once?,
         worker_module_name: worker_module,

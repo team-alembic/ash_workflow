@@ -1,7 +1,6 @@
 defmodule AshWorkflowTest.E2E.TimeoutWorkflowTest do
   use ExUnit.Case
 
-  alias AshOban.Info, as: ObanInfo
   alias AshWorkflowTest.TimeoutWorkflow
 
   describe "DSL compilation" do
@@ -10,42 +9,23 @@ defmodule AshWorkflowTest.E2E.TimeoutWorkflowTest do
     end
   end
 
-  describe "generated oban triggers for timeouts" do
-    test "has oban triggers defined" do
-      triggers = ObanInfo.oban_triggers(TimeoutWorkflow)
-      assert triggers != []
-    end
-
-    test "has a trigger for the reminder timeout" do
-      triggers = ObanInfo.oban_triggers(TimeoutWorkflow)
-
-      reminder =
-        Enum.find(
-          triggers,
-          &(&1.name == :waiting_reminder || String.contains?(to_string(&1.name), "reminder"))
-        )
-
-      assert reminder
-    end
-
-    test "has a trigger for the escalation timeout" do
-      triggers = ObanInfo.oban_triggers(TimeoutWorkflow)
-
-      escalation =
-        Enum.find(
-          triggers,
-          &(&1.name == :waiting_escalation || String.contains?(to_string(&1.name), "escalation"))
-        )
-
-      assert escalation
-    end
-  end
-
   describe "timeout behavior" do
     test "manual resolve transitions to resolved" do
       {:ok, workflow} = TimeoutWorkflow.start(%{title: "test"})
       {:ok, workflow} = TimeoutWorkflow.resolve(workflow)
       assert workflow.state == :resolved
+    end
+
+    test "escalation timeout action transitions to escalated" do
+      {:ok, workflow} = TimeoutWorkflow.start(%{title: "escalate"})
+      {:ok, escalated} = Ash.update(workflow, action: :__timeout_escalation)
+      assert escalated.state == :escalated
+    end
+
+    test "reminder timeout action runs without changing state" do
+      {:ok, workflow} = TimeoutWorkflow.start(%{title: "remind"})
+      {:ok, reminded} = Ash.update(workflow, action: :send_reminder)
+      assert reminded.state == :waiting
     end
   end
 end

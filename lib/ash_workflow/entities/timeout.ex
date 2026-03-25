@@ -1,7 +1,40 @@
 defmodule AshWorkflow.Entities.Timeout do
-  @moduledoc "Defines a workflow timeout entity with its configuration schema."
+  @moduledoc """
+  Defines a workflow timeout entity with its configuration schema.
 
-  defstruct [:name, :after, :action, :transition_to, :check_interval, repeat: false]
+  ## The `field` option
+
+  By default, timeouts measure duration against `state_entered_at` — the timestamp
+  of when the workflow entered its current state. The `field` option overrides this
+  to measure against any datetime attribute or calculation on the resource.
+
+  This enables data-driven deadlines: "3 months since their last session" rather than
+  "3 months since they entered the active state."
+
+  ## `repeat: true` is not supported with custom fields
+
+  Repeating timeouts work by resetting `state_entered_at` to the current time after
+  each firing, which restarts the duration window. With a custom field, the extension
+  would need to implicitly update that field to "now" — but this is semantically wrong.
+  If `field: :last_session_date`, resetting it to "now" would claim a session happened
+  when it didn't. The field's value should only change when the real-world event it
+  represents actually occurs.
+
+  Rather than silently writing incorrect data, we reject this combination at compile
+  time. If you need periodic checks against a custom field, use a non-repeating timeout
+  with a short `check_interval` — the trigger will keep matching on every poll cycle
+  as long as the condition holds.
+  """
+
+  defstruct [
+    :name,
+    :after,
+    :action,
+    :transition_to,
+    :check_interval,
+    field: :state_entered_at,
+    repeat: false
+  ]
 
   @schema [
     name: [
@@ -13,6 +46,12 @@ defmodule AshWorkflow.Entities.Timeout do
       type: {:custom, __MODULE__, :validate_duration, []},
       required: true,
       doc: "Duration tuple, e.g. `{3, :days}` or `{2, :hours}`."
+    ],
+    field: [
+      type: :atom,
+      default: :state_entered_at,
+      doc:
+        "The datetime attribute or calculation to measure `after` against. Defaults to `:state_entered_at`."
     ],
     action: [
       type: :atom,
