@@ -7,9 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-03-25
+
 ### Added
 
 - `field` option on timeouts — specify which datetime attribute to measure `after` against (default: `:state_entered_at`), enabling data-driven deadlines like `field: :last_session_date`
+- Compile-time validation that timeout `field` references an existing attribute or calculation
+- Compile-time validation rejecting `repeat: true` with custom `field` (see `Entities.Timeout` for rationale)
 
 ## [0.2.0] - 2026-03-24
 
