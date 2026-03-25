@@ -51,7 +51,7 @@ defmodule AshWorkflow.SharedTransitionTest do
 
   describe "runtime: same target from different steps" do
     test "reject from step_a goes to rejected" do
-      {:ok, workflow} = SharedTransitionWorkflow.start(%{title: "test"})
+      {:ok, workflow} = SharedTransitionWorkflow.create(%{title: "test"})
       assert workflow.state == :step_a
 
       {:ok, workflow} = Ash.update(workflow, action: :reject)
@@ -59,7 +59,7 @@ defmodule AshWorkflow.SharedTransitionTest do
     end
 
     test "reject from step_b goes to rejected" do
-      {:ok, workflow} = SharedTransitionWorkflow.start(%{title: "test"})
+      {:ok, workflow} = SharedTransitionWorkflow.create(%{title: "test"})
       {:ok, workflow} = Ash.update(workflow, action: :move_to_b)
       assert workflow.state == :step_b
 
@@ -70,7 +70,7 @@ defmodule AshWorkflow.SharedTransitionTest do
 
   describe "runtime: different targets from different steps" do
     test "complete from step_a goes to done_a" do
-      {:ok, workflow} = SharedTransitionWorkflow.start(%{title: "test"})
+      {:ok, workflow} = SharedTransitionWorkflow.create(%{title: "test"})
       assert workflow.state == :step_a
 
       {:ok, workflow} = Ash.update(workflow, action: :complete)
@@ -78,7 +78,7 @@ defmodule AshWorkflow.SharedTransitionTest do
     end
 
     test "complete from step_b goes to done_b" do
-      {:ok, workflow} = SharedTransitionWorkflow.start(%{title: "test"})
+      {:ok, workflow} = SharedTransitionWorkflow.create(%{title: "test"})
       {:ok, workflow} = Ash.update(workflow, action: :move_to_b)
       assert workflow.state == :step_b
 

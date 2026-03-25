@@ -2,14 +2,11 @@ defmodule AshWorkflow.Transformers.AddCodeInterface do
   @moduledoc """
   Generates code interface definitions for workflow actions.
 
-  Adds `define` entries for:
-
-  - `:start` — creates a new workflow instance
-  - Each manual step transition — e.g., `define :approve`, `define :reject`
+  Adds `define` entries for each manual step transition — e.g.,
+  `define :approve`, `define :reject`.
 
   These generate convenience functions on the resource module so callers can use
-  `CandidatePipeline.start(params)` and `CandidatePipeline.approve(record)`
-  instead of `Ash.create`/`Ash.update` directly.
+  `CandidatePipeline.approve(record)` instead of `Ash.update` directly.
 
   Skips definitions that the user has already declared.
   """
@@ -21,8 +18,6 @@ defmodule AshWorkflow.Transformers.AddCodeInterface do
     steps = Transformer.get_entities(dsl, [:workflow])
     existing_defines = Transformer.get_entities(dsl, [:code_interface])
     defined_names = MapSet.new(existing_defines, & &1.name)
-
-    dsl = maybe_add_define(dsl, :start, defined_names)
 
     transition_names =
       steps

@@ -19,7 +19,7 @@ defmodule AshWorkflow.Transformers.AddTimeoutTriggersTest do
 
   defp create_with_backdated_state_entered_at(resource, attrs, days_ago) do
     resource
-    |> Ash.Changeset.for_create(:start, attrs)
+    |> Ash.Changeset.for_create(:create, attrs)
     |> Ash.Changeset.force_change_attribute(
       :state_entered_at,
       DateTime.add(DateTime.utc_now(), -days_ago, :day)
@@ -39,7 +39,7 @@ defmodule AshWorkflow.Transformers.AddTimeoutTriggersTest do
     end
 
     test "does not match records within the deadline" do
-      {:ok, workflow} = TimeoutWorkflow.start(%{title: "fresh"})
+      {:ok, workflow} = TimeoutWorkflow.create(%{title: "fresh"})
 
       trigger = trigger(TimeoutWorkflow, :__timeout_trigger_reminder)
       matches = matching_records(TimeoutWorkflow, trigger)
@@ -60,7 +60,7 @@ defmodule AshWorkflow.Transformers.AddTimeoutTriggersTest do
     end
 
     test "the timeout action transitions state" do
-      {:ok, workflow} = TimeoutWorkflow.start(%{title: "escalate me"})
+      {:ok, workflow} = TimeoutWorkflow.create(%{title: "escalate me"})
       {:ok, escalated} = Ash.update(workflow, action: :__timeout_escalation)
       assert escalated.state == :escalated
     end

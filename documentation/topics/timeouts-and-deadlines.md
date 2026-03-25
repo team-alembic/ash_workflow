@@ -145,6 +145,6 @@ config :my_app, Oban,
 
 ## The `state_entered_at` attribute
 
-The extension auto-adds a `state_entered_at` (`utc_datetime_usec`) attribute to the resource. It's updated every time the state changes — on `:start`, on manual transitions, and on automatic step completions. Timeout durations are calculated from this timestamp.
+The extension auto-adds a `state_entered_at` (`utc_datetime_usec`) attribute to the resource. It's set when the record is created and updated every time the state changes on manual transitions and automatic step completions. Timeout durations are calculated from this timestamp.
 
 If you need to define this attribute yourself (e.g., with a custom default or source), the extension skips adding it.

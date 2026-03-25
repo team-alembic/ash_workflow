@@ -28,6 +28,16 @@ defmodule AshWorkflowTest.FieldTimeoutWorkflow do
     step :inactive_review, terminal: true
   end
 
+  code_interface do
+    define :create
+  end
+
+  actions do
+    create :create do
+      accept [:title, :last_session_date]
+    end
+  end
+
   attributes do
     uuid_v7_primary_key :id
     attribute :title, :string, allow_nil?: false, public?: true

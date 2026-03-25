@@ -17,7 +17,7 @@ defmodule AshWorkflow.Transformers.AddObanTriggersTest do
   describe "automatic step triggers" do
     test "matches records in the step's state" do
       {:ok, workflow} =
-        AshWorkflowTest.LinearWorkflow.start(%{title: "test"})
+        AshWorkflowTest.LinearWorkflow.create(%{title: "test"})
 
       trigger = trigger(AshWorkflowTest.LinearWorkflow, :process)
       matches = matching_records(AshWorkflowTest.LinearWorkflow, trigger)
@@ -26,7 +26,7 @@ defmodule AshWorkflow.Transformers.AddObanTriggersTest do
     end
 
     test "does not match records that have left the step's state" do
-      {:ok, workflow} = AshWorkflowTest.LinearWorkflow.start(%{title: "test"})
+      {:ok, workflow} = AshWorkflowTest.LinearWorkflow.create(%{title: "test"})
       {:ok, workflow} = Ash.update(workflow, action: :do_processing)
       assert workflow.state == :complete
 

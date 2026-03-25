@@ -46,15 +46,23 @@ defmodule MyApp.DocumentApproval do
     step :check_failed, terminal: true
   end
 
+  code_interface do
+    define :create
+  end
+
   attributes do
     uuid_v7_primary_key :id
     attribute :title, :string, allow_nil?: false
     attribute :author, :string, allow_nil?: false
   end
 
-  # Automatic steps need user-defined actions.
-  # The extension injects transition_state + state_entered_at changes.
   actions do
+    create :create do
+      accept [:title, :author]
+    end
+
+    # Automatic steps need user-defined actions.
+    # The extension injects transition_state + state_entered_at changes.
     update :run_checks do
       accept []
       change MyApp.Changes.ValidateDocument
@@ -76,16 +84,16 @@ From that DSL, AshWorkflow generates:
 - An **Oban trigger** for `:auto_check` that fires when `state == :auto_check`
 - An **Oban trigger** for the reminder timeout that fires when `state == :review` and `state_entered_at <= ago(3, :day)`
 - **Transition actions** `:approve` and `:reject` as update actions with `transition_state`
-- A **`:start` create action** that accepts all writable attributes
 - A **primary read action** with keyset pagination
-- **Code interface functions**: `start/1`, `approve/1`, `reject/1`
+- **Code interface functions** for the manual transitions: `approve/1`, `reject/1`
 - A **`state_entered_at`** attribute to track when the current state was entered
+- The resource's own create action initializes the workflow using the initial step and `state_entered_at` defaults
 
 ## Use the workflow
 
 ```elixir
 # Create a new workflow instance
-{:ok, doc} = MyApp.DocumentApproval.start(%{title: "Q1 Report", author: "alice"})
+{:ok, doc} = MyApp.DocumentApproval.create(%{title: "Q1 Report", author: "alice"})
 # doc.state => :auto_check
 
 # The auto_check step runs automatically via Oban.
@@ -95,6 +103,22 @@ From that DSL, AshWorkflow generates:
 {:ok, doc} = MyApp.DocumentApproval.approve(doc, actor: reviewer)
 # doc.state => :approved
 ```
+
+## Using AshPhoenix forms
+
+Because workflow initialization happens through your normal create action, an `AshPhoenix.Form` targets that action directly:
+
+```elixir
+form =
+  AshPhoenix.Form.for_create(
+    MyApp.DocumentApproval,
+    :create,
+    domain: MyApp.Documents,
+    as: "document_approval"
+  )
+```
+
+Submitting that form creates the workflow record with your form values, while AshWorkflow fills in the initial `state` and `state_entered_at` automatically. That means the first workflow step is implicit: the form just creates the resource, and the workflow starts in its initial step.
 
 ## Adding authorization
 
@@ -120,7 +144,7 @@ workflow do
 end
 ```
 
-Now only actors with `role: :reviewer` can call `:approve` or `:reject`. Other actions (like `:start`) are allowed for everyone — the extension generates a default allow-all policy for uncovered actions.
+Now only actors with `role: :reviewer` can call `:approve` or `:reject`. Other workflow actions, including create actions without an explicit policy, are allowed by the extension's default allow-all policy for uncovered workflow actions.
 
 ## Oban queue configuration
 

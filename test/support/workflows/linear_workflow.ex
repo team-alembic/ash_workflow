@@ -17,7 +17,15 @@ defmodule AshWorkflowTest.LinearWorkflow do
     step :failed, terminal: true
   end
 
+  code_interface do
+    define :create
+  end
+
   actions do
+    create :create do
+      accept [:title]
+    end
+
     update :do_processing do
       accept []
     end

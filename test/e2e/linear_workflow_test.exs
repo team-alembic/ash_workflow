@@ -26,26 +26,26 @@ defmodule AshWorkflowTest.E2E.LinearWorkflowTest do
   end
 
   describe "generated actions" do
-    test "has a start create action" do
-      assert ResourceInfo.action(LinearWorkflow, :start)
+    test "uses a user-defined create action" do
+      assert ResourceInfo.action(LinearWorkflow, :create)
     end
 
-    test "start action is a create action" do
-      action = ResourceInfo.action(LinearWorkflow, :start)
+    test "create action is a create action" do
+      action = ResourceInfo.action(LinearWorkflow, :create)
       assert action.type == :create
     end
   end
 
   describe "generated code interface" do
-    test "has start/1 in code interface" do
-      assert function_exported?(LinearWorkflow, :start, 1) ||
-               function_exported?(LinearWorkflow, :start, 2)
+    test "has create/1 in code interface" do
+      assert function_exported?(LinearWorkflow, :create, 1) ||
+               function_exported?(LinearWorkflow, :create, 2)
     end
   end
 
   describe "state machine integration" do
     test "starting a workflow sets state to the first step" do
-      {:ok, workflow} = LinearWorkflow.start(%{title: "test"})
+      {:ok, workflow} = LinearWorkflow.create(%{title: "test"})
       assert workflow.state == :process
     end
   end

@@ -25,6 +25,16 @@ defmodule AshWorkflowTest.PolicyWorkflow do
     step :rejected, terminal: true
   end
 
+  code_interface do
+    define :create
+  end
+
+  actions do
+    create :create do
+      accept [:title]
+    end
+  end
+
   attributes do
     uuid_v7_primary_key :id
     attribute :title, :string, allow_nil?: false

@@ -1,8 +1,11 @@
 defmodule AshWorkflow.Transformers.AddCodeInterfaceTest do
   use ExUnit.Case
 
-  test "generates start function" do
-    assert {:start, 0} in AshWorkflowTest.ApprovalWorkflow.__info__(:functions)
+  test "does not generate start functions" do
+    functions = AshWorkflowTest.ApprovalWorkflow.__info__(:functions)
+
+    refute {:start, 0} in functions
+    refute {:start!, 0} in functions
   end
 
   test "generates transition functions for manual steps" do
@@ -15,7 +18,6 @@ defmodule AshWorkflow.Transformers.AddCodeInterfaceTest do
   test "generates bang variants" do
     functions = AshWorkflowTest.ApprovalWorkflow.__info__(:functions)
 
-    assert {:start!, 0} in functions
     assert {:approve!, 1} in functions
   end
 
@@ -23,7 +25,6 @@ defmodule AshWorkflow.Transformers.AddCodeInterfaceTest do
     functions =
       AshWorkflowTest.FullPipeline.__info__(:functions) |> Keyword.keys() |> MapSet.new()
 
-    assert :start in functions
     assert :advance in functions
     assert :approve in functions
     assert :hold in functions

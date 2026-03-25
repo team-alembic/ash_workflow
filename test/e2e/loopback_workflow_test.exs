@@ -30,25 +30,25 @@ defmodule AshWorkflowTest.E2E.LoopbackWorkflowTest do
 
   describe "loop-back flow" do
     test "starts in draft state" do
-      {:ok, workflow} = LoopbackWorkflow.start(%{title: "test"})
+      {:ok, workflow} = LoopbackWorkflow.create(%{title: "test"})
       assert workflow.state == :draft
     end
 
     test "submit moves from draft to review" do
-      {:ok, workflow} = LoopbackWorkflow.start(%{title: "test"})
+      {:ok, workflow} = LoopbackWorkflow.create(%{title: "test"})
       {:ok, workflow} = LoopbackWorkflow.submit(workflow)
       assert workflow.state == :review
     end
 
     test "revise sends back to draft from review" do
-      {:ok, workflow} = LoopbackWorkflow.start(%{title: "test"})
+      {:ok, workflow} = LoopbackWorkflow.create(%{title: "test"})
       {:ok, workflow} = LoopbackWorkflow.submit(workflow)
       {:ok, workflow} = LoopbackWorkflow.revise(workflow)
       assert workflow.state == :draft
     end
 
     test "can loop draft → review → draft → review multiple times" do
-      {:ok, workflow} = LoopbackWorkflow.start(%{title: "test"})
+      {:ok, workflow} = LoopbackWorkflow.create(%{title: "test"})
 
       {:ok, workflow} = LoopbackWorkflow.submit(workflow)
       assert workflow.state == :review
@@ -70,14 +70,14 @@ defmodule AshWorkflowTest.E2E.LoopbackWorkflowTest do
     end
 
     test "cannot submit from review (wrong source state)" do
-      {:ok, workflow} = LoopbackWorkflow.start(%{title: "test"})
+      {:ok, workflow} = LoopbackWorkflow.create(%{title: "test"})
       {:ok, workflow} = LoopbackWorkflow.submit(workflow)
       assert workflow.state == :review
       assert {:error, _} = LoopbackWorkflow.submit(workflow)
     end
 
     test "cannot revise from draft (wrong source state)" do
-      {:ok, workflow} = LoopbackWorkflow.start(%{title: "test"})
+      {:ok, workflow} = LoopbackWorkflow.create(%{title: "test"})
       assert workflow.state == :draft
       assert {:error, _} = LoopbackWorkflow.revise(workflow)
     end

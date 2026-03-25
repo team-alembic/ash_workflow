@@ -54,7 +54,15 @@ defmodule AshWorkflowTest.FullPipeline do
     step :escalated, terminal: true
   end
 
+  code_interface do
+    define :create
+  end
+
   actions do
+    create :create do
+      accept [:title, :notes]
+    end
+
     update :run_intake do
       accept []
     end

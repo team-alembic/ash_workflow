@@ -53,6 +53,16 @@ defmodule AshWorkflowTest.SharedConditionalWorkflow do
     step :done, terminal: true
   end
 
+  code_interface do
+    define :create
+  end
+
+  actions do
+    create :create do
+      accept [:title, :path_type]
+    end
+  end
+
   attributes do
     uuid_v7_primary_key :id
     attribute :title, :string, allow_nil?: false

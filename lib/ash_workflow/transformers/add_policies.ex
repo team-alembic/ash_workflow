@@ -25,9 +25,10 @@ defmodule AshWorkflow.Transformers.AddPolicies do
            authorize_if {Ash.Policy.Check.ActorAttributeEquals, ...}
          end
 
-  3. **Default allow** — a catch-all `authorize_if always()` scoped to all
-     workflow-generated action names, so actions like `:start` and automatic
-     steps aren't blocked by other policies on the resource.
+  3. **Default allow** — a catch-all `authorize_if always()` scoped to workflow
+     transition actions, automatic step actions, timeout actions, read actions,
+     and user-defined create actions, so workflow initialization and background
+     execution aren't blocked by other policies on the resource.
 
   Skips all policy generation if `Authorizer` is not configured
   on the resource.
@@ -45,7 +46,7 @@ defmodule AshWorkflow.Transformers.AddPolicies do
       steps = Transformer.get_entities(dsl, [:workflow])
       existing_policies = Transformer.get_entities(dsl, [:policies])
 
-      workflow_action_names = collect_workflow_action_names(steps)
+      workflow_action_names = collect_workflow_action_names(dsl, steps)
       oban_action_names = collect_oban_action_names(steps)
 
       dsl =
@@ -70,8 +71,14 @@ defmodule AshWorkflow.Transformers.AddPolicies do
     end
   end
 
-  defp collect_workflow_action_names(steps) do
-    start_actions = [:start, :read]
+  defp collect_workflow_action_names(dsl, steps) do
+    create_actions =
+      dsl
+      |> Transformer.get_entities([:actions])
+      |> Enum.filter(&(&1.type == :create))
+      |> Enum.map(& &1.name)
+
+    read_actions = [:read]
 
     transition_actions =
       steps
@@ -96,7 +103,9 @@ defmodule AshWorkflow.Transformers.AddPolicies do
         end
       end)
 
-    Enum.uniq(start_actions ++ transition_actions ++ automatic_actions ++ timeout_actions)
+    Enum.uniq(
+      create_actions ++ read_actions ++ transition_actions ++ automatic_actions ++ timeout_actions
+    )
   end
 
   defp collect_oban_action_names(steps) do

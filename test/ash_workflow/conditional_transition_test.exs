@@ -168,7 +168,7 @@ defmodule AshWorkflow.ConditionalTransitionTest do
   describe "runtime conditional routing" do
     test "routes to first matching condition (full path)" do
       {:ok, workflow} =
-        AshWorkflowTest.ConditionalWorkflow.start(%{title: "test", path_type: :full})
+        AshWorkflowTest.ConditionalWorkflow.create(%{title: "test", path_type: :full})
 
       assert workflow.state == :compliance
 
@@ -180,7 +180,7 @@ defmodule AshWorkflow.ConditionalTransitionTest do
 
     test "routes to second matching condition (abbreviated path)" do
       {:ok, workflow} =
-        AshWorkflowTest.ConditionalWorkflow.start(%{title: "test", path_type: :abbreviated})
+        AshWorkflowTest.ConditionalWorkflow.create(%{title: "test", path_type: :abbreviated})
 
       assert workflow.state == :compliance
 
@@ -192,7 +192,7 @@ defmodule AshWorkflow.ConditionalTransitionTest do
 
     test "static transition still works alongside conditional" do
       {:ok, workflow} =
-        AshWorkflowTest.ConditionalWorkflow.start(%{title: "test", path_type: :full})
+        AshWorkflowTest.ConditionalWorkflow.create(%{title: "test", path_type: :full})
 
       {:ok, workflow} =
         Ash.update(workflow, action: :reject_at_compliance)

@@ -5,7 +5,7 @@ defmodule AshWorkflowTest.E2E.SharedConditionalWorkflowTest do
 
   describe "shared :advance with conditional routing at one step" do
     test "full path: screening → review → compliance → training → done" do
-      {:ok, wf} = SharedConditionalWorkflow.start(%{title: "test", path_type: :full})
+      {:ok, wf} = SharedConditionalWorkflow.create(%{title: "test", path_type: :full})
       assert wf.state == :screening
 
       {:ok, wf} = SharedConditionalWorkflow.advance(wf)
@@ -22,7 +22,7 @@ defmodule AshWorkflowTest.E2E.SharedConditionalWorkflowTest do
     end
 
     test "abbreviated path: screening → review → compliance → fast_track → done" do
-      {:ok, wf} = SharedConditionalWorkflow.start(%{title: "test", path_type: :abbreviated})
+      {:ok, wf} = SharedConditionalWorkflow.create(%{title: "test", path_type: :abbreviated})
       assert wf.state == :screening
 
       {:ok, wf} = SharedConditionalWorkflow.advance(wf)
@@ -42,7 +42,7 @@ defmodule AshWorkflowTest.E2E.SharedConditionalWorkflowTest do
       # This is the exact regression: an agency/full path_type candidate
       # advances through training, and the compliance conditional route
       # (path_type == :full → :training) must NOT match from the training step.
-      {:ok, wf} = SharedConditionalWorkflow.start(%{title: "test", path_type: :full})
+      {:ok, wf} = SharedConditionalWorkflow.create(%{title: "test", path_type: :full})
 
       {:ok, wf} = SharedConditionalWorkflow.advance(wf)
       {:ok, wf} = SharedConditionalWorkflow.advance(wf)
@@ -55,7 +55,7 @@ defmodule AshWorkflowTest.E2E.SharedConditionalWorkflowTest do
     end
 
     test "conditional route from compliance does not match when in fast_track" do
-      {:ok, wf} = SharedConditionalWorkflow.start(%{title: "test", path_type: :abbreviated})
+      {:ok, wf} = SharedConditionalWorkflow.create(%{title: "test", path_type: :abbreviated})
 
       {:ok, wf} = SharedConditionalWorkflow.advance(wf)
       {:ok, wf} = SharedConditionalWorkflow.advance(wf)
