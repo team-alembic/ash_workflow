@@ -287,7 +287,7 @@ defmodule AshWorkflow.Transformers.AddActions do
         existing_action ->
           timestamp_change =
             Transformer.build_entity!(ResourceDsl, [:actions, :update], :change,
-              change: ChangeBuiltins.set_attribute(timeout.field, &DateTime.utc_now/0)
+              change: ChangeBuiltins.set_attribute(:state_entered_at, &DateTime.utc_now/0)
             )
 
           updated_action = %{

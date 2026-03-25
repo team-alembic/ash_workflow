@@ -33,6 +33,49 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutFieldsTest do
       end
     end
 
+    test "raises when repeat: true is used with a custom field" do
+      assert_raise Spark.Error.DslError, ~r/repeat: true with field:/, fn ->
+        defmodule RepeatWithFieldWorkflow do
+          use Ash.Resource,
+            domain: AshWorkflowTest.Domain,
+            data_layer: Ash.DataLayer.Ets,
+            extensions: [AshWorkflow]
+
+          workflow do
+            step :active do
+              manual true
+              transition :deactivate, to: :inactive
+
+              timeout :bad_repeat,
+                after: {3, :days},
+                field: :last_session_date,
+                action: :send_reminder,
+                repeat: true
+            end
+
+            step :inactive, terminal: true
+          end
+
+          actions do
+            update :send_reminder do
+              accept []
+            end
+          end
+
+          attributes do
+            uuid_v7_primary_key :id
+            attribute :title, :string, allow_nil?: false, public?: true
+            attribute :last_session_date, :utc_datetime_usec, public?: true
+          end
+        end
+      end
+    end
+
+    test "accepts repeat: true with default state_entered_at field" do
+      assert AshWorkflowTest.RepeatingTimeoutWorkflow.__info__(:module) ==
+               AshWorkflowTest.RepeatingTimeoutWorkflow
+    end
+
     test "accepts field referencing an existing attribute" do
       assert AshWorkflowTest.FieldTimeoutWorkflow.__info__(:module) ==
                AshWorkflowTest.FieldTimeoutWorkflow

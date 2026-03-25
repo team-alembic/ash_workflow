@@ -4,13 +4,13 @@ Timeouts let you react to a workflow being stuck in a state. They're useful for 
 
 ## How timeouts work
 
-Each timeout becomes an Oban trigger that polls on a cron schedule (default: every minute). The trigger's `where` clause checks both the state and the `state_entered_at` timestamp:
+Each timeout becomes an Oban trigger that polls on a cron schedule (default: every minute). The trigger's `where` clause checks both the state and a datetime field (default: `state_entered_at`):
 
 ```
-where: state == :step_name and state_entered_at <= ago(duration)
+where: state == :step_name and <field> <= ago(duration)
 ```
 
-Once the condition is met, the trigger fires the timeout's action. When the workflow leaves the state (via a manual transition or another timeout), the `where` clause stops matching and the trigger naturally stops firing.
+Once the condition is met, the trigger fires the timeout's action. When the workflow leaves the state (via a manual transition or another timeout), the `where` clause stops matching and the trigger naturally stops firing. The `field` can be overridden per timeout — see [Data-driven deadlines](#data-driven-deadlines-with-field) below.
 
 ## Action timeouts
 
@@ -73,6 +73,35 @@ end
 When a repeating timeout fires, the extension resets `state_entered_at` to the current time. This restarts the duration window — so `after: {3, :days}` means the action fires every 3 days, not every scheduler cycle.
 
 Non-repeating timeouts (the default) use Oban's `trigger_once?` to prevent re-firing after the action completes. Transition timeouts (with `transition_to`) don't need either mechanism since the state change naturally prevents re-firing.
+
+## Data-driven deadlines with `field`
+
+By default, timeouts measure duration against `state_entered_at` — when the workflow entered its current state. The `field` option lets you measure against any datetime attribute or calculation instead:
+
+```elixir
+step :active do
+  manual true
+  transition :deactivate, to: :inactive
+
+  # Fires 3 months after the worker's last session, not after entering :active
+  timeout :inactivity, after: {3, :days},
+    field: :last_session_date,
+    transition_to: :inactive_review
+end
+```
+
+The generated Oban trigger checks `last_session_date <= ago(3, :day)` instead of `state_entered_at <= ago(3, :day)`. The field must be an existing attribute or calculation on the resource — a compile-time error is raised if it doesn't exist.
+
+Use cases include:
+- **Worker inactivity**: `field: :last_session_date` — timeout based on actual activity
+- **Document expiry**: `field: :earliest_cert_expiry` — notify before certs expire
+- **SLA tracking**: `field: :committed_by_date` — alert when a deadline approaches
+
+> #### `repeat: true` is not supported with custom fields {: .warning}
+>
+> Repeating timeouts reset `state_entered_at` to restart the duration window. With a custom field, this reset would need to update that field to "now" — but that's semantically wrong. If `field: :last_session_date`, resetting it to "now" would falsely claim a session occurred. The extension rejects this combination at compile time.
+>
+> If you need periodic checks against a custom field, use a non-repeating timeout. The Oban trigger will keep matching on every poll cycle as long as the condition holds.
 
 ## Duration units
 
