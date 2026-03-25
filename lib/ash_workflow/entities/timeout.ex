@@ -1,7 +1,7 @@
 defmodule AshWorkflow.Entities.Timeout do
   @moduledoc "Defines a workflow timeout entity with its configuration schema."
 
-  defstruct [:name, :after, :action, :transition_to, :check_interval, repeat: false]
+  defstruct [:name, :after, :action, :transition_to, :check_interval, :field, repeat: false]
 
   @schema [
     name: [
@@ -13,6 +13,12 @@ defmodule AshWorkflow.Entities.Timeout do
       type: {:custom, __MODULE__, :validate_duration, []},
       required: true,
       doc: "Duration tuple, e.g. `{3, :days}` or `{2, :hours}`."
+    ],
+    field: [
+      type: :atom,
+      default: :state_entered_at,
+      doc:
+        "The datetime attribute or calculation to measure `after` against. Defaults to `:state_entered_at`."
     ],
     action: [
       type: :atom,

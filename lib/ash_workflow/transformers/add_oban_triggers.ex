@@ -29,6 +29,7 @@ defmodule AshWorkflow.Transformers.AddObanTriggers do
   use Spark.Dsl.Transformer
 
   alias Spark.Dsl.Transformer
+  import Ash.Expr, only: [ref: 1]
   require Ash.Expr
 
   def transform(dsl) do
@@ -87,6 +88,7 @@ defmodule AshWorkflow.Transformers.AddObanTriggers do
     timeout_name = timeout.name
     {duration_value, duration_unit} = timeout.after
     ago_unit = singular_unit(duration_unit)
+    field = timeout.field
 
     action =
       if timeout.transition_to do
@@ -110,7 +112,7 @@ defmodule AshWorkflow.Transformers.AddObanTriggers do
         action: action,
         where:
           Ash.Expr.expr(
-            state == ^step_name and state_entered_at <= ago(^duration_value, ^ago_unit)
+            state == ^step_name and ^ref(field) <= ago(^duration_value, ^ago_unit)
           ),
         queue: queue,
         trigger_once?: trigger_once?,
