@@ -1,40 +1,49 @@
 defmodule AshWorkflow.Transformers.AddObanTriggersTest do
   use ExUnit.Case
 
-  describe "automatic step triggers" do
-    test "generates trigger for automatic step" do
-      triggers = AshOban.Info.oban_triggers(AshWorkflowTest.Workflow)
+  defp trigger(resource, name) do
+    resource
+    |> AshOban.Info.oban_triggers()
+    |> Enum.find(&(&1.name == name))
+  end
 
-      assert Enum.any?(triggers, fn t ->
-               t.name == :process_application and t.action == :process_application
-             end)
+  defp matching_records(resource, trigger) do
+    resource
+    |> Ash.Query.do_filter(trigger.where)
+    |> Ash.read!()
+    |> Map.get(:results)
+  end
+
+  describe "automatic step triggers" do
+    test "matches records in the step's state" do
+      {:ok, workflow} =
+        AshWorkflowTest.LinearWorkflow.start(%{title: "test"})
+
+      trigger = trigger(AshWorkflowTest.LinearWorkflow, :process)
+      matches = matching_records(AshWorkflowTest.LinearWorkflow, trigger)
+
+      assert workflow.id in Enum.map(matches, & &1.id)
+    end
+
+    test "does not match records that have left the step's state" do
+      {:ok, workflow} = AshWorkflowTest.LinearWorkflow.start(%{title: "test"})
+      {:ok, workflow} = Ash.update(workflow, action: :do_processing)
+      assert workflow.state == :complete
+
+      trigger = trigger(AshWorkflowTest.LinearWorkflow, :process)
+      matches = matching_records(AshWorkflowTest.LinearWorkflow, trigger)
+
+      refute workflow.id in Enum.map(matches, & &1.id)
     end
 
     test "trigger has explicit worker and scheduler module names" do
-      triggers = AshOban.Info.oban_triggers(AshWorkflowTest.Workflow)
-      trigger = Enum.find(triggers, &(&1.name == :process_application))
+      trigger = trigger(AshWorkflowTest.Workflow, :process_application)
 
       assert trigger.worker_module_name ==
                AshWorkflowTest.Workflow.AshWorkflow.Workers.ProcessApplication
 
       assert trigger.scheduler_module_name ==
                AshWorkflowTest.Workflow.AshWorkflow.Schedulers.ProcessApplication
-    end
-
-    test "linear workflow generates trigger for its automatic step" do
-      triggers = AshOban.Info.oban_triggers(AshWorkflowTest.LinearWorkflow)
-
-      assert Enum.any?(triggers, fn t ->
-               t.name == :process and t.action == :do_processing
-             end)
-    end
-
-    test "full pipeline generates triggers for both automatic steps" do
-      triggers = AshOban.Info.oban_triggers(AshWorkflowTest.FullPipeline)
-      trigger_names = Enum.map(triggers, & &1.name) |> MapSet.new()
-
-      assert :intake in trigger_names
-      assert :process in trigger_names
     end
   end
 
@@ -47,21 +56,13 @@ defmodule AshWorkflow.Transformers.AddObanTriggersTest do
 
   describe "timeout repeat behavior" do
     test "non-repeating action timeout generates trigger_once? true" do
-      triggers = AshOban.Info.oban_triggers(AshWorkflowTest.TimeoutWorkflow)
-
-      reminder_trigger =
-        Enum.find(triggers, &(&1.name == :__timeout_trigger_reminder))
-
-      assert reminder_trigger.trigger_once? == true
+      trigger = trigger(AshWorkflowTest.TimeoutWorkflow, :__timeout_trigger_reminder)
+      assert trigger.trigger_once? == true
     end
 
     test "repeating action timeout does not set trigger_once?" do
-      triggers = AshOban.Info.oban_triggers(AshWorkflowTest.RepeatingTimeoutWorkflow)
-
-      follow_up_trigger =
-        Enum.find(triggers, &(&1.name == :__timeout_trigger_follow_up))
-
-      assert follow_up_trigger.trigger_once? == false
+      trigger = trigger(AshWorkflowTest.RepeatingTimeoutWorkflow, :__timeout_trigger_follow_up)
+      assert trigger.trigger_once? == false
     end
 
     test "repeating action timeout injects state_entered_at reset into action" do
@@ -78,36 +79,25 @@ defmodule AshWorkflow.Transformers.AddObanTriggersTest do
     end
 
     test "transition timeouts are not affected by repeat flag" do
-      triggers = AshOban.Info.oban_triggers(AshWorkflowTest.TimeoutWorkflow)
-
-      escalation_trigger =
-        Enum.find(triggers, &(&1.name == :__timeout_trigger_escalation))
-
-      # Transition timeouts naturally fire once since the state changes
-      assert escalation_trigger.trigger_once? == false
+      trigger = trigger(AshWorkflowTest.TimeoutWorkflow, :__timeout_trigger_escalation)
+      assert trigger.trigger_once? == false
     end
   end
 
   describe "configurable queue" do
     test "default queue is :workflow" do
-      triggers = AshOban.Info.oban_triggers(AshWorkflowTest.LinearWorkflow)
-      trigger = Enum.find(triggers, &(&1.name == :process))
-
+      trigger = trigger(AshWorkflowTest.LinearWorkflow, :process)
       assert trigger.queue == :workflow
     end
 
     test "custom queue is applied to step triggers" do
-      triggers = AshOban.Info.oban_triggers(AshWorkflowTest.CustomQueueWorkflow)
-      step_trigger = Enum.find(triggers, &(&1.name == :process))
-
-      assert step_trigger.queue == :hiring_pipeline
+      trigger = trigger(AshWorkflowTest.CustomQueueWorkflow, :process)
+      assert trigger.queue == :hiring_pipeline
     end
 
     test "custom queue is applied to timeout triggers" do
-      triggers = AshOban.Info.oban_triggers(AshWorkflowTest.CustomQueueWorkflow)
-      timeout_trigger = Enum.find(triggers, &(&1.name == :__timeout_trigger_reminder))
-
-      assert timeout_trigger.queue == :hiring_pipeline
+      trigger = trigger(AshWorkflowTest.CustomQueueWorkflow, :__timeout_trigger_reminder)
+      assert trigger.queue == :hiring_pipeline
     end
   end
 
