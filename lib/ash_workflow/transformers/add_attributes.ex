@@ -6,7 +6,7 @@ defmodule AshWorkflow.Transformers.AddAttributes do
   timeout triggers to calculate whether a deadline has passed. The attribute is:
 
   - Type: `:utc_datetime_usec`
-  - `allow_nil?: true` (nil before the workflow starts)
+  - `allow_nil?: false` with a default of `DateTime.utc_now/0`
   - `public?: true` and `writable?: true`
 
   Does NOT add the `:state` attribute — that is handled by
@@ -24,7 +24,8 @@ defmodule AshWorkflow.Transformers.AddAttributes do
     case ResourceInfo.attribute(dsl, :state_entered_at) do
       nil ->
         Builder.add_attribute(dsl, :state_entered_at, :utc_datetime_usec,
-          allow_nil?: true,
+          allow_nil?: false,
+          default: &DateTime.utc_now/0,
           writable?: true,
           public?: true
         )

@@ -11,7 +11,7 @@ defmodule AshWorkflow.InitialStepTest do
     end
 
     test "workflow starts in the initial step" do
-      {:ok, record} = AshWorkflowTest.InitialFlagWorkflow.start(%{title: "test"})
+      {:ok, record} = AshWorkflowTest.InitialFlagWorkflow.create(%{title: "test"})
       assert record.state == :review
     end
   end

@@ -44,7 +44,7 @@ policy {MyApp.Checks.BelongsToTeam, []}
 
 ### Default allow-all policy
 
-When any step has a `policy` declaration, the extension generates a default "allow all" policy at the end of the policy list. This ensures actions without explicit policies (like `:start` and automatic step actions) aren't blocked.
+When any step has a `policy` declaration, the extension generates a default "allow all" policy at the end of the policy list. This ensures workflow actions without explicit policies, like create actions and automatic step actions, aren't blocked.
 
 ## Resource-level policies
 

@@ -4,10 +4,6 @@ defmodule AshWorkflow.Transformers.AddActions do
 
   Adds or modifies the following actions on the resource:
 
-  - **`:start` create action** — creates a new workflow instance. Includes a change
-    that sets `state_entered_at` to the current time. The initial state is set by
-    ash_state_machine's `default_initial_state`.
-
   - **Transition actions** (for manual steps) — one `:update` action per declared
     `transition` entity. Each includes:
     - `BuiltinChanges.transition_state(target)` to move the state
@@ -47,7 +43,6 @@ defmodule AshWorkflow.Transformers.AddActions do
     dsl =
       dsl
       |> add_read_action()
-      |> add_start_action(steps)
       |> add_transition_actions(steps)
       |> inject_automatic_step_changes(steps)
       |> add_timeout_actions(steps)
@@ -71,30 +66,6 @@ defmodule AshWorkflow.Transformers.AddActions do
 
       Transformer.add_entity(dsl, [:actions], read_action)
     end
-  end
-
-  defp add_start_action(dsl, _steps) do
-    # Accept all writable attributes so callers can pass resource fields
-    accepted_attrs =
-      dsl
-      |> ResourceInfo.attributes()
-      |> Enum.filter(& &1.writable?)
-      |> Enum.reject(& &1.primary_key?)
-      |> Enum.map(& &1.name)
-      |> Enum.reject(&(&1 in [:state, :state_entered_at]))
-
-    start_action =
-      Transformer.build_entity!(ResourceDsl, [:actions], :create,
-        name: :start,
-        accept: accepted_attrs,
-        changes: [
-          Transformer.build_entity!(ResourceDsl, [:actions, :create], :change,
-            change: ChangeBuiltins.set_attribute(:state_entered_at, &DateTime.utc_now/0)
-          )
-        ]
-      )
-
-    Transformer.add_entity(dsl, [:actions], start_action)
   end
 
   defp add_transition_actions(dsl, steps) do

@@ -24,7 +24,15 @@ defmodule AshWorkflowTest.RepeatingTimeoutWorkflow do
     step :resolved, terminal: true
   end
 
+  code_interface do
+    define :create
+  end
+
   actions do
+    create :create do
+      accept [:title]
+    end
+
     update :send_follow_up do
       accept []
     end

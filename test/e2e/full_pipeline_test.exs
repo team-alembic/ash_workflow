@@ -60,7 +60,7 @@ defmodule AshWorkflowTest.E2E.FullPipelineTest do
       reviewer = %{role: :reviewer}
       approver = %{role: :approver}
 
-      {:ok, workflow} = FullPipeline.start(%{title: "test"})
+      {:ok, workflow} = FullPipeline.create(%{title: "test"})
       assert workflow.state == :intake
 
       # Simulate Oban running the automatic intake step
@@ -81,7 +81,7 @@ defmodule AshWorkflowTest.E2E.FullPipelineTest do
 
   describe "rejection at any manual step" do
     test "reject at review" do
-      {:ok, workflow} = FullPipeline.start(%{title: "test"})
+      {:ok, workflow} = FullPipeline.create(%{title: "test"})
       # Simulate Oban running the automatic intake step
       {:ok, workflow} = Ash.update(workflow, action: :run_intake)
       {:ok, workflow} = FullPipeline.reject_at_review(workflow, actor: %{role: :reviewer})
@@ -93,7 +93,7 @@ defmodule AshWorkflowTest.E2E.FullPipelineTest do
     test "can hold and reactivate from review" do
       reviewer = %{role: :reviewer}
 
-      {:ok, workflow} = FullPipeline.start(%{title: "test"})
+      {:ok, workflow} = FullPipeline.create(%{title: "test"})
       {:ok, workflow} = Ash.update(workflow, action: :run_intake)
       {:ok, workflow} = FullPipeline.hold(workflow, actor: reviewer)
       assert workflow.state == :on_hold
@@ -105,7 +105,7 @@ defmodule AshWorkflowTest.E2E.FullPipelineTest do
 
   describe "policy enforcement" do
     test "only reviewers can advance from review" do
-      {:ok, workflow} = FullPipeline.start(%{title: "test"})
+      {:ok, workflow} = FullPipeline.create(%{title: "test"})
       {:ok, workflow} = Ash.update(workflow, action: :run_intake)
       non_reviewer = %{role: :approver}
 
@@ -114,7 +114,7 @@ defmodule AshWorkflowTest.E2E.FullPipelineTest do
     end
 
     test "only approvers can approve at final_review" do
-      {:ok, workflow} = FullPipeline.start(%{title: "test"})
+      {:ok, workflow} = FullPipeline.create(%{title: "test"})
       {:ok, workflow} = Ash.update(workflow, action: :run_intake)
       {:ok, workflow} = FullPipeline.advance(workflow, actor: %{role: :reviewer})
       {:ok, workflow} = Ash.update(workflow, action: :run_processing)

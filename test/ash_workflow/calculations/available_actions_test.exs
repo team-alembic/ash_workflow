@@ -3,7 +3,7 @@ defmodule AshWorkflow.Calculations.AvailableActionsTest do
 
   describe "available_actions calculation" do
     test "returns transition names for a record in a manual step" do
-      {:ok, record} = AshWorkflowTest.ApprovalWorkflow.start(%{title: "test"})
+      {:ok, record} = AshWorkflowTest.ApprovalWorkflow.create(%{title: "test"})
       assert record.state == :review
 
       record = Ash.load!(record, :available_actions)
@@ -11,7 +11,7 @@ defmodule AshWorkflow.Calculations.AvailableActionsTest do
     end
 
     test "returns empty list for a record in a terminal step" do
-      {:ok, record} = AshWorkflowTest.ApprovalWorkflow.start(%{title: "test"})
+      {:ok, record} = AshWorkflowTest.ApprovalWorkflow.create(%{title: "test"})
       {:ok, record} = AshWorkflowTest.ApprovalWorkflow.approve(record)
       assert record.state == :approved
 
@@ -20,7 +20,7 @@ defmodule AshWorkflow.Calculations.AvailableActionsTest do
     end
 
     test "returns empty list for a record in an automatic step" do
-      {:ok, record} = AshWorkflowTest.LinearWorkflow.start(%{title: "test"})
+      {:ok, record} = AshWorkflowTest.LinearWorkflow.create(%{title: "test"})
       assert record.state == :process
 
       record = Ash.load!(record, :available_actions)
@@ -30,7 +30,7 @@ defmodule AshWorkflow.Calculations.AvailableActionsTest do
 
   describe "authorization-aware filtering" do
     test "returns all actions when no actor is provided" do
-      {:ok, record} = AshWorkflowTest.PolicyWorkflow.start(%{title: "test"})
+      {:ok, record} = AshWorkflowTest.PolicyWorkflow.create(%{title: "test"})
       assert record.state == :manager_review
 
       record = Ash.load!(record, :available_actions)
@@ -39,7 +39,7 @@ defmodule AshWorkflow.Calculations.AvailableActionsTest do
 
     test "returns permitted actions for authorized actor" do
       {:ok, record} =
-        AshWorkflowTest.PolicyWorkflow.start(%{title: "test"}, actor: %{role: :manager})
+        AshWorkflowTest.PolicyWorkflow.create(%{title: "test"}, actor: %{role: :manager})
 
       record = Ash.load!(record, :available_actions, actor: %{role: :manager})
       assert record.available_actions == [:approve, :reject]
@@ -47,7 +47,7 @@ defmodule AshWorkflow.Calculations.AvailableActionsTest do
 
     test "returns empty list for unauthorized actor" do
       {:ok, record} =
-        AshWorkflowTest.PolicyWorkflow.start(%{title: "test"}, actor: %{role: :manager})
+        AshWorkflowTest.PolicyWorkflow.create(%{title: "test"}, actor: %{role: :manager})
 
       record = Ash.load!(record, :available_actions, actor: %{role: :viewer})
       assert record.available_actions == []

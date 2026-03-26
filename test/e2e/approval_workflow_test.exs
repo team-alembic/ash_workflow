@@ -41,24 +41,24 @@ defmodule AshWorkflowTest.E2E.ApprovalWorkflowTest do
 
   describe "manual transition flow" do
     test "starting places workflow in the first manual step" do
-      {:ok, workflow} = ApprovalWorkflow.start(%{title: "test"})
+      {:ok, workflow} = ApprovalWorkflow.create(%{title: "test"})
       assert workflow.state == :review
     end
 
     test "approve transitions to approved" do
-      {:ok, workflow} = ApprovalWorkflow.start(%{title: "test"})
+      {:ok, workflow} = ApprovalWorkflow.create(%{title: "test"})
       {:ok, workflow} = ApprovalWorkflow.approve(workflow)
       assert workflow.state == :approved
     end
 
     test "reject transitions to rejected" do
-      {:ok, workflow} = ApprovalWorkflow.start(%{title: "test"})
+      {:ok, workflow} = ApprovalWorkflow.create(%{title: "test"})
       {:ok, workflow} = ApprovalWorkflow.reject(workflow)
       assert workflow.state == :rejected
     end
 
     test "cannot transition from a terminal state" do
-      {:ok, workflow} = ApprovalWorkflow.start(%{title: "test"})
+      {:ok, workflow} = ApprovalWorkflow.create(%{title: "test"})
       {:ok, workflow} = ApprovalWorkflow.approve(workflow)
       assert workflow.state == :approved
       assert {:error, _} = ApprovalWorkflow.reject(workflow)

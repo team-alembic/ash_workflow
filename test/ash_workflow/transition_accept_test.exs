@@ -3,7 +3,7 @@ defmodule AshWorkflow.TransitionAcceptTest do
 
   describe "transition accept" do
     test "generated action accepts specified attributes" do
-      {:ok, record} = AshWorkflowTest.AcceptWorkflow.start(%{title: "test"})
+      {:ok, record} = AshWorkflowTest.AcceptWorkflow.create(%{title: "test"})
 
       {:ok, record} = AshWorkflowTest.AcceptWorkflow.reject(record, %{reason: "Not qualified"})
       assert record.state == :rejected
@@ -11,7 +11,7 @@ defmodule AshWorkflow.TransitionAcceptTest do
     end
 
     test "transition without accept still works" do
-      {:ok, record} = AshWorkflowTest.AcceptWorkflow.start(%{title: "test"})
+      {:ok, record} = AshWorkflowTest.AcceptWorkflow.create(%{title: "test"})
 
       {:ok, record} = AshWorkflowTest.AcceptWorkflow.approve(record)
       assert record.state == :approved

@@ -25,7 +25,15 @@ defmodule AshWorkflowTest.CustomActionWorkflow do
     step :rejected, terminal: true
   end
 
+  code_interface do
+    define :create
+  end
+
   actions do
+    create :create do
+      accept [:title]
+    end
+
     update :approve do
       accept []
       change set_attribute(:approved_at, &DateTime.utc_now/0)

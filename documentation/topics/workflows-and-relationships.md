@@ -107,15 +107,15 @@ end
 
 ### Starting the workflow
 
-The generated `:start` action accepts all writable attributes, including relationship attributes marked with `attribute_writable? true`. So starting a workflow for an existing candidate is:
+Your create action can accept writable relationship attributes, including relationship attributes marked with `attribute_writable? true`. So if your workflow uses a create action named `:create`, starting a workflow for an existing candidate is:
 
 ```elixir
-{:ok, workflow} = MyApp.OnboardingWorkflow.start(%{
+{:ok, workflow} = MyApp.OnboardingWorkflow.create(%{
   worker_candidate_id: candidate.id
 })
 ```
 
-If you want to create the candidate and workflow together, use a custom action or `manage_relationship` on the start action.
+If you want to create the candidate and workflow together, use a custom action or `manage_relationship` on your create action.
 
 ### Querying workflows for a resource
 

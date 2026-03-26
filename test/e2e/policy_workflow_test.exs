@@ -40,25 +40,25 @@ defmodule AshWorkflowTest.E2E.PolicyWorkflowTest do
 
   describe "policy enforcement" do
     test "manager can approve" do
-      {:ok, workflow} = PolicyWorkflow.start(%{title: "test"})
+      {:ok, workflow} = PolicyWorkflow.create(%{title: "test"})
       actor = %{role: :manager}
       assert {:ok, _} = PolicyWorkflow.approve(workflow, actor: actor)
     end
 
     test "non-manager cannot approve" do
-      {:ok, workflow} = PolicyWorkflow.start(%{title: "test"})
+      {:ok, workflow} = PolicyWorkflow.create(%{title: "test"})
       actor = %{role: :viewer}
       assert {:error, %Ash.Error.Forbidden{}} = PolicyWorkflow.approve(workflow, actor: actor)
     end
 
     test "manager can reject" do
-      {:ok, workflow} = PolicyWorkflow.start(%{title: "test"})
+      {:ok, workflow} = PolicyWorkflow.create(%{title: "test"})
       actor = %{role: :manager}
       assert {:ok, _} = PolicyWorkflow.reject(workflow, actor: actor)
     end
 
     test "non-manager cannot reject" do
-      {:ok, workflow} = PolicyWorkflow.start(%{title: "test"})
+      {:ok, workflow} = PolicyWorkflow.create(%{title: "test"})
       actor = %{role: :viewer}
       assert {:error, %Ash.Error.Forbidden{}} = PolicyWorkflow.reject(workflow, actor: actor)
     end

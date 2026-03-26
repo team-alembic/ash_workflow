@@ -25,7 +25,15 @@ defmodule AshWorkflowTest.CustomQueueWorkflow do
     step :done, terminal: true
   end
 
+  code_interface do
+    define :create
+  end
+
   actions do
+    create :create do
+      accept [:title]
+    end
+
     update :do_processing do
       accept []
     end
