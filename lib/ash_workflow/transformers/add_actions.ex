@@ -32,6 +32,7 @@ defmodule AshWorkflow.Transformers.AddActions do
   alias Ash.Resource.Info, as: ResourceInfo
   alias AshStateMachine.BuiltinChanges
   alias AshWorkflow.Changes.ConditionalTransition
+  alias AshWorkflow.Changes.EmitTransitionTelemetry
   alias AshWorkflow.Entities.Route
   alias AshWorkflow.Entities.Transition
   alias Spark.Dsl.Transformer
@@ -87,6 +88,21 @@ defmodule AshWorkflow.Transformers.AddActions do
     routes = build_routes_for_transition(step_transitions)
     is_conditional = length(routes) > 1 or has_explicit_routes?(step_transitions)
 
+    telemetry_change =
+      if is_conditional do
+        Transformer.build_entity!(ResourceDsl, [:actions, :update], :change,
+          change:
+            {EmitTransitionTelemetry, transition_name: name, trigger: :manual, to_state: nil}
+        )
+      else
+        [route] = routes
+
+        Transformer.build_entity!(ResourceDsl, [:actions, :update], :change,
+          change:
+            {EmitTransitionTelemetry, transition_name: name, trigger: :manual, to_state: route.to}
+        )
+      end
+
     transition_changes =
       if is_conditional do
         [
@@ -109,7 +125,7 @@ defmodule AshWorkflow.Transformers.AddActions do
         change: ChangeBuiltins.set_attribute(:state_entered_at, &DateTime.utc_now/0)
       )
 
-    changes = transition_changes ++ [timestamp_change]
+    changes = [telemetry_change] ++ transition_changes ++ [timestamp_change]
 
     accepted =
       step_transitions
@@ -186,6 +202,13 @@ defmodule AshWorkflow.Transformers.AddActions do
               "Automatic step :#{step.name} references action :#{step.action}, but no such action is defined on the resource."
 
         existing_action ->
+          telemetry_change =
+            Transformer.build_entity!(ResourceDsl, [:actions, :update], :change,
+              change:
+                {EmitTransitionTelemetry,
+                 transition_name: step.name, trigger: :automatic, to_state: step.on_success}
+            )
+
           transition_change =
             Transformer.build_entity!(ResourceDsl, [:actions, :update], :change,
               change: BuiltinChanges.transition_state(step.on_success)
@@ -198,7 +221,8 @@ defmodule AshWorkflow.Transformers.AddActions do
 
           updated_action = %{
             existing_action
-            | changes: existing_action.changes ++ [transition_change, timestamp_change]
+            | changes:
+                existing_action.changes ++ [telemetry_change, transition_change, timestamp_change]
           }
 
           dsl
@@ -223,6 +247,13 @@ defmodule AshWorkflow.Transformers.AddActions do
           Transformer.build_entity!(ResourceDsl, [:actions], :update,
             name: action_name,
             changes: [
+              Transformer.build_entity!(ResourceDsl, [:actions, :update], :change,
+                change:
+                  {EmitTransitionTelemetry,
+                   transition_name: timeout.name,
+                   trigger: :timeout,
+                   to_state: timeout.transition_to}
+              ),
               Transformer.build_entity!(ResourceDsl, [:actions, :update], :change,
                 change: BuiltinChanges.transition_state(timeout.transition_to)
               ),
@@ -256,6 +287,13 @@ defmodule AshWorkflow.Transformers.AddActions do
               "Repeating timeout :#{timeout.name} on step :#{step.name} references action :#{timeout.action}, but no such action is defined on the resource."
 
         existing_action ->
+          telemetry_change =
+            Transformer.build_entity!(ResourceDsl, [:actions, :update], :change,
+              change:
+                {EmitTransitionTelemetry,
+                 transition_name: timeout.name, trigger: :timeout, to_state: nil}
+            )
+
           timestamp_change =
             Transformer.build_entity!(ResourceDsl, [:actions, :update], :change,
               change: ChangeBuiltins.set_attribute(:state_entered_at, &DateTime.utc_now/0)
@@ -263,7 +301,7 @@ defmodule AshWorkflow.Transformers.AddActions do
 
           updated_action = %{
             existing_action
-            | changes: existing_action.changes ++ [timestamp_change]
+            | changes: existing_action.changes ++ [telemetry_change, timestamp_change]
           }
 
           dsl

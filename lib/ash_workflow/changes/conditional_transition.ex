@@ -18,18 +18,29 @@ defmodule AshWorkflow.Changes.ConditionalTransition do
     resource = changeset.resource
 
     Ash.Changeset.before_action(changeset, fn changeset ->
-      target = find_matching_target(routes, changeset.data, resource)
+      target = find_matching_target(routes, changeset.data, resource, transition_name)
       apply_route_target(changeset, target, transition_name, routes)
     end)
   end
 
-  defp find_matching_target(routes, record, resource) do
-    Enum.find_value(routes, fn route ->
-      case Ash.Expr.eval(route.when, record: record, resource: resource) do
-        {:ok, true} -> route.to
-        _ -> nil
-      end
-    end)
+  defp find_matching_target(routes, record, resource, transition_name) do
+    target =
+      Enum.find_value(routes, fn route ->
+        case Ash.Expr.eval(route.when, record: record, resource: resource) do
+          {:ok, true} -> route.to
+          _ -> nil
+        end
+      end)
+
+    AshWorkflow.Telemetry.emit_route_evaluation(%{
+      resource: resource,
+      transition_name: transition_name,
+      from_state: Map.get(record, :state),
+      matched_route: target,
+      routes_evaluated: length(routes)
+    })
+
+    target
   end
 
   defp apply_route_target(changeset, nil, transition_name, routes) do
