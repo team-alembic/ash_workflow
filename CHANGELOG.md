@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Workflow initialization now happens through user-defined create actions instead of a generated `:start` action
+- `state_entered_at` is now non-null and defaults on create, so workflows enter their initial step implicitly when the record is created
+- Documentation and examples now use explicit create actions, including an AshPhoenix form example for workflow initialization
+
 ## [0.3.0] - 2026-03-25
 
 ### Added
