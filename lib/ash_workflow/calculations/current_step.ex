@@ -8,9 +8,11 @@ defmodule AshWorkflow.Calculations.CurrentStep do
   use Ash.Resource.Calculation
 
   @impl true
+  @spec load(Ash.Query.t(), Keyword.t(), map()) :: [atom()]
   def load(_query, _opts, _context), do: [:state]
 
   @impl true
+  @spec calculate([Ash.Resource.record()], Keyword.t(), map()) :: {:ok, [atom()]}
   def calculate(records, _opts, _context) do
     Enum.map(records, & &1.state)
   end

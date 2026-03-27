@@ -7,6 +7,7 @@ defmodule AshWorkflow.Calculations.Steps do
   use Ash.Resource.Calculation
 
   @impl true
+  @spec calculate([Ash.Resource.record()], Keyword.t(), map()) :: {:ok, [[atom()]]}
   def calculate(records, opts, _context) do
     step_names = Keyword.fetch!(opts, :step_names)
     Enum.map(records, fn _record -> step_names end)
