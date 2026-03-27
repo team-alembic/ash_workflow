@@ -141,7 +141,11 @@ workflow do
 end
 ```
 
-All generated triggers (automatic steps and timeouts) will use the specified queue. Ensure it's configured in your Oban setup:
+All generated triggers (automatic steps and timeouts) will use the specified queue.
+
+> #### Queue must be configured in Oban {: .warning}
+>
+> The queue name must match a queue in your Oban configuration. If the queue isn't configured, jobs will be inserted but never executed — they'll sit in the `oban_jobs` table indefinitely with no error. This is validated at runtime by Oban, not at compile time.
 
 ```elixir
 config :my_app, Oban,
