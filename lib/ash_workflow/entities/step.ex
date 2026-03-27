@@ -43,7 +43,9 @@ defmodule AshWorkflow.Entities.Step do
     ],
     on_success: [
       type: :atom,
-      doc: "The step to transition to on successful completion. Required for automatic steps."
+      doc:
+        "The step to transition to on successful completion of an automatic step. " <>
+          "Required when `manual` is false and `terminal` is false."
     ],
     on_error: [
       type: :atom,
