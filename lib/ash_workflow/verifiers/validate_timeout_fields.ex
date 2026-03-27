@@ -47,7 +47,12 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutFields do
 
   defp validate_field_exists(_dsl, _step, %{field: :state_entered_at}), do: {:cont, :ok}
 
-  @datetime_storage_types [:utc_datetime, :utc_datetime_usec, :naive_datetime, :naive_datetime_usec]
+  @datetime_storage_types [
+    :utc_datetime,
+    :utc_datetime_usec,
+    :naive_datetime,
+    :naive_datetime_usec
+  ]
 
   defp validate_field_exists(dsl, step, timeout) do
     attribute = ResourceInfo.attribute(dsl, timeout.field)

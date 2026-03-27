@@ -53,5 +53,4 @@ defmodule AshWorkflow.Changes.ConditionalTransition do
       end
     end)
   end
-
 end
