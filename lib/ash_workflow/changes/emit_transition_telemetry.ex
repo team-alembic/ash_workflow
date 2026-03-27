@@ -2,6 +2,8 @@ defmodule AshWorkflow.Changes.EmitTransitionTelemetry do
   @moduledoc false
   use Ash.Resource.Change
 
+  alias Ash.Resource.Info, as: ResourceInfo
+
   @impl true
   def atomic(changeset, opts, _context) do
     transition_name = opts[:transition_name]
@@ -86,7 +88,7 @@ defmodule AshWorkflow.Changes.EmitTransitionTelemetry do
   end
 
   defp extract_workflow_id(changeset) do
-    case Ash.Resource.Info.primary_key(changeset.resource) do
+    case ResourceInfo.primary_key(changeset.resource) do
       [key] -> Ash.Changeset.get_attribute(changeset, key)
       keys -> Map.new(keys, &{&1, Ash.Changeset.get_attribute(changeset, &1)})
     end
