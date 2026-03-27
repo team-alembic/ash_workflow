@@ -71,6 +71,38 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutFieldsTest do
       end
     end
 
+    test "raises when field is not a datetime type" do
+      assert_raise Spark.Error.DslError, ~r/must be a datetime type/, fn ->
+        defmodule NonDatetimeFieldWorkflow do
+          use Ash.Resource,
+            domain: AshWorkflowTest.Domain,
+            data_layer: Ash.DataLayer.Ets,
+            extensions: [AshWorkflow]
+
+          workflow do
+            step :waiting do
+              manual true
+              transition :resolve, to: :done
+
+              timeout :bad_type,
+                after: {3, :days},
+                field: :priority,
+                transition_to: :escalated
+            end
+
+            step :done, terminal: true
+            step :escalated, terminal: true
+          end
+
+          attributes do
+            uuid_v7_primary_key :id
+            attribute :title, :string, allow_nil?: false, public?: true
+            attribute :priority, :integer, public?: true
+          end
+        end
+      end
+    end
+
     test "accepts repeat: true with default state_entered_at field" do
       assert AshWorkflowTest.RepeatingTimeoutWorkflow.__info__(:module) ==
                AshWorkflowTest.RepeatingTimeoutWorkflow

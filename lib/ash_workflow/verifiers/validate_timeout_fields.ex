@@ -47,11 +47,35 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutFields do
 
   defp validate_field_exists(_dsl, _step, %{field: :state_entered_at}), do: {:cont, :ok}
 
-  defp validate_field_exists(dsl, step, timeout) do
-    has_attribute? = ResourceInfo.attribute(dsl, timeout.field) != nil
-    has_calculation? = ResourceInfo.calculation(dsl, timeout.field) != nil
+  @datetime_storage_types [:utc_datetime, :utc_datetime_usec, :naive_datetime, :naive_datetime_usec]
 
-    if has_attribute? or has_calculation? do
+  defp validate_field_exists(dsl, step, timeout) do
+    attribute = ResourceInfo.attribute(dsl, timeout.field)
+    calculation = ResourceInfo.calculation(dsl, timeout.field)
+
+    cond do
+      attribute != nil ->
+        validate_field_type(attribute.type, step, timeout)
+
+      calculation != nil ->
+        validate_field_type(calculation.type, step, timeout)
+
+      true ->
+        {:halt,
+         {:error,
+          DslError.exception(
+            path: [:workflow, :step, step.name],
+            message:
+              "Timeout :#{timeout.name} on step :#{step.name} references field :#{timeout.field}, " <>
+                "but no attribute or calculation with that name exists on the resource."
+          )}}
+    end
+  end
+
+  defp validate_field_type(type, step, timeout) do
+    storage_type = Ash.Type.storage_type(type)
+
+    if storage_type in @datetime_storage_types do
       {:cont, :ok}
     else
       {:halt,
@@ -59,8 +83,8 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutFields do
         DslError.exception(
           path: [:workflow, :step, step.name],
           message:
-            "Timeout :#{timeout.name} on step :#{step.name} references field :#{timeout.field}, " <>
-              "but no attribute or calculation with that name exists on the resource."
+            "Timeout :#{timeout.name} on step :#{step.name} references field :#{timeout.field} " <>
+              "which has type #{inspect(type)}, but timeout fields must be a datetime type."
         )}}
     end
   end
