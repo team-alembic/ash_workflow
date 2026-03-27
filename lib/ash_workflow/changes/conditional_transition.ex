@@ -18,29 +18,40 @@ defmodule AshWorkflow.Changes.ConditionalTransition do
     resource = changeset.resource
 
     Ash.Changeset.before_action(changeset, fn changeset ->
-      target = find_matching_target(routes, changeset.data, resource)
-      apply_route_target(changeset, target, transition_name, routes)
-    end)
-  end
+      case find_matching_target(routes, changeset.data, resource) do
+        {:ok, target} ->
+          AshStateMachine.transition_state(changeset, target)
 
-  defp find_matching_target(routes, record, resource) do
-    Enum.find_value(routes, fn route ->
-      case Ash.Expr.eval(route.when, record: record, resource: resource) do
-        {:ok, true} -> route.to
-        _ -> nil
+        {:error, route, error} ->
+          Ash.Changeset.add_error(
+            changeset,
+            "Route condition evaluation failed for transition :#{transition_name} " <>
+              "(route to :#{route.to}): #{inspect(error)}"
+          )
+
+        nil ->
+          Ash.Changeset.add_error(
+            changeset,
+            "No matching condition for transition :#{transition_name}. " <>
+              "Record did not match any of the #{length(routes)} configured routes."
+          )
       end
     end)
   end
 
-  defp apply_route_target(changeset, nil, transition_name, routes) do
-    Ash.Changeset.add_error(
-      changeset,
-      "No matching condition for transition :#{transition_name}. " <>
-        "Record did not match any of the #{length(routes)} configured routes."
-    )
+  defp find_matching_target(routes, record, resource) do
+    Enum.reduce_while(routes, nil, fn route, _acc ->
+      case Ash.Expr.eval(route.when, record: record, resource: resource) do
+        {:ok, true} ->
+          {:halt, {:ok, route.to}}
+
+        {:ok, _} ->
+          {:cont, nil}
+
+        {:error, error} ->
+          {:halt, {:error, route, error}}
+      end
+    end)
   end
 
-  defp apply_route_target(changeset, target, _transition_name, _routes) do
-    AshStateMachine.transition_state(changeset, target)
-  end
 end
