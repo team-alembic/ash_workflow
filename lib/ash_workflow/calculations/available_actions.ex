@@ -13,7 +13,7 @@ defmodule AshWorkflow.Calculations.AvailableActions do
   def load(_query, _opts, _context), do: [:state]
 
   @impl true
-  @spec calculate([Ash.Resource.record()], Keyword.t(), map()) :: {:ok, [[atom()]]}
+  @spec calculate([Ash.Resource.record()], Keyword.t(), map()) :: [[atom()]]
   def calculate(records, opts, context) do
     steps_map = Keyword.fetch!(opts, :steps_map)
 

@@ -52,10 +52,12 @@ defmodule AshWorkflow.Info do
 
   @doc """
   Returns `true` if the given record is in a terminal state.
+
+  The record must have its `:state` attribute loaded.
   """
   @spec in_terminal_state?(Ash.Resource.record()) :: boolean()
-  def in_terminal_state?(record) do
-    terminal?(record.__struct__, record.state)
+  def in_terminal_state?(%{__struct__: resource, state: state}) when is_atom(state) do
+    terminal?(resource, state)
   end
 
   @doc """

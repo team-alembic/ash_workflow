@@ -92,5 +92,16 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutFields do
               "which has type #{inspect(type)}, but timeout fields must be a datetime type."
         )}}
     end
+  rescue
+    _ ->
+      {:halt,
+       {:error,
+        DslError.exception(
+          path: [:workflow, :step, step.name],
+          message:
+            "Timeout :#{timeout.name} on step :#{step.name} references field :#{timeout.field} " <>
+              "which has type #{inspect(type)} that could not be resolved. " <>
+              "Timeout fields must be a datetime type."
+        )}}
   end
 end
