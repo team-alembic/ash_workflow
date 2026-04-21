@@ -113,7 +113,7 @@ timeout :hourly_ping, after: {1, :hours}, action: :send_ping
 timeout :weekly_expire, after: {7, :days}, transition_to: :expired
 ```
 
-## Polling interval
+## Polling interval and precision
 
 By default, timeout triggers check every minute (`"* * * * *"`). You can configure this per-timeout with `check_interval`:
 
@@ -121,6 +121,12 @@ By default, timeout triggers check every minute (`"* * * * *"`). You can configu
 # Check once a day at 9am instead of every minute
 timeout :daily_report, after: {3, :days}, action: :generate_report, check_interval: "0 9 * * *"
 ```
+
+> #### Timeouts are not precise to the second {: .info}
+>
+> A timeout fires on the first scheduler cycle *after* the duration has elapsed. With the default every-minute cron, a `{2, :days}` timeout fires somewhere between exactly 2 days and 2 days + 1 minute after `state_entered_at`. If you set `check_interval: "0 * * * *"` (hourly), the window is up to 1 hour.
+>
+> For sub-minute precision, use a more frequent cron expression like `"* * * * * *"` (every second, if your Oban configuration supports it) — but be aware of the database load from frequent polling.
 
 ## Oban queue configuration
 
@@ -135,7 +141,11 @@ workflow do
 end
 ```
 
-All generated triggers (automatic steps and timeouts) will use the specified queue. Ensure it's configured in your Oban setup:
+All generated triggers (automatic steps and timeouts) will use the specified queue.
+
+> #### Queue must be configured in Oban {: .warning}
+>
+> The queue name must match a queue in your Oban configuration. If the queue isn't configured, jobs will be inserted but never executed — they'll sit in the `oban_jobs` table indefinitely with no error. This is validated at runtime by Oban, not at compile time.
 
 ```elixir
 config :my_app, Oban,

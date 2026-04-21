@@ -190,6 +190,16 @@ defmodule AshWorkflow.ConditionalTransitionTest do
       assert workflow.state == :fast_track
     end
 
+    test "returns error when no route matches" do
+      {:ok, workflow} =
+        AshWorkflowTest.FailingRouteWorkflow.create(%{title: "test", category: :unknown})
+
+      assert workflow.state == :pending
+
+      assert {:error, error} = Ash.update(workflow, action: :decide)
+      assert Exception.message(error) =~ "No matching condition for transition :decide"
+    end
+
     test "static transition still works alongside conditional" do
       {:ok, workflow} =
         AshWorkflowTest.ConditionalWorkflow.create(%{title: "test", path_type: :full})

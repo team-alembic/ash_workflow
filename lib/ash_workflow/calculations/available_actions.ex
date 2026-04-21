@@ -9,9 +9,11 @@ defmodule AshWorkflow.Calculations.AvailableActions do
   use Ash.Resource.Calculation
 
   @impl true
+  @spec load(Ash.Query.t(), Keyword.t(), map()) :: [atom()]
   def load(_query, _opts, _context), do: [:state]
 
   @impl true
+  @spec calculate([Ash.Resource.record()], Keyword.t(), map()) :: [[atom()]]
   def calculate(records, opts, context) do
     steps_map = Keyword.fetch!(opts, :steps_map)
 
