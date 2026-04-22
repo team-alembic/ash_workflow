@@ -13,8 +13,6 @@ defmodule AshWorkflowTest.FailingRouteWorkflow do
 
   workflow do
     step :pending do
-      manual true
-
       transition :decide do
         route :approved, when: expr(category == :good)
         route :rejected, when: expr(category == :bad)

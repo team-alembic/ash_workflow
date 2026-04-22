@@ -29,6 +29,7 @@ defmodule AshWorkflow.Transformers.AddObanTriggers do
   """
   use Spark.Dsl.Transformer
 
+  alias AshWorkflow.Entities.Step
   alias Spark.Dsl.Transformer
   import Ash.Expr, only: [ref: 1]
   require Ash.Expr
@@ -40,7 +41,7 @@ defmodule AshWorkflow.Transformers.AddObanTriggers do
 
     dsl =
       steps
-      |> Enum.reject(&(&1.manual || &1.terminal))
+      |> Enum.reject(&(Step.manual?(&1) || &1.terminal))
       |> Enum.reduce(dsl, fn step, dsl ->
         add_step_trigger(dsl, resource, step, queue)
       end)

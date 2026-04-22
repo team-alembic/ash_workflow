@@ -16,14 +16,10 @@ defmodule AshWorkflowTest.LoopbackWorkflow do
 
   workflow do
     step :draft do
-      manual true
-
       transition :submit, to: :review
     end
 
     step :review do
-      manual true
-
       transition :approve, to: :published
       transition :revise, to: :draft
       transition :reject, to: :rejected

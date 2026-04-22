@@ -12,7 +12,6 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutFieldsTest do
 
           workflow do
             step :waiting do
-              manual true
               transition :resolve, to: :done
 
               timeout :bad_timeout,
@@ -43,7 +42,6 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutFieldsTest do
 
           workflow do
             step :active do
-              manual true
               transition :deactivate, to: :inactive
 
               timeout :bad_repeat,
@@ -81,7 +79,6 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutFieldsTest do
 
           workflow do
             step :waiting do
-              manual true
               transition :resolve, to: :done
 
               timeout :bad_type,

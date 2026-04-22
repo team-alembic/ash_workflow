@@ -17,14 +17,12 @@ defmodule AshWorkflowTest.SharedTransitionWorkflow do
 
   workflow do
     step :step_a do
-      manual true
       transition :complete, to: :done_a
       transition :reject, to: :rejected
       transition :move_to_b, to: :step_b
     end
 
     step :step_b do
-      manual true
       transition :complete, to: :done_b
       transition :reject, to: :rejected
       transition :back, to: :step_a

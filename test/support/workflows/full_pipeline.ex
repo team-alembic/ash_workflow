@@ -19,7 +19,6 @@ defmodule AshWorkflowTest.FullPipeline do
     step :intake, action: :run_intake, on_success: :review, on_error: :intake_failed
 
     step :review do
-      manual true
       policy actor_attribute_equals(:role, :reviewer)
 
       transition :advance, to: :process
@@ -31,7 +30,6 @@ defmodule AshWorkflowTest.FullPipeline do
     end
 
     step :on_hold do
-      manual true
       policy actor_attribute_equals(:role, :reviewer)
 
       transition :reactivate, to: :review
@@ -41,7 +39,6 @@ defmodule AshWorkflowTest.FullPipeline do
     step :process, action: :run_processing, on_success: :final_review
 
     step :final_review do
-      manual true
       policy actor_attribute_equals(:role, :approver)
 
       transition :approve, to: :done

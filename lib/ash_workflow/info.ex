@@ -31,11 +31,15 @@ defmodule AshWorkflow.Info do
   @spec available_actions(Ash.Resource.t(), atom()) :: [atom()]
   def available_actions(resource, step_name) do
     case step(resource, step_name) do
-      %{manual: true, transitions: transitions} ->
-        Enum.map(transitions, & &1.name)
-
-      _ ->
+      nil ->
         []
+
+      step ->
+        if Step.manual?(step) do
+          Enum.map(step.transitions, & &1.name)
+        else
+          []
+        end
     end
   end
 
@@ -106,7 +110,7 @@ defmodule AshWorkflow.Info do
        on_error: step.on_error,
        timeouts: timeout_targets,
        terminal: step.terminal,
-       manual: step.manual
+       manual: Step.manual?(step)
      }}
   end
 

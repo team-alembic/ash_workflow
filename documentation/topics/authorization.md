@@ -8,7 +8,6 @@ Add a `policy` to a manual step to restrict all its transitions to a specific ki
 
 ```elixir
 step :manager_review do
-  manual true
   policy actor_attribute_equals(:role, :manager)
 
   transition :approve, to: :approved

@@ -14,7 +14,6 @@ defmodule AshWorkflow.ConditionalTransitionTest do
     %Step{
       name: name,
       action: opts[:action],
-      manual: opts[:manual] || false,
       terminal: opts[:terminal] || false,
       on_success: opts[:on_success],
       on_error: opts[:on_error],
@@ -41,7 +40,6 @@ defmodule AshWorkflow.ConditionalTransitionTest do
       dsl =
         build_dsl([
           step(:review,
-            manual: true,
             transitions: [
               transition(:complete,
                 routes: [route(:path_a, true), route(:path_b, true)]
@@ -61,7 +59,6 @@ defmodule AshWorkflow.ConditionalTransitionTest do
       dsl =
         build_dsl([
           step(:review,
-            manual: true,
             transitions: [
               transition(:complete,
                 to: :path_a,
@@ -81,7 +78,6 @@ defmodule AshWorkflow.ConditionalTransitionTest do
       dsl =
         build_dsl([
           step(:review,
-            manual: true,
             transitions: [transition(:complete, [])]
           ),
           step(:done, terminal: true)
@@ -95,7 +91,6 @@ defmodule AshWorkflow.ConditionalTransitionTest do
       dsl =
         build_dsl([
           step(:review,
-            manual: true,
             transitions: [
               transition(:complete,
                 routes: [route(:nonexistent, true)]
@@ -112,7 +107,6 @@ defmodule AshWorkflow.ConditionalTransitionTest do
       dsl =
         build_dsl([
           step(:review,
-            manual: true,
             transitions: [
               transition(:complete,
                 routes: [route(:path_a, true), route(:path_b, true)]

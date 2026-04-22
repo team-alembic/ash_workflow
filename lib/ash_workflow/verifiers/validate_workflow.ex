@@ -96,27 +96,32 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
     end
   end
 
-  defp validate_step(%{manual: true} = step) do
-    cond do
-      step.transitions == [] ->
-        step_error(step, "Manual step :#{step.name} must have at least one transition.")
+  defp validate_step(step) do
+    if step.transitions == [] do
+      validate_automatic_step(step)
+    else
+      validate_manual_step(step)
+    end
+  end
 
+  defp validate_manual_step(step) do
+    cond do
       step.action != nil ->
         step_error(
           step,
-          "Manual step :#{step.name} must not have an action. User actions are defined via transitions."
+          "Step :#{step.name} has transitions and therefore cannot also define an action. User actions are defined via transitions."
         )
 
       step.on_success != nil ->
         step_error(
           step,
-          "Manual step :#{step.name} must not have on_success. Use transitions instead."
+          "Step :#{step.name} has transitions and therefore cannot also define on_success. Use transitions instead."
         )
 
       step.on_error != nil ->
         step_error(
           step,
-          "Manual step :#{step.name} must not have on_error. Use transitions instead."
+          "Step :#{step.name} has transitions and therefore cannot also define on_error. Use transitions instead."
         )
 
       true ->
@@ -124,19 +129,16 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
     end
   end
 
-  defp validate_step(step) do
+  defp validate_automatic_step(step) do
     cond do
       step.action == nil ->
-        step_error(step, "Automatic step :#{step.name} must have an action.")
+        step_error(
+          step,
+          "Step :#{step.name} must either declare an action (automatic step) or at least one transition (manual step)."
+        )
 
       step.on_success == nil ->
         step_error(step, "Automatic step :#{step.name} must have on_success.")
-
-      step.transitions != [] ->
-        step_error(
-          step,
-          "Automatic step :#{step.name} must not have transitions. Use on_success/on_error instead."
-        )
 
       true ->
         validate_timeouts(step)

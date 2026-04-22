@@ -35,7 +35,6 @@ workflow do
   end
 
   step :review do
-    manual true
     transition :approve, to: :approved
     transition :reject, to: :rejected
   end
@@ -65,16 +64,14 @@ end
 - `action` (required): References a user-defined update action on the resource.
 - `on_success` (required): Step to transition to when the action succeeds.
 - `on_error` (optional): Step to transition to on failure. If omitted, the record stays in the current state on error.
-- Must NOT have `manual true`, `transitions`, or `terminal true`.
+- Must NOT have `transitions` or `terminal true`.
 
 ### Manual Steps
 
-Wait for a human (or external system) to trigger one of the declared transitions. Each transition becomes a callable Ash update action.
+Wait for a human (or external system) to trigger one of the declared transitions. Any step that declares one or more `transition` entries is a manual step — there is no separate `manual` flag. Each transition becomes a callable Ash update action.
 
 ```elixir
 step :manager_review do
-  manual true
-
   transition :approve, to: :approved
   transition :reject, to: :rejected
   transition :request_changes, to: :drafting
@@ -103,13 +100,11 @@ Each transition declared inside a manual step becomes an Ash update action. The 
 ```elixir
 # Same name, same target — merged into one action
 step :review do
-  manual true
   transition :approve, to: :approved
   transition :reject, to: :rejected
 end
 
 step :escalated_review do
-  manual true
   transition :approve, to: :approved
   transition :reject, to: :rejected
 end
@@ -118,12 +113,10 @@ end
 ```elixir
 # Same name, different targets — auto-routes based on current state
 step :initial_review do
-  manual true
   transition :complete, to: :detailed_review
 end
 
 step :detailed_review do
-  manual true
   transition :complete, to: :done
 end
 ```
@@ -135,7 +128,6 @@ If a transition needs to accept user input, define a matching update action:
 ```elixir
 workflow do
   step :review do
-    manual true
     transition :reject, to: :rejected
   end
 end
@@ -186,7 +178,6 @@ Apply a policy check to all transitions in a manual step:
 
 ```elixir
 step :manager_review do
-  manual true
   policy actor_attribute_equals(:role, :manager)
 
   transition :approve, to: :approved
@@ -249,12 +240,10 @@ Steps can transition back to earlier steps:
 
 ```elixir
 step :draft do
-  manual true
   transition :submit, to: :review
 end
 
 step :review do
-  manual true
   transition :approve, to: :approved
   transition :request_changes, to: :draft  # loops back
 end
@@ -273,7 +262,6 @@ workflow do
   end
 
   step :triage do
-    manual true
     transition :assign, to: :processing
     transition :reject, to: :rejected
   end
@@ -285,7 +273,6 @@ workflow do
   end
 
   step :review do
-    manual true
     transition :complete, to: :completed
     transition :retry, to: :processing  # send back for reprocessing
   end
@@ -301,7 +288,6 @@ end
 
 ```elixir
 step :awaiting_approval do
-  manual true
   transition :approve, to: :approved
 
   timeout :reminder, after: {2, :days}, action: :send_approval_reminder
@@ -314,7 +300,7 @@ end
 AshWorkflow validates your workflow at compile time and raises clear errors for:
 
 - Missing steps (no non-terminal steps defined)
-- Invalid step configuration (e.g., manual step with `action`, automatic step with `transitions`)
+- Invalid step configuration (e.g., a step with both `action` and `transitions`, or with neither)
 - Timeouts with both `action` and `transition_to` (or neither)
 - References to undefined steps (in `on_success`, `on_error`, `transition :to`, `timeout :transition_to`)
 - Unreachable steps (not connected to the first step via any path)

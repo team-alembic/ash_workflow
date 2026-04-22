@@ -22,18 +22,14 @@ defmodule AshWorkflowTest.SharedConditionalWorkflow do
 
   workflow do
     step :screening do
-      manual true
       transition :advance, to: :review
     end
 
     step :review do
-      manual true
       transition :advance, to: :compliance
     end
 
     step :compliance do
-      manual true
-
       transition :advance do
         route :training, when: expr(path_type == :full)
         route :fast_track, when: expr(path_type == :abbreviated)
@@ -41,12 +37,10 @@ defmodule AshWorkflowTest.SharedConditionalWorkflow do
     end
 
     step :training do
-      manual true
       transition :advance, to: :done
     end
 
     step :fast_track do
-      manual true
       transition :advance, to: :done
     end
 

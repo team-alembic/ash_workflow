@@ -1,6 +1,7 @@
 defmodule AshWorkflow.InfoTest do
   use ExUnit.Case, async: true
 
+  alias AshWorkflow.Entities.Step
   alias AshWorkflow.Info
 
   describe "steps/1" do
@@ -18,7 +19,7 @@ defmodule AshWorkflow.InfoTest do
     test "returns the step entity by name" do
       step = Info.step(AshWorkflowTest.ApprovalWorkflow, :review)
       assert step.name == :review
-      assert step.manual == true
+      assert Step.manual?(step)
     end
 
     test "returns nil for unknown step" do

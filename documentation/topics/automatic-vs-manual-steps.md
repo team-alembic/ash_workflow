@@ -39,16 +39,16 @@ If the action doesn't exist on the resource, compilation fails with a clear erro
 
 ## Manual steps
 
-Manual steps wait for a human (or external system) to call a transition action. Define them with `manual true` and one or more named transitions:
+Manual steps wait for a human (or external system) to call a transition action. Any step that declares one or more named `transition` entries is treated as manual:
 
 ```elixir
 step :review do
-  manual true
-
   transition :approve, to: :next_step
   transition :reject, to: :rejected
 end
 ```
+
+A step with transitions must not also declare an `action`, `on_success`, or `on_error` — those belong to automatic steps.
 
 ### Generated actions
 
@@ -69,7 +69,6 @@ By default, generated transition actions don't accept any inputs. Use `accept` t
 
 ```elixir
 step :review do
-  manual true
 
   transition :approve, to: :approved
   transition :reject, to: :rejected, accept: [:reason]
@@ -91,23 +90,19 @@ The same transition name can be used across multiple steps. They merge into a si
 ```elixir
 # Same name, same target — one action, state machine enforces valid from: states
 step :screening do
-  manual true
   transition :reject, to: :rejected
 end
 
 step :interview do
-  manual true
   transition :reject, to: :rejected
 end
 
 # Same name, different targets — one action, routes based on current state
 step :initial_review do
-  manual true
   transition :complete, to: :detailed_review
 end
 
 step :detailed_review do
-  manual true
   transition :complete, to: :done
 end
 ```
@@ -118,7 +113,6 @@ A transition can route to different states based on record attributes using cond
 
 ```elixir
 step :review do
-  manual true
 
   transition :complete_review do
     route :fast_track, when: expr(priority == :urgent)
@@ -152,7 +146,6 @@ workflow do
 
   step :review do
     initial true   # ← this is the initial state, despite being declared second
-    manual true
     transition :approve, to: :done
   end
 

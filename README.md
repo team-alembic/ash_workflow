@@ -28,7 +28,6 @@ defmodule MyApp.CandidatePipeline do
     end
 
     step :recruiter_review do
-      manual true
       policy actor_attribute_equals(:role, :recruiter)
 
       transition :approve, to: :phone_screen
@@ -44,7 +43,6 @@ defmodule MyApp.CandidatePipeline do
     end
 
     step :awaiting_screen_result do
-      manual true
       policy actor_attribute_equals(:role, :recruiter)
 
       transition :pass, to: :onsite_interview
@@ -60,7 +58,6 @@ defmodule MyApp.CandidatePipeline do
     end
 
     step :awaiting_onsite_result do
-      manual true
       policy actor_attribute_equals(:role, :hiring_manager)
 
       transition :offer, to: :send_offer
@@ -73,7 +70,6 @@ defmodule MyApp.CandidatePipeline do
     end
 
     step :awaiting_offer_response do
-      manual true
 
       transition :accept, to: :onboarding
       transition :decline, to: :offer_declined
@@ -162,12 +158,10 @@ actions do
 end
 ```
 
-**Manual steps** wait for a human (or external system) to call a transition action. Define them with `manual true` and one or more `transition` declarations:
+**Manual steps** wait for a human (or external system) to call a transition action. Any step that declares one or more `transition` entries is a manual step:
 
 ```elixir
 step :recruiter_review do
-  manual true
-
   transition :approve, to: :phone_screen
   transition :reject_application, to: :rejected
 end
@@ -186,7 +180,6 @@ Transitions can route to different states based on record attributes:
 
 ```elixir
 step :review do
-  manual true
 
   transition :complete_review do
     route :fast_track, when: expr(priority == :urgent)
@@ -209,7 +202,6 @@ Use `policy` inside a step to restrict all transitions in that step to a particu
 
 ```elixir
 step :awaiting_onsite_result do
-  manual true
   policy actor_attribute_equals(:role, :hiring_manager)
 
   transition :offer, to: :send_offer
@@ -249,7 +241,6 @@ Timeouts let you react to a workflow being stuck in a state. They're implemented
 
 ```elixir
 step :recruiter_review do
-  manual true
 
   transition :approve, to: :phone_screen
   transition :reject_application, to: :rejected

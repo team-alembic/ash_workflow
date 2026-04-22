@@ -14,7 +14,6 @@ defmodule AshWorkflowTest.PolicyWorkflow do
 
   workflow do
     step :manager_review do
-      manual true
       policy actor_attribute_equals(:role, :manager)
 
       transition :approve, to: :approved

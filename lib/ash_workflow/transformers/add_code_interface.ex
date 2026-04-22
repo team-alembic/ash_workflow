@@ -12,6 +12,7 @@ defmodule AshWorkflow.Transformers.AddCodeInterface do
   """
   use Spark.Dsl.Transformer
 
+  alias AshWorkflow.Entities.Step
   alias Spark.Dsl.Transformer
 
   def transform(dsl) do
@@ -21,7 +22,7 @@ defmodule AshWorkflow.Transformers.AddCodeInterface do
 
     transition_names =
       steps
-      |> Enum.filter(& &1.manual)
+      |> Enum.filter(&Step.manual?/1)
       |> Enum.flat_map(& &1.transitions)
       |> Enum.map(& &1.name)
       |> Enum.uniq()

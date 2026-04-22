@@ -15,8 +15,6 @@ defmodule AshWorkflowTest.CustomActionWorkflow do
 
   workflow do
     step :review do
-      manual true
-
       transition :approve, to: :approved
       transition :reject, to: :rejected
     end

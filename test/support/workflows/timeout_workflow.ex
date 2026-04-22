@@ -15,8 +15,6 @@ defmodule AshWorkflowTest.TimeoutWorkflow do
 
   workflow do
     step :waiting do
-      manual true
-
       transition :resolve, to: :resolved
 
       timeout :reminder, after: {2, :days}, action: :send_reminder

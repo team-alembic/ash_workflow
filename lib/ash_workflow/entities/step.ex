@@ -8,7 +8,6 @@ defmodule AshWorkflow.Entities.Step do
     :on_error,
     :policy,
     initial: false,
-    manual: false,
     terminal: false,
     transitions: [],
     timeouts: []
@@ -25,11 +24,6 @@ defmodule AshWorkflow.Entities.Step do
       doc:
         "The action to run for automatic steps. Must reference a user-defined update action on the resource."
     ],
-    manual: [
-      type: :boolean,
-      default: false,
-      doc: "If true, this step waits for a human to trigger a transition action."
-    ],
     initial: [
       type: :boolean,
       default: false,
@@ -45,7 +39,7 @@ defmodule AshWorkflow.Entities.Step do
       type: :atom,
       doc:
         "The step to transition to on successful completion of an automatic step. " <>
-          "Required when `manual` is false and `terminal` is false."
+          "Required for automatic steps (i.e., steps with an `action` and no `transitions`)."
     ],
     on_error: [
       type: :atom,
@@ -59,6 +53,18 @@ defmodule AshWorkflow.Entities.Step do
   ]
 
   def attribute_schema, do: @schema
+
+  @doc """
+  Returns `true` if the step is a manual step — i.e., it has declared
+  transitions and is not a terminal state.
+
+  Manual-ness is derived from the shape of the step: a step with
+  `transitions` is manual; a step with an `action` is automatic; a step
+  with `terminal: true` is an end state.
+  """
+  def manual?(%__MODULE__{terminal: true}), do: false
+  def manual?(%__MODULE__{transitions: [_ | _]}), do: true
+  def manual?(%__MODULE__{}), do: false
 
   @doc """
   Finds the initial step from a list of steps.

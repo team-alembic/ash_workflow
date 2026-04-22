@@ -16,13 +16,11 @@ defmodule AshWorkflowTest.InitialFlagWorkflow do
 
   workflow do
     step :draft do
-      manual true
       transition :submit, to: :review
     end
 
     step :review do
       initial true
-      manual true
       transition :approve, to: :done
       transition :revise, to: :draft
     end
