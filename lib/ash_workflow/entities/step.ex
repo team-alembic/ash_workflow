@@ -7,6 +7,7 @@ defmodule AshWorkflow.Entities.Step do
     :on_success,
     :on_error,
     :policy,
+    __spark_metadata__: nil,
     initial: false,
     manual: false,
     terminal: false,

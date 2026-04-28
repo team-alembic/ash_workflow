@@ -15,7 +15,7 @@ defmodule AshWorkflow.Entities.Transition do
 
   A transition must have either `to` or at least one route, not both.
   """
-  defstruct [:name, :to, accept: [], routes: []]
+  defstruct [:name, :to, __spark_metadata__: nil, accept: [], routes: []]
 
   @schema [
     name: [

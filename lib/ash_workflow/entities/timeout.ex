@@ -32,6 +32,7 @@ defmodule AshWorkflow.Entities.Timeout do
     :action,
     :transition_to,
     :check_interval,
+    __spark_metadata__: nil,
     field: :state_entered_at,
     repeat: false
   ]
