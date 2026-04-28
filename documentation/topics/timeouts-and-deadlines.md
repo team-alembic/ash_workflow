@@ -18,7 +18,6 @@ Action timeouts run an Ash action without changing state. Use them for reminders
 
 ```elixir
 step :awaiting_response do
-  manual true
   transition :respond, to: :next_step
 
   timeout :reminder, after: {3, :days}, action: :send_reminder
@@ -42,7 +41,6 @@ Transition timeouts force the workflow into a new state. Use them for escalation
 
 ```elixir
 step :awaiting_review do
-  manual true
   transition :approve, to: :approved
 
   timeout :escalation, after: {7, :days}, transition_to: :escalated
@@ -59,7 +57,6 @@ By default, action timeouts fire once. Set `repeat: true` to keep firing on ever
 
 ```elixir
 step :awaiting_response do
-  manual true
   transition :respond, to: :next_step
 
   # Fires once after 3 days
@@ -80,7 +77,6 @@ By default, timeouts measure duration against `state_entered_at` — when the wo
 
 ```elixir
 step :active do
-  manual true
   transition :deactivate, to: :inactive
 
   # Fires 3 months after the worker's last session, not after entering :active

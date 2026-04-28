@@ -13,13 +13,11 @@ defmodule MyApp.SupportTicket do
 
   workflow do
     step :triage do
-      manual true
       transition :assign, to: :in_progress
       transition :close_as_duplicate, to: :closed
     end
 
     step :in_progress do
-      manual true
       transition :resolve, to: :resolved
       transition :escalate, to: :escalated
     end
@@ -67,19 +65,16 @@ defmodule MyApp.OnboardingWorkflow do
 
   workflow do
     step :screening do
-      manual true
       transition :approve, to: :interviewing
       transition :reject_at_screening, to: :rejected
     end
 
     step :interviewing do
-      manual true
       transition :pass, to: :offer
       transition :fail, to: :rejected
     end
 
     step :offer do
-      manual true
       transition :accept, to: :activated
       transition :decline, to: :withdrawn
     end

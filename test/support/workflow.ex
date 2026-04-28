@@ -12,8 +12,6 @@ defmodule AshWorkflowTest.Workflow do
     end
 
     step :review do
-      manual true
-
       transition :approve, to: :approved
       transition :reject, to: :rejected
 

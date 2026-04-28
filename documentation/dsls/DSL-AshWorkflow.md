@@ -57,10 +57,9 @@ Declares a step in the workflow. Each step becomes a state in the generated stat
 | Name | Type | Default | Docs |
 |------|------|---------|------|
 | [`action`](#workflow-step-action){: #workflow-step-action } | `atom` |  | The action to run for automatic steps. Must reference a user-defined update action on the resource. |
-| [`manual`](#workflow-step-manual){: #workflow-step-manual } | `boolean` | `false` | If true, this step waits for a human to trigger a transition action. |
 | [`initial`](#workflow-step-initial){: #workflow-step-initial } | `boolean` | `false` | If true, this step is the initial state. At most one step can be marked initial. If none are, the first non-terminal step by declaration order is used. |
 | [`terminal`](#workflow-step-terminal){: #workflow-step-terminal } | `boolean` | `false` | If true, this is an end state with no outgoing transitions. |
-| [`on_success`](#workflow-step-on_success){: #workflow-step-on_success } | `atom` |  | The step to transition to on successful completion. Required for automatic steps. |
+| [`on_success`](#workflow-step-on_success){: #workflow-step-on_success } | `atom` |  | The step to transition to on successful completion of an automatic step. Required for automatic steps (i.e., steps with an `action` and no `transitions`). |
 | [`on_error`](#workflow-step-on_error){: #workflow-step-on_error } | `atom` |  | The step to transition to on failure. Optional, for automatic steps. |
 | [`policy`](#workflow-step-policy){: #workflow-step-policy } | `any` |  | An Ash policy check to apply to all transitions in this step. Accepts any {module, opts} tuple implementing Ash.Policy.Check. |
 

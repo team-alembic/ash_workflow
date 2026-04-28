@@ -49,7 +49,7 @@ defmodule AshWorkflow.Transformers.AddStateMachine do
         step.terminal ->
           []
 
-        step.manual ->
+        Step.manual?(step) ->
           manual_transitions(step) ++ timeout_transitions(step)
 
         true ->

@@ -20,7 +20,6 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflowTest do
     %Step{
       name: name,
       action: opts[:action],
-      manual: opts[:manual] || false,
       terminal: opts[:terminal] || false,
       on_success: opts[:on_success],
       on_error: opts[:on_error],
@@ -59,7 +58,6 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflowTest do
       dsl =
         build_dsl([
           step(:review,
-            manual: true,
             transitions: [transition(:approve, :done), transition(:reject, :rejected)]
           ),
           step(:done, terminal: true),
@@ -73,7 +71,7 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflowTest do
       dsl =
         build_dsl([
           step(:intake, action: :run_intake, on_success: :review),
-          step(:review, manual: true, transitions: [transition(:approve, :done)]),
+          step(:review, transitions: [transition(:approve, :done)]),
           step(:done, terminal: true)
         ])
 
@@ -84,7 +82,6 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflowTest do
       dsl =
         build_dsl([
           step(:waiting,
-            manual: true,
             transitions: [transition(:resolve, :done)],
             timeouts: [
               timeout(:reminder, action: :send_reminder),
@@ -111,7 +108,7 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflowTest do
       assert message =~ "must have on_success"
     end
 
-    test "automatic step without action fails" do
+    test "step with neither action nor transitions fails" do
       dsl =
         build_dsl([
           step(:broken, on_success: :done),
@@ -119,51 +116,41 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflowTest do
         ])
 
       assert {:error, %Spark.Error.DslError{message: message}} = ValidateWorkflow.verify(dsl)
-      assert message =~ "must have an action"
+      assert message =~ "must either declare an action"
+      assert message =~ "at least one transition"
     end
 
-    test "manual step without transitions fails" do
+    test "step with both action and transitions fails" do
       dsl =
         build_dsl([
-          step(:waiting, manual: true),
+          step(:review, action: :something, transitions: [transition(:go, :done)]),
           step(:done, terminal: true)
         ])
 
       assert {:error, %Spark.Error.DslError{message: message}} = ValidateWorkflow.verify(dsl)
-      assert message =~ "must have at least one transition"
+      assert message =~ "cannot also define an action"
     end
 
-    test "manual step with action fails" do
+    test "step with transitions and on_success fails" do
       dsl =
         build_dsl([
-          step(:review, manual: true, action: :something, transitions: [transition(:go, :done)]),
+          step(:review, on_success: :done, transitions: [transition(:go, :done)]),
           step(:done, terminal: true)
         ])
 
       assert {:error, %Spark.Error.DslError{message: message}} = ValidateWorkflow.verify(dsl)
-      assert message =~ "must not have an action"
+      assert message =~ "cannot also define on_success"
     end
 
-    test "manual step with on_success fails" do
+    test "step with transitions and on_error fails" do
       dsl =
         build_dsl([
-          step(:review, manual: true, on_success: :done, transitions: [transition(:go, :done)]),
+          step(:review, on_error: :done, transitions: [transition(:go, :done)]),
           step(:done, terminal: true)
         ])
 
       assert {:error, %Spark.Error.DslError{message: message}} = ValidateWorkflow.verify(dsl)
-      assert message =~ "must not have on_success"
-    end
-
-    test "automatic step with transitions fails" do
-      dsl =
-        build_dsl([
-          step(:auto, action: :run, on_success: :done, transitions: [transition(:go, :done)]),
-          step(:done, terminal: true)
-        ])
-
-      assert {:error, %Spark.Error.DslError{message: message}} = ValidateWorkflow.verify(dsl)
-      assert message =~ "must not have transitions"
+      assert message =~ "cannot also define on_error"
     end
 
     test "terminal step with action fails" do
@@ -180,7 +167,7 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflowTest do
     test "terminal step with transitions fails" do
       dsl =
         build_dsl([
-          step(:start, manual: true, transitions: [transition(:go, :done)]),
+          step(:start, transitions: [transition(:go, :done)]),
           step(:done, terminal: true, transitions: [transition(:oops, :start)])
         ])
 
@@ -216,7 +203,6 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflowTest do
       dsl =
         build_dsl([
           step(:waiting,
-            manual: true,
             transitions: [transition(:go, :done)],
             timeouts: [timeout(:broken, [])]
           ),
@@ -231,7 +217,6 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflowTest do
       dsl =
         build_dsl([
           step(:waiting,
-            manual: true,
             transitions: [transition(:go, :done)],
             timeouts: [timeout(:broken, action: :remind, transition_to: :escalated)]
           ),
@@ -269,7 +254,7 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflowTest do
     test "dangling transition reference fails" do
       dsl =
         build_dsl([
-          step(:waiting, manual: true, transitions: [transition(:go, :nowhere)])
+          step(:waiting, transitions: [transition(:go, :nowhere)])
         ])
 
       assert {:error, %Spark.Error.DslError{message: message}} = ValidateWorkflow.verify(dsl)
@@ -280,7 +265,6 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflowTest do
       dsl =
         build_dsl([
           step(:waiting,
-            manual: true,
             transitions: [transition(:go, :done)],
             timeouts: [timeout(:esc, transition_to: :nonexistent)]
           ),
@@ -297,11 +281,9 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflowTest do
       dsl =
         build_dsl([
           step(:step_a,
-            manual: true,
             transitions: [transition(:reject, :rejected), transition(:go_to_b, :step_b)]
           ),
           step(:step_b,
-            manual: true,
             transitions: [transition(:reject, :rejected), transition(:back, :step_a)]
           ),
           step(:rejected, terminal: true)
@@ -314,11 +296,9 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflowTest do
       dsl =
         build_dsl([
           step(:step_a,
-            manual: true,
             transitions: [transition(:complete, :done_a), transition(:go_to_b, :step_b)]
           ),
           step(:step_b,
-            manual: true,
             transitions: [transition(:complete, :done_b), transition(:back, :step_a)]
           ),
           step(:done_a, terminal: true),
@@ -332,7 +312,6 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflowTest do
       dsl =
         build_dsl([
           step(:review,
-            manual: true,
             transitions: [transition(:approve, :done), transition(:reject, :rejected)]
           ),
           step(:done, terminal: true),
@@ -347,8 +326,8 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflowTest do
     test "unreachable step fails" do
       dsl =
         build_dsl([
-          step(:start, manual: true, transitions: [transition(:go, :done)]),
-          step(:orphan, manual: true, transitions: [transition(:go_too, :done)]),
+          step(:start, transitions: [transition(:go, :done)]),
+          step(:orphan, transitions: [transition(:go_too, :done)]),
           step(:done, terminal: true)
         ])
 

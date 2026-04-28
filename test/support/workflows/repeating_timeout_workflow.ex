@@ -14,8 +14,6 @@ defmodule AshWorkflowTest.RepeatingTimeoutWorkflow do
 
   workflow do
     step :waiting do
-      manual true
-
       transition :resolve, to: :resolved
 
       timeout :follow_up, after: {3, :days}, action: :send_follow_up, repeat: true

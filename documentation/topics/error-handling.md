@@ -36,7 +36,6 @@ workflow do
   step :process, action: :do_processing, on_success: :done, on_error: :needs_review
 
   step :needs_review do
-    manual true
     transition :retry, to: :process
     transition :abandon, to: :abandoned
   end

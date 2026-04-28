@@ -14,8 +14,6 @@ defmodule AshWorkflowTest.FieldTimeoutWorkflow do
 
   workflow do
     step :active do
-      manual true
-
       transition :deactivate, to: :inactive
 
       timeout :inactivity,

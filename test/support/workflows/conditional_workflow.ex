@@ -14,8 +14,6 @@ defmodule AshWorkflowTest.ConditionalWorkflow do
 
   workflow do
     step :compliance do
-      manual true
-
       transition :complete do
         route :training, when: expr(path_type == :full)
         route :fast_track, when: expr(path_type == :abbreviated)
@@ -25,12 +23,10 @@ defmodule AshWorkflowTest.ConditionalWorkflow do
     end
 
     step :training do
-      manual true
       transition :finish_training, to: :done
     end
 
     step :fast_track do
-      manual true
       transition :finish_fast_track, to: :done
     end
 

@@ -33,6 +33,7 @@ defmodule AshWorkflow.Transformers.AddActions do
   alias AshStateMachine.BuiltinChanges
   alias AshWorkflow.Changes.ConditionalTransition
   alias AshWorkflow.Entities.Route
+  alias AshWorkflow.Entities.Step
   alias AshWorkflow.Entities.Transition
   alias Spark.Dsl.Transformer
   alias Spark.Error.DslError
@@ -72,7 +73,7 @@ defmodule AshWorkflow.Transformers.AddActions do
     # Collect all transitions grouped by name, tracking which step each came from
     grouped =
       steps
-      |> Enum.filter(& &1.manual)
+      |> Enum.filter(&Step.manual?/1)
       |> Enum.flat_map(fn step ->
         Enum.map(step.transitions, &{step.name, &1})
       end)
@@ -173,7 +174,7 @@ defmodule AshWorkflow.Transformers.AddActions do
 
   defp inject_automatic_step_changes(dsl, steps) do
     steps
-    |> Enum.reject(&(&1.manual || &1.terminal))
+    |> Enum.reject(&(Step.manual?(&1) || &1.terminal))
     |> Enum.reduce(dsl, fn step, dsl ->
       actions = Transformer.get_entities(dsl, [:actions])
 

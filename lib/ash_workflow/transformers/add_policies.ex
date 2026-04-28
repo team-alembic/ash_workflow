@@ -13,7 +13,6 @@ defmodule AshWorkflow.Transformers.AddPolicies do
      generates a policy scoped to that step's transition actions. For example:
 
          step :review do
-           manual true
            policy actor_attribute_equals(:role, :reviewer)
            transition :approve, to: :done
            transition :reject, to: :rejected
@@ -37,6 +36,7 @@ defmodule AshWorkflow.Transformers.AddPolicies do
 
   alias Ash.Policy.Authorizer
   alias Ash.Policy.Check.Builtins, as: PolicyBuiltins
+  alias AshWorkflow.Entities.Step
   alias Spark.Dsl.Transformer
 
   def transform(dsl) do
@@ -58,7 +58,7 @@ defmodule AshWorkflow.Transformers.AddPolicies do
 
       dsl =
         steps
-        |> Enum.filter(&(&1.manual && &1.policy))
+        |> Enum.filter(&(Step.manual?(&1) && &1.policy))
         |> Enum.reduce(dsl, fn step, dsl ->
           add_step_policy(dsl, step, existing_policies)
         end)
@@ -82,13 +82,13 @@ defmodule AshWorkflow.Transformers.AddPolicies do
 
     transition_actions =
       steps
-      |> Enum.filter(& &1.manual)
+      |> Enum.filter(&Step.manual?/1)
       |> Enum.flat_map(& &1.transitions)
       |> Enum.map(& &1.name)
 
     automatic_actions =
       steps
-      |> Enum.reject(&(&1.manual || &1.terminal))
+      |> Enum.reject(&(Step.manual?(&1) || &1.terminal))
       |> Enum.map(& &1.action)
 
     timeout_actions =
@@ -111,7 +111,7 @@ defmodule AshWorkflow.Transformers.AddPolicies do
   defp collect_oban_action_names(steps) do
     automatic_actions =
       steps
-      |> Enum.reject(&(&1.manual || &1.terminal))
+      |> Enum.reject(&(Step.manual?(&1) || &1.terminal))
       |> Enum.map(& &1.action)
 
     timeout_actions =

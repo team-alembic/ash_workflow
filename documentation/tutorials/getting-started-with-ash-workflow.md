@@ -33,7 +33,6 @@ defmodule MyApp.DocumentApproval do
     end
 
     step :review do
-      manual true
 
       transition :approve, to: :approved
       transition :reject, to: :rejected
@@ -133,7 +132,6 @@ use Ash.Resource,
 
 workflow do
   step :review do
-    manual true
     policy actor_attribute_equals(:role, :reviewer)
 
     transition :approve, to: :approved

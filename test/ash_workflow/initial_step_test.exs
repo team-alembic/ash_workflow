@@ -28,13 +28,11 @@ defmodule AshWorkflow.InitialStepTest do
           workflow do
             step :step_a do
               initial true
-              manual true
               transition :go, to: :step_b
             end
 
             step :step_b do
               initial true
-              manual true
               transition :finish, to: :done
             end
 
@@ -59,7 +57,6 @@ defmodule AshWorkflow.InitialStepTest do
 
           workflow do
             step :review do
-              manual true
               transition :approve, to: :done
             end
 

@@ -12,6 +12,7 @@ defmodule AshWorkflow.Transformers.AddCalculations do
   use Spark.Dsl.Transformer
 
   alias Ash.Resource.Builder
+  alias AshWorkflow.Entities.Step
   alias Spark.Dsl.Transformer
 
   def transform(dsl) do
@@ -19,7 +20,7 @@ defmodule AshWorkflow.Transformers.AddCalculations do
 
     steps_map =
       steps
-      |> Enum.filter(& &1.manual)
+      |> Enum.filter(&Step.manual?/1)
       |> Map.new(fn step ->
         {step.name, Enum.map(step.transitions, & &1.name)}
       end)

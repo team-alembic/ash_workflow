@@ -13,8 +13,6 @@ defmodule AshWorkflowTest.AcceptWorkflow do
 
   workflow do
     step :review do
-      manual true
-
       transition :approve, to: :approved
       transition :reject, to: :rejected, accept: [:reason]
     end
