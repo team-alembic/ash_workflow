@@ -2,7 +2,7 @@ defmodule BasicWorkflow.DocumentApproval do
   @moduledoc """
   A simple document approval workflow.
 
-  Flow: start → auto_check → review → approved | rejected
+  Flow: auto_check → review → approved | rejected
 
   Demonstrates:
   - Automatic steps (background processing via Oban)
@@ -12,8 +12,9 @@ defmodule BasicWorkflow.DocumentApproval do
 
   ## Usage
 
-      # Author submits a document for approval
-      {:ok, workflow} = DocumentApproval.start(%{title: "Q1 Report", author: "alice"})
+      # Author submits a document for approval. The workflow enters its
+      # initial step (:auto_check) as soon as the record is created.
+      {:ok, workflow} = DocumentApproval.submit(%{title: "Q1 Report", author: "alice"})
 
       # auto_check runs automatically via Oban — validates formatting, scans for issues.
       # On success the workflow moves to :review.
@@ -36,8 +37,6 @@ defmodule BasicWorkflow.DocumentApproval do
     end
 
     step :review do
-      manual true
-
       transition :approve, to: :approved
       transition :reject, to: :rejected
 
@@ -56,7 +55,17 @@ defmodule BasicWorkflow.DocumentApproval do
     attribute :author, :string, allow_nil?: false
   end
 
+  code_interface do
+    define :submit, action: :submit
+  end
+
   actions do
+    defaults [:read]
+
+    create :submit do
+      accept [:title, :author]
+    end
+
     update :run_document_checks do
       accept []
     end

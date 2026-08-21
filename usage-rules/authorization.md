@@ -6,7 +6,6 @@ The simplest authorization model is declaring a `policy` on a manual step. This 
 
 ```elixir
 step :manager_review do
-  manual true
   policy actor_attribute_equals(:role, :manager)
 
   transition :approve, to: :approved
@@ -27,13 +26,11 @@ Inside a `step` block, these checks are imported automatically from `Ash.Policy.
 
 ```elixir
 step :author_review do
-  manual true
   policy relates_to_actor_via(:author)
   transition :submit, to: :submitted
 end
 
 step :any_authenticated do
-  manual true
   policy actor_present()
   transition :acknowledge, to: :acknowledged
 end
@@ -71,7 +68,6 @@ For workflows involving different roles at different stages, use step-level poli
 ```elixir
 workflow do
   step :recruiter_screen do
-    manual true
     policy actor_attribute_equals(:role, :recruiter)
 
     transition :advance, to: :interview
@@ -79,7 +75,6 @@ workflow do
   end
 
   step :interview do
-    manual true
     policy actor_attribute_equals(:role, :interviewer)
 
     transition :pass, to: :hiring_manager_review
@@ -87,7 +82,6 @@ workflow do
   end
 
   step :hiring_manager_review do
-    manual true
     policy actor_attribute_equals(:role, :hiring_manager)
 
     transition :offer, to: :generate_offer
@@ -104,7 +98,7 @@ Step-level `policy` is only meaningful for manual steps.
 
 ## Default Allow for Workflow Actions
 
-When `Ash.Policy.Authorizer` is present on the resource, AshWorkflow injects a default `authorize_if always()` policy scoped to all workflow-generated actions (`:start`, `:read`, transitions, automatic step actions, and timeout actions). This ensures workflow actions work out of the box without users needing to add a blanket allow policy.
+When `Ash.Policy.Authorizer` is present on the resource, AshWorkflow injects a default `authorize_if always()` policy scoped to all workflow-generated actions (`:read`, transitions, automatic step actions, and timeout actions). This ensures workflow actions work out of the box without users needing to add a blanket allow policy.
 
 Step-level policies are evaluated **in addition to** this default allow, so they act as restrictive gates on specific manual transitions.
 

@@ -70,7 +70,6 @@ defmodule MyApp.CandidatePipeline do
     end
 
     step :awaiting_offer_response do
-
       transition :accept, to: :onboarding
       transition :decline, to: :offer_declined
       transition :negotiate, to: :send_offer
@@ -180,7 +179,6 @@ Transitions can route to different states based on record attributes:
 
 ```elixir
 step :review do
-
   transition :complete_review do
     route :fast_track, when: expr(priority == :urgent)
     route :standard_processing, when: expr(priority == :normal)
@@ -219,7 +217,7 @@ policies do
 end
 ```
 
-**Important:** When using step-level policies, add `authorizers: [Ash.Policy.Authorizer]` to your resource. The extension generates a default "allow all" policy for actions without explicit policies (like `:start`), so only the step-level actions require the specified check.
+**Important:** When using step-level policies, add `authorizers: [Ash.Policy.Authorizer]` to your resource. The extension generates a default "allow all" policy scoped to the workflow actions that have no explicit policy of their own (the generated read action, automatic step actions, and timeout actions), so only the step-level actions require the specified check.
 
 ### Resource-level policies
 
@@ -241,7 +239,6 @@ Timeouts let you react to a workflow being stuck in a state. They're implemented
 
 ```elixir
 step :recruiter_review do
-
   transition :approve, to: :phone_screen
   transition :reject_application, to: :rejected
 
@@ -276,16 +273,18 @@ From the workflow DSL, the extension generates:
 | **Extensions** | AshStateMachine, AshOban | Auto-added via `add_extensions` |
 | **State machine** | States, transitions, initial state | Via `ash_state_machine` DSL injection |
 | **Oban triggers** | One trigger per automatic step + timeouts | Via `ash_oban` DSL injection |
-| **Actions** | `:start` create, one update per transition, read | Ash actions with `transition_state` change |
+| **Actions** | One update per transition, plus a read action | Ash actions with `transition_state` change |
 | **Timeout actions** | Hidden `__timeout_*` update actions | For timeouts with `transition_to` |
 | **Policies** | Step-level `policy` declarations | Ash policies on generated transition actions |
-| **Code interface** | `start/1`, plus each transition name | Ash code interface definitions |
+| **Code interface** | One function per transition name | Ash code interface definitions |
 | **Calculations** | `:steps`, `:current_step`, `:available_actions` | Workflow introspection |
 | **Attributes** | `state_entered_at` | Added if not already defined |
 
 The initial state is the step with `initial true`, or the first non-terminal step by declaration order if none is marked.
 
 All generation follows a **generate-if-missing** pattern: if you've already defined a read action, policies targeting specific actions, or code interface definitions, the transformers won't overwrite them.
+
+Workflows are started through your own create action — AshWorkflow does not generate one. A newly created record enters the initial step implicitly, because `state_entered_at` defaults on create.
 
 ## Installation
 
@@ -294,13 +293,13 @@ Add `ash_workflow` to your dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:ash_workflow, "~> 0.1.0"}
+    {:ash_workflow, "~> 0.4"}
   ]
 end
 ```
 
 You do **not** need to add `ash_state_machine` or `ash_oban` to your extensions list — `AshWorkflow` includes them automatically. You do still need both as dependencies in your `mix.exs`.
 
-## Status
+## License
 
-This library is in active development. The core DSL and generation pipeline are functional — state machine, actions, Oban triggers, timeouts, policies, and code interface are all implemented.
+MIT — see [LICENSE](LICENSE).

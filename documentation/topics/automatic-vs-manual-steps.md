@@ -69,7 +69,6 @@ By default, generated transition actions don't accept any inputs. Use `accept` t
 
 ```elixir
 step :review do
-
   transition :approve, to: :approved
   transition :reject, to: :rejected, accept: [:reason]
 end
@@ -113,7 +112,6 @@ A transition can route to different states based on record attributes using cond
 
 ```elixir
 step :review do
-
   transition :complete_review do
     route :fast_track, when: expr(priority == :urgent)
     route :standard_processing, when: expr(priority == :normal)

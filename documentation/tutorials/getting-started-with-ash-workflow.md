@@ -33,7 +33,6 @@ defmodule MyApp.DocumentApproval do
     end
 
     step :review do
-
       transition :approve, to: :approved
       transition :reject, to: :rejected
 

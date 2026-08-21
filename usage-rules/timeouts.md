@@ -65,8 +65,6 @@ A single step can have multiple timeouts with different deadlines:
 
 ```elixir
 step :awaiting_response do
-  manual true
-
   transition :accept, to: :accepted
   transition :decline, to: :declined
 

@@ -6,7 +6,7 @@ AshWorkflow is a declarative workflow orchestration extension for Ash Framework.
 
 - **State machine** states and transitions (via `ash_state_machine`)
 - **Background job triggers** for automatic steps (via `ash_oban`)
-- **Ash actions** for manual transitions and the `:start` create action
+- **Ash actions** for manual transitions, plus a read action
 - **Timeout scheduling** for reminders and escalations
 
 ## Setting Up AshWorkflow
@@ -216,7 +216,6 @@ AshWorkflow generates these automatically — do NOT define them yourself:
 |---|---|
 | `:state` attribute | Added by `ash_state_machine` |
 | `:state_entered_at` attribute | `utc_datetime_usec`, tracks when current state was entered |
-| `:start` create action | Sets initial state and `state_entered_at` |
 | Primary `:read` action | Added if automatic steps exist (needed for Oban triggers) |
 | Transition update actions | One per manual transition |
 | Timeout transition actions | Hidden `__timeout_<name>` actions |

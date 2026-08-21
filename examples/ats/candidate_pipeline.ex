@@ -8,7 +8,7 @@ defmodule ATS.CandidatePipeline do
 
   ## The pipeline
 
-      start
+      (record created)
         │
         ▼
       process_application  (automatic — parse resume, check for duplicates)
@@ -19,9 +19,9 @@ defmodule ATS.CandidatePipeline do
         ▼
       recruiter_screen  (manual — recruiter reviews application)
         │
-        ├─ advance ─────▶  phone_screen
-        ├─ reject ──────▶  rejected
-        ├─ hold ────────▶  on_hold
+        ├─ advance ──────────▶  phone_screen
+        ├─ reject_application ▶  rejected
+        ├─ hold ─────────────▶  on_hold
         │
         │  timeout: 2 days → send reminder to recruiter
         │  timeout: 7 days → auto-escalate
@@ -49,8 +49,8 @@ defmodule ATS.CandidatePipeline do
         ▼
       awaiting_panel_decision  (manual — hiring manager decides)
         │
-        ├─ offer ───────▶  generate_offer
-        ├─ reject ──────▶  rejected
+        ├─ offer ────────────▶  generate_offer
+        ├─ reject_candidate ─▶  rejected
         │
         ▼
       generate_offer  (automatic — create offer letter, send to candidate)
@@ -79,8 +79,9 @@ defmodule ATS.CandidatePipeline do
 
   ## Usage
 
-      # A new application comes in
-      {:ok, pipeline} = CandidatePipeline.start(%{
+      # A new application comes in. Creating the record puts the workflow
+      # into its initial step (:process_application).
+      {:ok, pipeline} = CandidatePipeline.apply(%{
         candidate_name: "Jane Smith",
         candidate_email: "jane@example.com",
         position: "Senior Engineer",
@@ -122,7 +123,6 @@ defmodule ATS.CandidatePipeline do
 
     # ── Manual: recruiter reviews the application ──
     step :recruiter_screen do
-      manual true
       policy actor_attribute_equals(:role, :recruiter)
 
       transition :advance, to: :phone_screen
@@ -135,7 +135,6 @@ defmodule ATS.CandidatePipeline do
 
     # ── Manual: on_hold — recruiter can revisit later ──
     step :on_hold do
-      manual true
       policy actor_attribute_equals(:role, :recruiter)
 
       transition :reactivate, to: :recruiter_screen
@@ -153,7 +152,6 @@ defmodule ATS.CandidatePipeline do
 
     # ── Manual: recruiter logs the phone screen outcome ──
     step :awaiting_phone_result do
-      manual true
       policy actor_attribute_equals(:role, :recruiter)
 
       transition :pass, to: :onsite_interview
@@ -171,7 +169,6 @@ defmodule ATS.CandidatePipeline do
 
     # ── Manual: hiring manager decides after the panel ──
     step :awaiting_panel_decision do
-      manual true
       policy actor_attribute_equals(:role, :hiring_manager)
 
       transition :offer, to: :generate_offer
@@ -187,8 +184,6 @@ defmodule ATS.CandidatePipeline do
 
     # ── Manual: candidate responds to the offer ──
     step :awaiting_offer_response do
-      manual true
-
       transition :accept, to: :hired
       transition :decline, to: :offer_declined
       transition :negotiate, to: :generate_offer
@@ -222,9 +217,19 @@ defmodule ATS.CandidatePipeline do
     attribute :equity, :string
   end
 
+  code_interface do
+    define :apply, action: :apply
+  end
+
   # Automatic steps need user-defined actions with business logic.
   # The extension injects transition_state and state_entered_at changes.
   actions do
+    defaults [:read]
+
+    create :apply do
+      accept [:candidate_name, :candidate_email, :position, :resume_url]
+    end
+
     update :process_application do
       accept []
     end
