@@ -14,8 +14,8 @@ defmodule AshWorkflow.Transformers.AddStateMachine do
       step's own action, since that is what AshOban invokes when the step fails.
     - *Manual steps* — one transition per declared `transition` entity,
       e.g. `transition :approve, from: [:review], to: [:approved]`
-    - *Timeouts with `transition_to`* — a transition named `__timeout_<name>`,
-      e.g. `transition :__timeout_escalation, from: [:review], to: [:escalated]`
+    - *Timeouts with `transition_to`* — a transition named `__timeout_<step>_<name>`,
+      e.g. `transition :__timeout_review_escalation, from: [:review], to: [:escalated]`
 
   Must run before all `AshStateMachine.Transformers.*` so that the state machine
   extension sees the generated states and transitions.
@@ -91,7 +91,11 @@ defmodule AshWorkflow.Transformers.AddStateMachine do
     step.timeouts
     |> Enum.filter(& &1.transition_to)
     |> Enum.map(fn timeout ->
-      build_transition(:"__timeout_#{timeout.name}", [step.name], [timeout.transition_to])
+      build_transition(
+        AddActions.timeout_action_name(step, timeout),
+        [step.name],
+        [timeout.transition_to]
+      )
     end)
   end
 

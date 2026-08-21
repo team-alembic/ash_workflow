@@ -95,10 +95,10 @@ defmodule AshWorkflow.Transformers.AddPolicies do
     timeout_actions =
       steps
       |> Enum.reject(& &1.terminal)
-      |> Enum.flat_map(& &1.timeouts)
-      |> Enum.map(fn timeout ->
+      |> Enum.flat_map(fn step -> Enum.map(step.timeouts, &{step, &1}) end)
+      |> Enum.map(fn {step, timeout} ->
         if timeout.transition_to do
-          :"__timeout_#{timeout.name}"
+          AddActions.timeout_action_name(step, timeout)
         else
           timeout.action
         end
@@ -120,10 +120,10 @@ defmodule AshWorkflow.Transformers.AddPolicies do
     timeout_actions =
       steps
       |> Enum.reject(& &1.terminal)
-      |> Enum.flat_map(& &1.timeouts)
-      |> Enum.map(fn timeout ->
+      |> Enum.flat_map(fn step -> Enum.map(step.timeouts, &{step, &1}) end)
+      |> Enum.map(fn {step, timeout} ->
         if timeout.transition_to do
-          :"__timeout_#{timeout.name}"
+          AddActions.timeout_action_name(step, timeout)
         else
           timeout.action
         end

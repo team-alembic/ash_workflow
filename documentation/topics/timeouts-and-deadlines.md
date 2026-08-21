@@ -49,7 +49,7 @@ end
 step :escalated, terminal: true
 ```
 
-The extension generates a hidden update action (`:__timeout_escalation`) that performs the state transition. You don't need to define this action yourself.
+The extension generates a hidden update action (`:__timeout_review_escalation` — `__timeout_<step>_<name>`) that performs the state transition. You don't need to define this action yourself. Because the name includes the step, several steps can each declare an `:escalation` timeout of their own.
 
 ## Repeating timeouts
 

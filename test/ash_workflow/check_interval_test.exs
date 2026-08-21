@@ -18,7 +18,7 @@ defmodule AshWorkflow.CheckIntervalTest do
 
   describe "workflow-level check_interval" do
     test "defaults to every minute when not declared" do
-      assert cron_for(TimeoutWorkflow, :__timeout_trigger_reminder) == "* * * * *"
+      assert cron_for(TimeoutWorkflow, :__timeout_trigger_waiting_reminder) == "* * * * *"
     end
 
     test "applies to automatic step triggers" do
@@ -26,17 +26,17 @@ defmodule AshWorkflow.CheckIntervalTest do
     end
 
     test "applies to timeouts that do not declare their own" do
-      assert cron_for(CheckIntervalWorkflow, :__timeout_trigger_inherits) == "0 * * * *"
+      assert cron_for(CheckIntervalWorkflow, :__timeout_trigger_waiting_inherits) == "0 * * * *"
     end
   end
 
   describe "timeout-level check_interval" do
     test "overrides the workflow-level setting" do
-      assert cron_for(CheckIntervalWorkflow, :__timeout_trigger_overrides) == "0 9 * * *"
+      assert cron_for(CheckIntervalWorkflow, :__timeout_trigger_waiting_overrides) == "0 9 * * *"
     end
 
     test "still applies when the workflow declares no default" do
-      assert cron_for(AshWorkflowTest.FieldTimeoutWorkflow, :__timeout_trigger_inactivity) ==
+      assert cron_for(AshWorkflowTest.FieldTimeoutWorkflow, :__timeout_trigger_active_inactivity) ==
                "* * * * *"
     end
   end

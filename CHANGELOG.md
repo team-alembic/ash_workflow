@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `check_interval` on the `workflow` block, setting the Oban cron for every generated trigger on the resource — automatic steps included, which previously had no way to change their polling interval at all. Individual timeouts still override it.
 - Documentation of what polling costs: one scheduler per trigger, each querying on every tick regardless of whether any record is waiting, so the cost scales with the size of the workflow rather than the number of records.
 
+### Changed
+
+- **Breaking:** Timeout-generated names are now scoped by step. The hidden action is `__timeout_<step>_<name>` (was `__timeout_<name>`), its Oban trigger is `__timeout_trigger_<step>_<name>`, and worker/scheduler modules gain a step namespace. This means two steps can each declare a timeout with the same name — previously that failed to compile with an ash_oban "defined more than once" error. Update any code referring to a generated timeout action by name.
+
 ### Fixed
 
 - The generated `__on_error_<step>` action is now covered by the generated policies and the AshOban bypass. On a resource with an authorizer, AshOban's invocation of it was forbidden, so a failing automatic step silently stayed put instead of routing to its error state.

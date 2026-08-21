@@ -56,12 +56,14 @@ defmodule AshWorkflow.Transformers.AddObanTriggersTest do
 
   describe "timeout repeat behavior" do
     test "non-repeating action timeout generates trigger_once? true" do
-      trigger = trigger(AshWorkflowTest.TimeoutWorkflow, :__timeout_trigger_reminder)
+      trigger = trigger(AshWorkflowTest.TimeoutWorkflow, :__timeout_trigger_waiting_reminder)
       assert trigger.trigger_once? == true
     end
 
     test "repeating action timeout does not set trigger_once?" do
-      trigger = trigger(AshWorkflowTest.RepeatingTimeoutWorkflow, :__timeout_trigger_follow_up)
+      trigger =
+        trigger(AshWorkflowTest.RepeatingTimeoutWorkflow, :__timeout_trigger_waiting_follow_up)
+
       assert trigger.trigger_once? == false
     end
 
@@ -79,7 +81,7 @@ defmodule AshWorkflow.Transformers.AddObanTriggersTest do
     end
 
     test "transition timeouts are not affected by repeat flag" do
-      trigger = trigger(AshWorkflowTest.TimeoutWorkflow, :__timeout_trigger_escalation)
+      trigger = trigger(AshWorkflowTest.TimeoutWorkflow, :__timeout_trigger_waiting_escalation)
       assert trigger.trigger_once? == false
     end
   end
@@ -96,7 +98,7 @@ defmodule AshWorkflow.Transformers.AddObanTriggersTest do
     end
 
     test "custom queue is applied to timeout triggers" do
-      trigger = trigger(AshWorkflowTest.CustomQueueWorkflow, :__timeout_trigger_reminder)
+      trigger = trigger(AshWorkflowTest.CustomQueueWorkflow, :__timeout_trigger_review_reminder)
       assert trigger.queue == :hiring_pipeline
     end
   end

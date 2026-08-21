@@ -32,7 +32,7 @@ defmodule AshWorkflow.Transformers.AddTimeoutTriggersTest do
       # Reminder timeout is after: {2, :days} — backdate to 3 days ago
       workflow = create_with_backdated_state_entered_at(TimeoutWorkflow, %{title: "overdue"}, 3)
 
-      trigger = trigger(TimeoutWorkflow, :__timeout_trigger_reminder)
+      trigger = trigger(TimeoutWorkflow, :__timeout_trigger_waiting_reminder)
       matches = matching_records(TimeoutWorkflow, trigger)
 
       assert workflow.id in Enum.map(matches, & &1.id)
@@ -41,7 +41,7 @@ defmodule AshWorkflow.Transformers.AddTimeoutTriggersTest do
     test "does not match records within the deadline" do
       {:ok, workflow} = TimeoutWorkflow.create(%{title: "fresh"})
 
-      trigger = trigger(TimeoutWorkflow, :__timeout_trigger_reminder)
+      trigger = trigger(TimeoutWorkflow, :__timeout_trigger_waiting_reminder)
       matches = matching_records(TimeoutWorkflow, trigger)
 
       refute workflow.id in Enum.map(matches, & &1.id)
@@ -53,7 +53,7 @@ defmodule AshWorkflow.Transformers.AddTimeoutTriggersTest do
       # Escalation timeout is after: {7, :days} — backdate to 8 days ago
       workflow = create_with_backdated_state_entered_at(TimeoutWorkflow, %{title: "stale"}, 8)
 
-      trigger = trigger(TimeoutWorkflow, :__timeout_trigger_escalation)
+      trigger = trigger(TimeoutWorkflow, :__timeout_trigger_waiting_escalation)
       matches = matching_records(TimeoutWorkflow, trigger)
 
       assert workflow.id in Enum.map(matches, & &1.id)
@@ -61,20 +61,21 @@ defmodule AshWorkflow.Transformers.AddTimeoutTriggersTest do
 
     test "the timeout action transitions state" do
       {:ok, workflow} = TimeoutWorkflow.create(%{title: "escalate me"})
-      {:ok, escalated} = Ash.update(workflow, action: :__timeout_escalation)
+      {:ok, escalated} = Ash.update(workflow, action: :__timeout_waiting_escalation)
       assert escalated.state == :escalated
     end
   end
 
   describe "timeout triggers have explicit module names" do
     test "worker and scheduler modules follow naming convention" do
-      trigger = trigger(TimeoutWorkflow, :__timeout_trigger_reminder)
+      trigger = trigger(TimeoutWorkflow, :__timeout_trigger_waiting_reminder)
 
+      # Scoped by step, so two steps can each declare a `:reminder` timeout.
       assert trigger.worker_module_name ==
-               AshWorkflowTest.TimeoutWorkflow.AshWorkflow.Workers.Timeouts.Reminder
+               AshWorkflowTest.TimeoutWorkflow.AshWorkflow.Workers.Timeouts.Waiting.Reminder
 
       assert trigger.scheduler_module_name ==
-               AshWorkflowTest.TimeoutWorkflow.AshWorkflow.Schedulers.Timeouts.Reminder
+               AshWorkflowTest.TimeoutWorkflow.AshWorkflow.Schedulers.Timeouts.Waiting.Reminder
     end
   end
 
@@ -84,8 +85,8 @@ defmodule AshWorkflow.Transformers.AddTimeoutTriggersTest do
       trigger_names = Enum.map(triggers, & &1.name) |> MapSet.new()
 
       assert :process_application in trigger_names
-      assert :__timeout_trigger_reminder in trigger_names
-      assert :__timeout_trigger_escalation in trigger_names
+      assert :__timeout_trigger_review_reminder in trigger_names
+      assert :__timeout_trigger_review_escalation in trigger_names
     end
   end
 end

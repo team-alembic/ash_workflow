@@ -47,7 +47,7 @@ defmodule AshWorkflow.Transformers.AddStateMachineTest do
     transitions = AshStateMachine.Info.state_machine_transitions(Workflow)
 
     assert Enum.any?(transitions, fn t ->
-             t.action == :__timeout_escalation and :review in t.from and :escalated in t.to
+             t.action == :__timeout_review_escalation and :review in t.from and :escalated in t.to
            end)
   end
 

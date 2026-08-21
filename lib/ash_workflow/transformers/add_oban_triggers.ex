@@ -19,7 +19,7 @@ defmodule AshWorkflow.Transformers.AddObanTriggers do
   - Matches records where `state == :step_name` AND `<field> <= ago(duration)`,
     where `<field>` defaults to `state_entered_at` but can be overridden per timeout
   - For action timeouts: calls the user-defined action (does not change state)
-  - For transition timeouts: calls the generated `__timeout_<name>` action
+  - For transition timeouts: calls the generated `__timeout_<step>_<name>` action
   - Uses the timeout's own `check_interval` if set, otherwise the workflow-level
     `check_interval` (default: every minute), to poll
   - Streams with `:full_read` since the where clause depends on time
@@ -108,14 +108,18 @@ defmodule AshWorkflow.Transformers.AddObanTriggers do
 
     action =
       if timeout.transition_to do
-        :"__timeout_#{timeout_name}"
+        AddActions.timeout_action_name(step, timeout)
       else
         timeout.action
       end
 
+    # Scoped by step so two steps can declare a timeout with the same name.
+    step_label = Macro.camelize(Atom.to_string(step_name))
     label = Macro.camelize(Atom.to_string(timeout_name))
-    worker_module = Module.concat([resource, AshWorkflow, Workers, Timeouts, label])
-    scheduler_module = Module.concat([resource, AshWorkflow, Schedulers, Timeouts, label])
+    worker_module = Module.concat([resource, AshWorkflow, Workers, Timeouts, step_label, label])
+
+    scheduler_module =
+      Module.concat([resource, AshWorkflow, Schedulers, Timeouts, step_label, label])
 
     # For action timeouts (no state change), trigger_once? prevents re-firing
     # unless repeat: true is set. Transition timeouts naturally fire once since
@@ -124,7 +128,7 @@ defmodule AshWorkflow.Transformers.AddObanTriggers do
 
     trigger =
       Transformer.build_entity!(AshOban, [:oban, :triggers], :trigger,
-        name: :"__timeout_trigger_#{timeout_name}",
+        name: :"__timeout_trigger_#{step_name}_#{timeout_name}",
         action: action,
         where:
           Ash.Expr.expr(state == ^step_name and ^ref(field) <= ago(^duration_value, ^ago_unit)),

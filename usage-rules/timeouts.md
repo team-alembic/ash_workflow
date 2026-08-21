@@ -62,7 +62,7 @@ Use for:
 - SLA enforcement
 - Automatic escalation to a different review queue
 
-Transition timeouts generate a hidden `__timeout_<name>` action — you do not need to define anything.
+Transition timeouts generate a hidden `__timeout_<step>_<name>` action — you do not need to define anything. The name is scoped to the step, so two steps may each declare a timeout with the same name.
 
 ## Repeating Timeouts
 

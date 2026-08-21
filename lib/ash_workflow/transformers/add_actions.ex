@@ -17,7 +17,7 @@ defmodule AshWorkflow.Transformers.AddActions do
     defined on the resource.
 
   - **Timeout transition actions** — for timeouts with `transition_to`, generates
-    a hidden update action named `__timeout_<name>` that transitions to the target
+    a hidden update action named `__timeout_<step>_<name>` that transitions to the target
     state and updates `state_entered_at`.
 
   - **Primary read action** — if the workflow has automatic steps (which generate
@@ -240,6 +240,14 @@ defmodule AshWorkflow.Transformers.AddActions do
   @doc false
   def on_error_action_name(%{name: name}), do: :"__on_error_#{name}"
 
+  @doc """
+  Name of the hidden action a transition timeout performs.
+
+  Scoped by step so the same timeout name can be used on more than one step,
+  the way transition names can.
+  """
+  def timeout_action_name(step, timeout), do: :"__timeout_#{step.name}_#{timeout.name}"
+
   defp add_timeout_actions(dsl, steps) do
     dsl =
       steps
@@ -248,8 +256,8 @@ defmodule AshWorkflow.Transformers.AddActions do
         |> Enum.filter(& &1.transition_to)
         |> Enum.map(fn timeout -> {step, timeout} end)
       end)
-      |> Enum.reduce(dsl, fn {_step, timeout}, dsl ->
-        action_name = :"__timeout_#{timeout.name}"
+      |> Enum.reduce(dsl, fn {step, timeout}, dsl ->
+        action_name = timeout_action_name(step, timeout)
 
         action =
           Transformer.build_entity!(ResourceDsl, [:actions], :update,

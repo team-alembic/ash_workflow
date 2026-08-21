@@ -237,7 +237,7 @@ AshWorkflow generates these automatically — do NOT define them yourself:
 | `:state_entered_at` attribute | `utc_datetime_usec`, tracks when current state was entered |
 | Primary `:read` action | Added if automatic steps exist (needed for Oban triggers) |
 | Transition update actions | One per manual transition |
-| Timeout transition actions | Hidden `__timeout_<name>` actions |
+| Timeout transition actions | Hidden `__timeout_<step>_<name>` actions |
 | Oban triggers | Schedulers and workers for automatic steps and timeouts |
 | State machine DSL | States, transitions, initial state |
 

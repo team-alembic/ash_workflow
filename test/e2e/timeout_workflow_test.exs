@@ -18,7 +18,7 @@ defmodule AshWorkflowTest.E2E.TimeoutWorkflowTest do
 
     test "escalation timeout action transitions to escalated" do
       {:ok, workflow} = TimeoutWorkflow.create(%{title: "escalate"})
-      {:ok, escalated} = Ash.update(workflow, action: :__timeout_escalation)
+      {:ok, escalated} = Ash.update(workflow, action: :__timeout_waiting_escalation)
       assert escalated.state == :escalated
     end
 
