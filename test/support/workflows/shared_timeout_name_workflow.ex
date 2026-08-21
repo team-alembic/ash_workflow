@@ -13,6 +13,11 @@ defmodule AshWorkflowTest.SharedTimeoutNameWorkflow do
     extensions: [AshWorkflow]
 
   workflow do
+    step :triaging do
+      transition :to_urgent, to: :urgent
+      transition :to_standard, to: :standard
+    end
+
     step :urgent do
       transition :resolve, to: :resolved
 

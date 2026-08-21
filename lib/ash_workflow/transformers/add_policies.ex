@@ -176,6 +176,11 @@ defmodule AshWorkflow.Transformers.AddPolicies do
           check: step.policy
         )
 
+      # Conditioned on the action alone. A transition name shared between steps
+      # merges into a single action, so a step policy necessarily applies to
+      # every step that declares that transition — which is why
+      # ValidateWorkflow rejects sharing a name across steps with differing
+      # policies.
       policy =
         Transformer.build_entity!(Authorizer, [:policies], :policy,
           condition: PolicyBuiltins.action(uncovered_actions),

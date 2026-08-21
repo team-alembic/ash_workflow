@@ -350,4 +350,48 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflowTest do
       assert message =~ "at least one non-terminal step"
     end
   end
+
+  describe "shared transition names with differing policies" do
+    test "rejects two steps sharing a transition name with different policies" do
+      AshWorkflowTest.DslAssertions.assert_dsl_error(
+        """
+        defmodule ConflictingPolicyWorkflow do
+          use Ash.Resource,
+            domain: AshWorkflowTest.Domain,
+            data_layer: Ash.DataLayer.Ets,
+            authorizers: [Ash.Policy.Authorizer],
+            extensions: [AshWorkflow]
+
+          workflow do
+            step :queue do
+              policy actor_attribute_equals(:role, :agent)
+
+              transition :resolve, to: :resolved
+              transition :escalate, to: :escalated
+            end
+
+            step :escalated do
+              policy actor_attribute_equals(:role, :manager)
+
+              transition :resolve, to: :resolved
+            end
+
+            step :resolved, terminal: true
+          end
+
+          attributes do
+            uuid_v7_primary_key :id
+          end
+        end
+        """,
+        ~r/Transition :resolve is declared on steps with different policies/
+      )
+    end
+
+    test "allows a shared transition name when the policies match" do
+      # Same check on both steps means one policy on the merged action, which
+      # behaves as written.
+      assert AshWorkflowTest.SharedTransitionWorkflow.__info__(:module)
+    end
+  end
 end

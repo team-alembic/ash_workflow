@@ -112,3 +112,43 @@ MyResource.reject(record, %{reason: "Missing data"}, actor: current_user)
 ```
 
 If a step has a policy and no actor is provided, the transition will fail with an authorization error.
+
+## Do not share a transition name across steps with different policies
+
+Steps that declare the same transition name merge into a single Ash action, and
+each step's `policy` is applied to that action. Ash requires *every* applicable
+policy to pass, so two different policies on the same action block each other
+and nobody can call it.
+
+```elixir
+# Rejected at compile time
+step :queue do
+  policy actor_attribute_equals(:role, :agent)
+  transition :resolve, to: :resolved
+end
+
+step :escalated do
+  policy actor_attribute_equals(:role, :manager)
+  transition :resolve, to: :resolved   # same name, different policy
+end
+```
+
+AshWorkflow rejects this at compile time rather than letting it become a silent
+runtime lockout. Three ways to model it instead:
+
+1. **Distinct names per step** — `:resolve` in the queue, `:manager_resolve` in
+   the escalated step. Clearest, and the generated actions stay meaningfully
+   named.
+2. **The same policy on both steps** — fine when the steps really do share an
+   authorization rule.
+3. **A resource-level policy** — drop the step-level `policy` and authorize the
+   merged action yourself, where you can inspect the state:
+
+   ```elixir
+   policies do
+     policy action(:resolve) do
+       authorize_if expr(state == :escalated and ^actor(:role) == :manager)
+       authorize_if expr(state != :escalated and ^actor(:role) == :agent)
+     end
+   end
+   ```

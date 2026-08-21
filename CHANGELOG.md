@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Breaking:** Timeout-generated names are now scoped by step. The hidden action is `__timeout_<step>_<name>` (was `__timeout_<name>`), its Oban trigger is `__timeout_trigger_<step>_<name>`, and worker/scheduler modules gain a step namespace. This means two steps can each declare a timeout with the same name — previously that failed to compile with an ash_oban "defined more than once" error. Update any code referring to a generated timeout action by name.
 
+### Added
+
+- Compile-time rejection of a transition name shared across steps that declare different policies. Because such steps merge into one action and Ash requires every applicable policy to pass, the differing policies blocked each other and nobody could call the action — a silent runtime lockout, now a build error with guidance.
+
 ### Fixed
 
 - The generated `__on_error_<step>` action is now covered by the generated policies and the AshOban bypass. On a resource with an authorizer, AshOban's invocation of it was forbidden, so a failing automatic step silently stayed put instead of routing to its error state.

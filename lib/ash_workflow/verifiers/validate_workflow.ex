@@ -15,7 +15,8 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
     with :ok <- validate_has_steps(steps),
          :ok <- validate_single_initial(steps),
          :ok <- validate_step_configs(steps),
-         :ok <- validate_references(steps) do
+         :ok <- validate_references(steps),
+         :ok <- validate_shared_transition_policies(steps) do
       validate_reachability(steps)
     end
   end
@@ -261,6 +262,45 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
          "Timeout :#{timeout.name} on step :#{step.name} transition_to references unknown step :#{target}."
        )}
     end
+  end
+
+  # A transition name declared on several steps merges into one Ash action, and
+  # a step's `policy` is applied to that action. So if two steps share a
+  # transition name but declare different policies, both policies end up on the
+  # same action — and because Ash requires every applicable policy to pass, each
+  # actor is blocked by the other step's policy and nobody can use the action.
+  #
+  # That is a silent lockout at runtime, so reject it at compile time instead.
+  defp validate_shared_transition_policies(steps) do
+    steps
+    |> Enum.filter(&Step.manual?/1)
+    |> Enum.flat_map(fn step -> Enum.map(step.transitions, &{&1.name, step}) end)
+    |> Enum.group_by(fn {name, _step} -> name end, fn {_name, step} -> step end)
+    |> Enum.filter(fn {_name, steps} -> length(steps) > 1 end)
+    |> Enum.find_value(:ok, fn {name, sharing_steps} ->
+      policies = sharing_steps |> Enum.map(& &1.policy) |> Enum.uniq()
+
+      if length(policies) > 1 do
+        shared_by = Enum.map_join(sharing_steps, ", ", &":#{&1.name}")
+
+        {:error,
+         DslError.exception(
+           path: [:workflow],
+           message: """
+           Transition :#{name} is declared on steps with different policies (#{shared_by}).
+
+           Steps that share a transition name merge into a single Ash action, and \
+           each step's `policy` is applied to that action. Ash requires every \
+           applicable policy to pass, so the differing policies would block each \
+           other and nobody could call :#{name}.
+
+           Either give the transitions distinct names per step, declare the same \
+           policy on each step, or drop the step-level `policy` and authorize \
+           :#{name} with a resource-level policy that can inspect the state.
+           """
+         )}
+      end
+    end)
   end
 
   defp validate_reachability(steps) do
