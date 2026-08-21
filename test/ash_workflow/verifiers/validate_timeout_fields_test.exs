@@ -1,9 +1,12 @@
 defmodule AshWorkflow.Verifiers.ValidateTimeoutFieldsTest do
   use ExUnit.Case
 
+  import AshWorkflowTest.DslAssertions
+
   describe "timeout field validation" do
-    test "raises when field references a nonexistent attribute" do
-      assert_raise Spark.Error.DslError, ~r/references field :nonexistent_field/, fn ->
+    test "rejects a timeout whose field does not exist" do
+      assert_dsl_error(
+        """
         defmodule BadFieldWorkflow do
           use Ash.Resource,
             domain: AshWorkflowTest.Domain,
@@ -29,11 +32,14 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutFieldsTest do
             attribute :title, :string, allow_nil?: false, public?: true
           end
         end
-      end
+        """,
+        ~r/references field :nonexistent_field/
+      )
     end
 
-    test "raises when repeat: true is used with a custom field" do
-      assert_raise Spark.Error.DslError, ~r/repeat: true with field:/, fn ->
+    test "rejects repeat: true combined with a custom field" do
+      assert_dsl_error(
+        """
         defmodule RepeatWithFieldWorkflow do
           use Ash.Resource,
             domain: AshWorkflowTest.Domain,
@@ -66,11 +72,14 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutFieldsTest do
             attribute :last_session_date, :utc_datetime_usec, public?: true
           end
         end
-      end
+        """,
+        ~r/repeat: true with field:/
+      )
     end
 
-    test "raises when field is not a datetime type" do
-      assert_raise Spark.Error.DslError, ~r/must be a datetime type/, fn ->
+    test "rejects a timeout field that is not a datetime type" do
+      assert_dsl_error(
+        """
         defmodule NonDatetimeFieldWorkflow do
           use Ash.Resource,
             domain: AshWorkflowTest.Domain,
@@ -97,7 +106,9 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutFieldsTest do
             attribute :priority, :integer, public?: true
           end
         end
-      end
+        """,
+        ~r/must be a datetime type/
+      )
     end
 
     test "accepts repeat: true with default state_entered_at field" do

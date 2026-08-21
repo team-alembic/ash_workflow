@@ -272,7 +272,7 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
 
   defp do_validate_reachability(first_step, steps) do
     step_map = Map.new(steps, &{&1.name, &1})
-    reachable = bfs([first_step.name], step_map, MapSet.new())
+    reachable = MapSet.new(bfs([first_step.name], step_map, []))
     all_names = MapSet.new(steps, & &1.name)
     unreachable = MapSet.difference(all_names, reachable)
 
@@ -290,13 +290,16 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
     end
   end
 
+  # `visited` is a plain list rather than a MapSet: workflows have a handful of
+  # steps, so the linear membership check costs nothing at compile time.
+  @spec bfs([atom()], %{optional(atom()) => Step.t()}, [atom()]) :: [atom()]
   defp bfs([], _step_map, visited), do: visited
 
   defp bfs([name | rest], step_map, visited) do
-    if MapSet.member?(visited, name) do
+    if name in visited do
       bfs(rest, step_map, visited)
     else
-      visited = MapSet.put(visited, name)
+      visited = [name | visited]
 
       neighbors =
         case Map.get(step_map, name) do

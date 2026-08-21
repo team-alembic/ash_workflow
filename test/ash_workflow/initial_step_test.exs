@@ -1,6 +1,8 @@
 defmodule AshWorkflow.InitialStepTest do
   use ExUnit.Case, async: true
 
+  import AshWorkflowTest.DslAssertions
+
   alias AshStateMachine.Info, as: SMInfo
 
   describe "initial: true flag" do
@@ -17,8 +19,9 @@ defmodule AshWorkflow.InitialStepTest do
   end
 
   describe "verifier" do
-    test "raises when multiple steps have initial: true" do
-      assert_raise Spark.Error.DslError, ~r/Only one step can have initial: true/, fn ->
+    test "rejects a workflow where multiple steps have initial: true" do
+      assert_dsl_error(
+        """
         defmodule MultipleInitialWorkflow do
           use Ash.Resource,
             domain: AshWorkflowTest.Domain,
@@ -44,11 +47,14 @@ defmodule AshWorkflow.InitialStepTest do
             attribute :title, :string, allow_nil?: false
           end
         end
-      end
+        """,
+        ~r/Only one step can have initial: true/
+      )
     end
 
-    test "raises when terminal step has initial: true" do
-      assert_raise Spark.Error.DslError, ~r/Terminal step .* cannot have initial: true/, fn ->
+    test "rejects a terminal step marked initial: true" do
+      assert_dsl_error(
+        """
         defmodule TerminalInitialWorkflow do
           use Ash.Resource,
             domain: AshWorkflowTest.Domain,
@@ -68,7 +74,9 @@ defmodule AshWorkflow.InitialStepTest do
             attribute :title, :string, allow_nil?: false
           end
         end
-      end
+        """,
+        ~r/Terminal step .* cannot have initial: true/
+      )
     end
   end
 end

@@ -19,6 +19,31 @@ defmodule AshWorkflow.MixProject do
       consolidate_protocols: Mix.env() != :dev,
       deps: deps(),
       aliases: aliases(),
+      dialyzer: [
+        plt_add_apps: [:mix, :ex_unit],
+        plt_core_path: "priv/plts",
+        plt_file: {:no_warn, "priv/plts/dialyzer.plt"}
+      ],
+      # Transformers and verifiers run while the test fixtures compile, which is
+      # before `cover` starts tracking, so their reported coverage understates
+      # how well they are tested. The threshold guards against regression rather
+      # than asserting a meaningful absolute level.
+      test_coverage: [
+        summary: [threshold: 65],
+        ignore_modules: [
+          # Modules AshWorkflow generates into consuming resources, plus the
+          # Spark-generated option structs. Coverage of these reflects the
+          # fixtures that happen to exist, not how well the library is tested.
+          ~r/\.AshWorkflow\.(Workers|Schedulers)($|\.)/,
+          ~r/^AshWorkflow\.Workflow($|\.)/,
+          # Test fixtures and the compiled examples.
+          ~r/^AshWorkflowTest($|\.)/,
+          ~r/^ATS($|\.)/,
+          ~r/^BasicWorkflow($|\.)/,
+          ~r/^Example($|\.)/,
+          ~r/^Inspect\./
+        ]
+      ],
 
       # Hex
       description: @description,
@@ -73,7 +98,10 @@ defmodule AshWorkflow.MixProject do
       {:ash_postgres, "~> 2.0", only: [:dev, :test]},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:usage_rules, "~> 0.1", only: :dev},
-      {:ex_doc, "~> 0.34", only: :dev, runtime: false}
+      {:ex_doc, "~> 0.34", only: :dev, runtime: false},
+      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
+      {:ex_check, "~> 0.16", only: [:dev, :test], runtime: false},
+      {:mix_audit, "~> 2.1", only: [:dev, :test], runtime: false}
     ]
   end
 
