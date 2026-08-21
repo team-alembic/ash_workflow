@@ -307,7 +307,7 @@ Add `ash_workflow` to your dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:ash_workflow, "~> 0.4"}
+    {:ash_workflow, "~> 0.5"}
   ]
 end
 ```
