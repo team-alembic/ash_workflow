@@ -29,6 +29,11 @@ defmodule BasicWorkflow.DocumentApproval do
     data_layer: AshPostgres.DataLayer,
     extensions: [AshWorkflow]
 
+  postgres do
+    table "document_approvals"
+    repo(Example.Repo)
+  end
+
   workflow do
     step :auto_check do
       action :run_document_checks
@@ -46,13 +51,6 @@ defmodule BasicWorkflow.DocumentApproval do
     step :approved, terminal: true
     step :rejected, terminal: true
     step :check_failed, terminal: true
-  end
-
-  attributes do
-    uuid_v7_primary_key :id
-
-    attribute :title, :string, allow_nil?: false
-    attribute :author, :string, allow_nil?: false
   end
 
   code_interface do
@@ -73,5 +71,12 @@ defmodule BasicWorkflow.DocumentApproval do
     update :send_review_reminder do
       accept []
     end
+  end
+
+  attributes do
+    uuid_v7_primary_key :id
+
+    attribute :title, :string, allow_nil?: false
+    attribute :author, :string, allow_nil?: false
   end
 end

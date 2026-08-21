@@ -113,6 +113,11 @@ defmodule ATS.CandidatePipeline do
     data_layer: AshPostgres.DataLayer,
     extensions: [AshWorkflow]
 
+  postgres do
+    table "candidate_pipelines"
+    repo(Example.Repo)
+  end
+
   workflow do
     # ── Automatic: parse resume, check for duplicate applications ──
     step :process_application do
@@ -203,20 +208,6 @@ defmodule ATS.CandidatePipeline do
     step :escalated, terminal: true
   end
 
-  attributes do
-    uuid_v7_primary_key :id
-
-    attribute :candidate_name, :string, allow_nil?: false
-    attribute :candidate_email, :string, allow_nil?: false
-    attribute :position, :string, allow_nil?: false
-    attribute :resume_url, :string
-
-    attribute :notes, :string
-    attribute :rejection_reason, :string
-    attribute :salary, :integer
-    attribute :equity, :string
-  end
-
   code_interface do
     define :apply, action: :apply
   end
@@ -261,5 +252,19 @@ defmodule ATS.CandidatePipeline do
     update :send_offer_follow_up do
       accept []
     end
+  end
+
+  attributes do
+    uuid_v7_primary_key :id
+
+    attribute :candidate_name, :string, allow_nil?: false
+    attribute :candidate_email, :string, allow_nil?: false
+    attribute :position, :string, allow_nil?: false
+    attribute :resume_url, :string
+
+    attribute :notes, :string
+    attribute :rejection_reason, :string
+    attribute :salary, :integer
+    attribute :equity, :string
   end
 end
