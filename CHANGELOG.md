@@ -7,9 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `AshWorkflow.Info` introspection helpers: `terminal?/2`, `in_terminal_state?/1`, `initial_step/1`
+- Compile-time validation that a timeout `field` resolves to a datetime type, rather than only checking that the attribute exists
+- `documentation/topics/error-handling.md` and `documentation/topics/bpmn-comparison.md` guides
+
 ### Changed
 
 - **Breaking:** Removed the `manual true` option from `step`. A step is now implicitly manual when it declares one or more `transition` entries — the flag was always redundant with the presence of transitions. Update existing workflows by deleting the `manual true` line from each manual step.
+
+### Fixed
+
+- Expression evaluation errors in conditional transitions are now surfaced with the failing route and underlying error, instead of being silently treated as "no match"
+- Entity structs now define a `__spark_metadata__` field, fixing compatibility with newer Spark versions
 
 ## [0.4.0] - 2026-03-26
 
