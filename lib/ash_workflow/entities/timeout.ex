@@ -80,8 +80,11 @@ defmodule AshWorkflow.Entities.Timeout do
     ],
     check_interval: [
       type: :string,
-      default: "* * * * *",
-      doc: "Oban cron expression for how often to check this timeout. Defaults to every minute."
+      doc: """
+      Oban cron expression for how often to check this timeout, overriding the
+      workflow-level `check_interval`. Defaults to the workflow's setting,
+      which itself defaults to every minute.
+      """
     ]
   ]
 

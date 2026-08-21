@@ -111,18 +111,65 @@ timeout :weekly_expire, after: {7, :days}, transition_to: :expired
 
 ## Polling interval and precision
 
-By default, timeout triggers check every minute (`"* * * * *"`). You can configure this per-timeout with `check_interval`:
+Timeouts are not scheduled jobs waiting to fire at a particular time. Each one
+is an Oban cron scheduler that wakes on an interval, queries for records whose
+deadline has passed, and enqueues work for the ones it finds. The interval is
+`check_interval`, and it defaults to every minute (`"* * * * *"`).
+
+Set it once for the whole resource, and override individual timeouts that need
+a different cadence:
 
 ```elixir
-# Check once a day at 9am instead of every minute
-timeout :daily_report, after: {3, :days}, action: :generate_report, check_interval: "0 9 * * *"
+workflow do
+  # Every trigger on this resource polls hourly instead of every minute
+  check_interval "0 * * * *"
+
+  step :awaiting_review do
+    transition :approve, to: :approved
+
+    # Inherits the hourly interval above
+    timeout :nudge, after: {2, :days}, action: :send_nudge
+
+    # Overrides it: checked once a day at 9am
+    timeout :daily_report, after: {3, :days}, action: :generate_report, check_interval: "0 9 * * *"
+  end
+end
+```
+
+### What polling costs
+
+The workflow-level `check_interval` applies to **automatic step triggers as
+well as timeouts**, and every trigger gets its own scheduler. That means the
+cost multiplies with the size of the workflow, not with the number of records:
+
+| Triggers on the resource | Default interval | Scheduler queries per hour |
+|---|---|---|
+| 4 automatic steps + 4 timeouts | `"* * * * *"` | 480 |
+| 4 automatic steps + 4 timeouts | `"0 * * * *"` | 8 |
+
+Each of those queries is a filtered read against the resource's table, so they
+are individually cheap and well served by an index on `state`. But they run
+whether or not any record is actually waiting, on every resource that uses
+AshWorkflow, forever.
+
+The default of every minute suits deadlines measured in minutes or hours. For
+workflows measured in days — most approval and onboarding flows — an hourly or
+daily interval gives the same user-visible behaviour for a fraction of the
+queries. Match the interval to the precision the deadline actually needs:
+
+```elixir
+# A 14-day offer expiry does not need minute precision
+workflow do
+  check_interval "0 * * * *"
+  # ...
+end
 ```
 
 > #### Timeouts are not precise to the second {: .info}
 >
 > A timeout fires on the first scheduler cycle *after* the duration has elapsed. With the default every-minute cron, a `{2, :days}` timeout fires somewhere between exactly 2 days and 2 days + 1 minute after `state_entered_at`. If you set `check_interval: "0 * * * *"` (hourly), the window is up to 1 hour.
 >
-> For sub-minute precision, use a more frequent cron expression like `"* * * * * *"` (every second, if your Oban configuration supports it) — but be aware of the database load from frequent polling.
+> For sub-minute precision, use a more frequent cron expression like `"* * * * * *"` (every second, if your Oban configuration supports it) — but see [What polling costs](#what-polling-costs) first, and set it on the individual timeout rather than the whole workflow.
 
 ## Oban queue configuration
 

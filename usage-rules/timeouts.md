@@ -6,6 +6,23 @@ Timeouts in AshWorkflow are powered by Oban cron jobs. When a step has timeouts,
 
 The check happens on the schedule defined by `check_interval` (default: every minute). This means timeouts are not precise to the second — they fire on the next cron tick after the deadline has passed.
 
+Set `check_interval` on the `workflow` block to change it for every trigger on the resource, or on an individual `timeout` to override that default:
+
+```elixir
+workflow do
+  check_interval "0 * * * *"
+
+  step :awaiting_review do
+    transition :approve, to: :approved
+
+    timeout :nudge, after: {2, :days}, action: :send_nudge
+    timeout :urgent, after: {30, :minutes}, transition_to: :escalated, check_interval: "* * * * *"
+  end
+end
+```
+
+Polling is not free, and its cost scales with the number of triggers on the resource rather than the number of records: each automatic step and each timeout gets its own scheduler, and each runs a filtered query on every tick whether or not anything is waiting. Eight triggers at the default interval is 480 queries an hour. Match the interval to the precision the deadline needs — for day-scale workflows, hourly behaves identically to users.
+
 ## Action Timeouts vs Transition Timeouts
 
 ### Action Timeouts

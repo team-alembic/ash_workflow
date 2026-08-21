@@ -21,5 +21,6 @@ defmodule AshWorkflowTest.Domain do
     resource AshWorkflowTest.FieldTimeoutWorkflow
     resource AshWorkflowTest.FailingRouteWorkflow
     resource AshWorkflowTest.ErrorPathWorkflow
+    resource AshWorkflowTest.CheckIntervalWorkflow
   end
 end

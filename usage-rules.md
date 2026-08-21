@@ -164,11 +164,30 @@ timeout :expire, after: {14, :days}, transition_to: :expired
 
 - `transition_to`: Forces the workflow to move to the specified step.
 
+### Workflow-Level Options
+
+Set on the `workflow` block, applying to every generated trigger on the resource:
+
+```elixir
+workflow do
+  queue :fulfilment
+  check_interval "0 * * * *"
+
+  step :packing do
+  end
+end
+```
+
+- `queue` (optional): the Oban queue for all generated triggers. Defaults to `:workflow`. The queue MUST exist in your Oban config or Oban raises at boot.
+- `check_interval` (optional): Oban cron expression controlling how often every trigger on the resource polls — automatic steps and timeouts alike. Defaults to `"* * * * *"` (every minute). Individual timeouts can override it.
+
+Prefer raising `check_interval` over leaving the default when deadlines are measured in days. Every automatic step and every timeout gets its own scheduler, and each runs a query on every tick regardless of whether any record is waiting, so the cost scales with the number of triggers on the resource.
+
 ### Timeout Rules
 
 - Each timeout must have EITHER `action` OR `transition_to` — not both, not neither.
 - Supported duration units: `:seconds`, `:minutes`, `:hours`, `:days`.
-- `check_interval` (optional): Oban cron expression for how often to poll. Defaults to `"* * * * *"` (every minute).
+- `check_interval` (optional): Oban cron expression for how often to poll. Defaults to the workflow-level `check_interval`, which itself defaults to `"* * * * *"` (every minute).
 
 ## Authorization
 

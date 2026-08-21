@@ -60,6 +60,21 @@ defmodule AshWorkflow do
         type: :atom,
         default: :workflow,
         doc: "The Oban queue to use for all generated triggers. Defaults to :workflow."
+      ],
+      check_interval: [
+        type: :string,
+        default: "* * * * *",
+        doc: """
+        Oban cron expression controlling how often every generated trigger on
+        this resource polls — both automatic steps and timeouts. Defaults to
+        every minute.
+
+        Each automatic step and each timeout gets its own scheduler, and every
+        scheduler runs a query on every tick, so this multiplies: a resource
+        with four automatic steps and four timeouts polls eight times a minute
+        at the default. Raise it for workflows measured in days, and override
+        individual timeouts with `check_interval` on the timeout itself.
+        """
       ]
     ],
     entities: [@step]

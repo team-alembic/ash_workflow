@@ -28,6 +28,7 @@ Define a workflow by declaring steps, transitions, and timeouts.
 | Name | Type | Default | Docs |
 |------|------|---------|------|
 | [`queue`](#workflow-queue){: #workflow-queue } | `atom` | `:workflow` | The Oban queue to use for all generated triggers. Defaults to :workflow. |
+| [`check_interval`](#workflow-check_interval){: #workflow-check_interval } | `String.t` | `"* * * * *"` | Oban cron expression controlling how often every generated trigger on this resource polls — both automatic steps and timeouts. Defaults to every minute. Each automatic step and each timeout gets its own scheduler, and every scheduler runs a query on every tick, so this multiplies: a resource with four automatic steps and four timeouts polls eight times a minute at the default. Raise it for workflows measured in days, and override individual timeouts with `check_interval` on the timeout itself. |
 
 
 
@@ -155,7 +156,7 @@ Declares a time-based action or forced transition if the workflow stays in this 
 | [`action`](#workflow-step-timeout-action){: #workflow-step-timeout-action } | `atom` |  | Action to run when the timeout fires. Does not change state. |
 | [`transition_to`](#workflow-step-timeout-transition_to){: #workflow-step-timeout-transition_to } | `atom` |  | Step to force-transition to when the timeout fires. |
 | [`repeat`](#workflow-step-timeout-repeat){: #workflow-step-timeout-repeat } | `boolean` | `false` | If true, re-fire the timeout on the same interval. |
-| [`check_interval`](#workflow-step-timeout-check_interval){: #workflow-step-timeout-check_interval } | `String.t` | `"* * * * *"` | Oban cron expression for how often to check this timeout. Defaults to every minute. |
+| [`check_interval`](#workflow-step-timeout-check_interval){: #workflow-step-timeout-check_interval } | `String.t` |  | Oban cron expression for how often to check this timeout, overriding the workflow-level `check_interval`. Defaults to the workflow's setting, which itself defaults to every minute. |
 
 
 

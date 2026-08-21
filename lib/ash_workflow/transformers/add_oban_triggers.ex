@@ -20,7 +20,8 @@ defmodule AshWorkflow.Transformers.AddObanTriggers do
     where `<field>` defaults to `state_entered_at` but can be overridden per timeout
   - For action timeouts: calls the user-defined action (does not change state)
   - For transition timeouts: calls the generated `__timeout_<name>` action
-  - Uses a configurable `scheduler_cron` (default: every minute) to poll
+  - Uses the timeout's own `check_interval` if set, otherwise the workflow-level
+    `check_interval` (default: every minute), to poll
   - Streams with `:full_read` since the where clause depends on time
 
   Module names follow the pattern:
@@ -38,13 +39,17 @@ defmodule AshWorkflow.Transformers.AddObanTriggers do
   def transform(dsl) do
     steps = Transformer.get_entities(dsl, [:workflow])
     resource = Transformer.get_persisted(dsl, :module)
-    queue = Transformer.get_option(dsl, [:workflow], :queue)
+
+    defaults = [
+      queue: Transformer.get_option(dsl, [:workflow], :queue),
+      check_interval: Transformer.get_option(dsl, [:workflow], :check_interval)
+    ]
 
     dsl =
       steps
       |> Enum.reject(&(Step.manual?(&1) || &1.terminal))
       |> Enum.reduce(dsl, fn step, dsl ->
-        add_step_trigger(dsl, resource, step, queue)
+        add_step_trigger(dsl, resource, step, defaults)
       end)
 
     dsl =
@@ -52,13 +57,13 @@ defmodule AshWorkflow.Transformers.AddObanTriggers do
       |> Enum.reject(& &1.terminal)
       |> Enum.flat_map(fn step -> Enum.map(step.timeouts, &{step, &1}) end)
       |> Enum.reduce(dsl, fn {step, timeout}, dsl ->
-        add_timeout_trigger(dsl, resource, step, timeout, queue)
+        add_timeout_trigger(dsl, resource, step, timeout, defaults)
       end)
 
     {:ok, dsl}
   end
 
-  defp add_step_trigger(dsl, resource, step, queue) do
+  defp add_step_trigger(dsl, resource, step, defaults) do
     step_name = step.name
 
     worker_module =
@@ -77,9 +82,10 @@ defmodule AshWorkflow.Transformers.AddObanTriggers do
         name: step_name,
         action: step.action,
         where: Ash.Expr.expr(state == ^step_name),
-        queue: queue,
+        queue: defaults[:queue],
         worker_module_name: worker_module,
         scheduler_module_name: scheduler_module,
+        scheduler_cron: defaults[:check_interval],
         stream_with: :full_read
       )
       |> maybe_put_on_error(step)
@@ -93,7 +99,7 @@ defmodule AshWorkflow.Transformers.AddObanTriggers do
     %{trigger | on_error: AddActions.on_error_action_name(step)}
   end
 
-  defp add_timeout_trigger(dsl, resource, step, timeout, queue) do
+  defp add_timeout_trigger(dsl, resource, step, timeout, defaults) do
     step_name = step.name
     timeout_name = timeout.name
     {duration_value, duration_unit} = timeout.after
@@ -122,11 +128,12 @@ defmodule AshWorkflow.Transformers.AddObanTriggers do
         action: action,
         where:
           Ash.Expr.expr(state == ^step_name and ^ref(field) <= ago(^duration_value, ^ago_unit)),
-        queue: queue,
+        queue: defaults[:queue],
         trigger_once?: trigger_once?,
         worker_module_name: worker_module,
         scheduler_module_name: scheduler_module,
-        scheduler_cron: timeout.check_interval,
+        # nil means the timeout did not override the workflow-level setting.
+        scheduler_cron: timeout.check_interval || defaults[:check_interval],
         stream_with: :full_read
       )
 

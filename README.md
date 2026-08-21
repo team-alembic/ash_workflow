@@ -254,11 +254,30 @@ end
 
 **Transition timeouts** force the workflow into a new state. Use these for escalations, expirations, or SLA enforcement.
 
-The polling interval is configurable per-timeout via `check_interval` (defaults to `"* * * * *"`):
+Timeouts are implemented as polling, not as scheduled jobs: each timeout — and
+each automatic step — gets its own Oban cron scheduler that queries for records
+past their deadline. `check_interval` controls how often, and defaults to every
+minute. Set it once per workflow, and override individual timeouts as needed:
 
 ```elixir
-timeout :daily_check, after: {3, :days}, action: :check_status, check_interval: "0 9 * * *"
+workflow do
+  check_interval "0 * * * *"
+
+  step :awaiting_review do
+    transition :approve, to: :approved
+
+    timeout :nudge, after: {2, :days}, action: :send_nudge
+    timeout :daily_check, after: {3, :days}, action: :check_status, check_interval: "0 9 * * *"
+  end
+end
 ```
+
+The cost scales with the number of triggers on the resource, not the number of
+records — eight triggers at the default interval is 480 scheduler queries an
+hour, whether or not anything is waiting. For workflows measured in days, an
+hourly interval behaves the same to users at a fraction of the cost. See
+[Timeouts and deadlines](documentation/topics/timeouts-and-deadlines.md) for
+details.
 
 The extension auto-manages a `state_entered_at` timestamp attribute on the resource to track when the current state was entered. Timeout durations are calculated from this timestamp.
 
