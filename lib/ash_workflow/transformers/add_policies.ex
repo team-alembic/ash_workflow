@@ -37,6 +37,7 @@ defmodule AshWorkflow.Transformers.AddPolicies do
   alias Ash.Policy.Authorizer
   alias Ash.Policy.Check.Builtins, as: PolicyBuiltins
   alias AshWorkflow.Entities.Step
+  alias AshWorkflow.Transformers.AddActions
   alias Spark.Dsl.Transformer
 
   def transform(dsl) do
@@ -104,7 +105,9 @@ defmodule AshWorkflow.Transformers.AddPolicies do
       end)
 
     Enum.uniq(
-      create_actions ++ read_actions ++ transition_actions ++ automatic_actions ++ timeout_actions
+      create_actions ++
+        read_actions ++
+        transition_actions ++ automatic_actions ++ timeout_actions ++ on_error_actions(steps)
     )
   end
 
@@ -126,7 +129,15 @@ defmodule AshWorkflow.Transformers.AddPolicies do
         end
       end)
 
-    Enum.uniq(automatic_actions ++ timeout_actions)
+    Enum.uniq(automatic_actions ++ timeout_actions ++ on_error_actions(steps))
+  end
+
+  # AshOban invokes these when an automatic step fails, so they need the same
+  # bypass and default-allow treatment as the step actions themselves.
+  defp on_error_actions(steps) do
+    steps
+    |> Enum.filter(&(&1.on_error && &1.action))
+    |> Enum.map(&AddActions.on_error_action_name/1)
   end
 
   defp add_oban_bypass(dsl, oban_action_names) do

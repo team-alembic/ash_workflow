@@ -12,6 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `check_interval` on the `workflow` block, setting the Oban cron for every generated trigger on the resource — automatic steps included, which previously had no way to change their polling interval at all. Individual timeouts still override it.
 - Documentation of what polling costs: one scheduler per trigger, each querying on every tick regardless of whether any record is waiting, so the cost scales with the size of the workflow rather than the number of records.
 
+### Fixed
+
+- The generated `__on_error_<step>` action is now covered by the generated policies and the AshOban bypass. On a resource with an authorizer, AshOban's invocation of it was forbidden, so a failing automatic step silently stayed put instead of routing to its error state.
+- Corrected the conditional route example in `AshWorkflow.Entities.Transition` docs, which used `to :target, when: ...` rather than the actual `route :target, when: ...`.
+
 ### Changed
 
 - A timeout's `check_interval` now defaults to the workflow-level setting instead of hardcoding `"* * * * *"`. Behaviour is unchanged unless a workflow-level `check_interval` is declared.

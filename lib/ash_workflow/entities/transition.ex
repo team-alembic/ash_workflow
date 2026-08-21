@@ -9,8 +9,8 @@ defmodule AshWorkflow.Entities.Transition do
   Conditional transitions have `routes` instead — multiple targets with `when` conditions:
 
       transition :complete do
-        to :training, when: expr(path_type == :agency)
-        to :ready, when: expr(path_type == :family)
+        route :training, when: expr(path_type == :agency)
+        route :ready, when: expr(path_type == :family)
       end
 
   A transition must have either `to` or at least one route, not both.
