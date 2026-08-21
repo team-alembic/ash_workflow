@@ -76,10 +76,19 @@ The DSL reference at `documentation/dsls/DSL-AshWorkflow.md` is generated — ru
 Use `feat!:` or a `BREAKING CHANGE:` footer for anything that changes the DSL
 or generated action names.
 
-## Versioning
+## Versioning and releases
 
 AshWorkflow is pre-1.0. Breaking changes go out in a minor version bump, and
 are called out explicitly in the changelog with migration instructions.
+
+To cut a release:
+
+1. Move the `## [Unreleased]` changelog entries under a new version heading
+2. Bump `@version` in `mix.exs`
+3. Commit, then tag: `git tag -a vX.Y.Z -m "vX.Y.Z" && git push --follow-tags`
+
+Pushing the tag publishes to Hex via `.github/workflows/release.yml`. The
+workflow refuses to publish if the tag and `mix.exs` version disagree.
 
 ## Code of Conduct
 
