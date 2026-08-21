@@ -66,6 +66,9 @@ reflected in:
 - the relevant guide under `documentation/`
 - `examples/` if the change makes an example wrong. Examples are compiled by
   CI, so a breaking DSL change will fail the build until they are updated
+- `demos/` if the change affects them. Every demo's test suite runs in CI, and
+  they exercise real Oban against real Postgres — which is how several
+  generation bugs were found in the first place
 - `.formatter.exs` `locals_without_parens`, for a new DSL keyword
 - `CHANGELOG.md`, under `## [Unreleased]`
 

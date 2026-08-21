@@ -115,3 +115,63 @@ jobs:
       - run: mix deps.get
 
       - run: mix compile --warnings-as-errors
+
+  demos:
+    name: demo (${{ matrix.demo }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        demo:
+          - ats
+          - document_approval
+          - order_fulfilment
+          - subscription_dunning
+          - support_ticket_sla
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    defaults:
+      run:
+        working-directory: demos/${{ matrix.demo }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: beam
+        uses: erlef/setup-beam@v1
+        with:
+          # Resolved from the repository root, not the demo directory: the
+          # working-directory default above applies only to `run` steps.
+          version-file: .tool-versions
+          version-type: strict
+
+      - name: Cache deps and build
+        uses: actions/cache@v4
+        with:
+          path: |
+            demos/${{ matrix.demo }}/deps
+            demos/${{ matrix.demo }}/_build
+          key: demo-${{ matrix.demo }}-${{ runner.os }}-${{ steps.beam.outputs.elixir-version }}-${{ hashFiles(format('demos/{0}/mix.lock', matrix.demo)) }}
+          restore-keys: demo-${{ matrix.demo }}-${{ runner.os }}-${{ steps.beam.outputs.elixir-version }}-
+
+      - run: mix deps.get
+
+      # The demos are the integration test for the DSL: each drives real Oban
+      # against real Postgres, so a change that breaks one breaks the build.
+      - run: mix test
+        env:
+          MIX_ENV: test
