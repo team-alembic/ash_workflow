@@ -288,6 +288,20 @@ Workflows are started through your own create action — AshWorkflow does not ge
 
 ## Installation
 
+```bash
+mix igniter.install ash_workflow
+```
+
+That adds the dependency and sets up everything the generated DSL needs to
+run: Oban in your supervision tree via `AshOban.config/2`, the cron plugin,
+the `:workflow` queue that generated triggers publish to, `:ash_domains`
+config, and the formatter import for the workflow DSL.
+
+Pass `--queue` and `--queue-concurrency` to change the queue it configures.
+
+<details>
+<summary>Manual installation</summary>
+
 Add `ash_workflow` to your dependencies in `mix.exs`:
 
 ```elixir
@@ -298,7 +312,15 @@ def deps do
 end
 ```
 
-You do **not** need to add `ash_state_machine` or `ash_oban` to your extensions list — `AshWorkflow` includes them automatically. You do still need both as dependencies in your `mix.exs`.
+Then configure Oban with a `:workflow` queue and the cron plugin, and start it
+with `AshOban.config/2`. See the
+[ash_oban documentation](https://hexdocs.pm/ash_oban) for details.
+
+</details>
+
+You do **not** need to add `ash_state_machine` or `ash_oban` to your extensions
+list — `AshWorkflow` includes them automatically — and both come in as
+dependencies of `ash_workflow`, so you don't need to declare them either.
 
 ## License
 
