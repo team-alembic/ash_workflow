@@ -133,3 +133,37 @@ actions do
   end
 end
 ```
+
+## Measuring against a different field
+
+By default a timeout measures its `after` duration from `state_entered_at` — how
+long the workflow has been sitting in the current step. The `field` option
+measures against any datetime attribute or calculation on the resource instead,
+which is what you want for data-driven deadlines:
+
+```elixir
+# "3 months since their last session", not "3 months in this state"
+timeout :dormant, after: {90, :days}, field: :last_session_date, transition_to: :dormant
+```
+
+The field must exist and must be a datetime type — both are checked at compile
+time.
+
+### `repeat: true` is rejected with a custom `field`
+
+Repeating timeouts work by resetting `state_entered_at` after each firing. With a
+custom field, that would mean writing "now" to a field representing a real-world
+event that did not happen — so the combination is a compile-time error rather
+than silently-wrong data.
+
+For periodic checks against a custom field, use a non-repeating timeout with a
+short `check_interval`; it keeps matching on every poll while the condition
+holds.
+
+```elixir
+timeout :dormant_check,
+  after: {90, :days},
+  field: :last_session_date,
+  action: :flag_dormant,
+  check_interval: "0 9 * * *"
+```
