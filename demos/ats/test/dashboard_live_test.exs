@@ -30,7 +30,9 @@ defmodule AshWorkflowDemoWeb.DashboardLiveTest do
     assert html =~ "Bob"
   end
 
-  test "clicking hire on one card cascades all other :review candidates to :position_filled", %{conn: conn} do
+  test "clicking hire on one card cascades all other :review candidates to :position_filled", %{
+    conn: conn
+  } do
     c1 = seed_reviewable("Winner")
     c2 = seed_reviewable("Loser1")
     c3 = seed_reviewable("Loser2")

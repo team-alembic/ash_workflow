@@ -14,9 +14,15 @@ defmodule AshWorkflowDemoWeb.ApplyLive do
     pitch = String.trim(params["pitch"] || "")
 
     cond do
-      name == "" -> {:noreply, assign(socket, error: "name cannot be empty")}
-      pitch == "" -> {:noreply, assign(socket, error: "pitch cannot be empty")}
-      String.length(pitch) > 200 -> {:noreply, assign(socket, error: "pitch must be 200 characters or fewer")}
+      name == "" ->
+        {:noreply, assign(socket, error: "name cannot be empty")}
+
+      pitch == "" ->
+        {:noreply, assign(socket, error: "pitch cannot be empty")}
+
+      String.length(pitch) > 200 ->
+        {:noreply, assign(socket, error: "pitch must be 200 characters or fewer")}
+
       true ->
         avatar = build_avatar_url(name)
 
@@ -49,23 +55,39 @@ defmodule AshWorkflowDemoWeb.ApplyLive do
         <form phx-submit="submit" class="space-y-4">
           <div>
             <label class="block text-sm font-semibold text-stone-700">Your name</label>
-            <input type="text" name="candidate[name]" value={@form["name"]} autocomplete="off"
+            <input
+              type="text"
+              name="candidate[name]"
+              value={@form["name"]}
+              autocomplete="off"
               class="mt-1 w-full rounded-lg border-stone-300 shadow-sm focus:border-amber-500 focus:ring-amber-500"
-              placeholder="e.g. Lola" required />
+              placeholder="e.g. Lola"
+              required
+            />
           </div>
 
           <div>
-            <label class="block text-sm font-semibold text-stone-700">Your pitch (max 200 chars)</label>
-            <textarea name="candidate[pitch]" rows="4" maxlength="200"
+            <label class="block text-sm font-semibold text-stone-700">
+              Your pitch (max 200 chars)
+            </label>
+            <textarea
+              name="candidate[pitch]"
+              rows="4"
+              maxlength="200"
               class="mt-1 w-full rounded-lg border-stone-300 shadow-sm focus:border-amber-500 focus:ring-amber-500"
-              placeholder="Why should El Jefe hire you?" required><%= @form["pitch"] %></textarea>
+              placeholder="Why should El Jefe hire you?"
+              required
+            ><%= @form["pitch"] %></textarea>
           </div>
 
           <%= if @error do %>
-            <div class="text-red-600 text-sm"><%= @error %></div>
+            <div class="text-red-600 text-sm">{@error}</div>
           <% end %>
 
-          <button type="submit" class="w-full bg-red-700 text-white font-bold py-3 rounded-lg hover:bg-red-800 transition">
+          <button
+            type="submit"
+            class="w-full bg-red-700 text-white font-bold py-3 rounded-lg hover:bg-red-800 transition"
+          >
             Apply
           </button>
         </form>

@@ -81,14 +81,14 @@ defmodule AshWorkflowDemo.ATSTest do
   end
 
   describe "auto_reject timeout action" do
-    test "the generated __timeout_auto_reject action moves :review -> :auto_rejected" do
+    test "the generated __timeout_review_auto_reject action moves :review -> :auto_rejected" do
       c = start_candidate()
       {:ok, c} = Ash.update(c, action: :run_verification, authorize?: false)
       assert c.state == :review
 
       # Call the generated timeout action directly (skips the time check — that's
       # the Oban trigger's job; we test the action itself here).
-      {:ok, c} = Ash.update(c, action: :__timeout_auto_reject, authorize?: false)
+      {:ok, c} = Ash.update(c, action: :__timeout_review_auto_reject, authorize?: false)
       assert c.state == :auto_rejected
     end
   end

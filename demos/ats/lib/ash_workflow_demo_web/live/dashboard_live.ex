@@ -59,7 +59,8 @@ defmodule AshWorkflowDemoWeb.DashboardLive do
   end
 
   @impl true
-  def handle_info({:tunnel_url_changed, url}, socket), do: {:noreply, assign(socket, tunnel_url: url)}
+  def handle_info({:tunnel_url_changed, url}, socket),
+    do: {:noreply, assign(socket, tunnel_url: url)}
 
   @impl true
   def handle_info(:tick, socket), do: {:noreply, assign(socket, now: DateTime.utc_now())}
@@ -153,20 +154,35 @@ defmodule AshWorkflowDemoWeb.DashboardLive do
           <h1 class="text-4xl font-black">🤠 El Jefe's Kanban</h1>
           <p class="text-stone-400">One slot. Many candidates. Decide fast.</p>
           <div class="mt-4 flex gap-3">
-            <button phx-click="insert_random" class="bg-amber-600 hover:bg-amber-700 px-4 py-2 rounded font-bold">Insert Random Candidate</button>
-            <button phx-click="reset" data-confirm="Reset the req? This clears review-stage candidates." class="bg-red-700 hover:bg-red-800 px-4 py-2 rounded font-bold">Reset the Req</button>
+            <button
+              phx-click="insert_random"
+              class="bg-amber-600 hover:bg-amber-700 px-4 py-2 rounded font-bold"
+            >
+              Insert Random Candidate
+            </button>
+            <button
+              phx-click="reset"
+              data-confirm="Reset the req? This clears review-stage candidates."
+              class="bg-red-700 hover:bg-red-800 px-4 py-2 rounded font-bold"
+            >
+              Reset the Req
+            </button>
           </div>
         </div>
         <div class="text-center shrink-0">
           <%= if @tunnel_url do %>
             <div class="bg-white p-3 rounded inline-block">
-              <%= qr_svg(@tunnel_url <> "/apply") %>
+              {qr_svg(@tunnel_url <> "/apply")}
             </div>
-            <div class="text-xs mt-2 text-stone-400"><%= @tunnel_url %>/apply</div>
+            <div class="text-xs mt-2 text-stone-400">{@tunnel_url}/apply</div>
           <% else %>
             <form phx-submit="set_tunnel" class="bg-stone-800 p-4 rounded">
               <div class="text-sm mb-2 font-bold">Paste tunnel URL</div>
-              <input name="url" class="text-stone-900 px-2 py-1 rounded w-72" placeholder="https://xxx.trycloudflare.com" />
+              <input
+                name="url"
+                class="text-stone-900 px-2 py-1 rounded w-72"
+                placeholder="https://xxx.trycloudflare.com"
+              />
               <button class="ml-2 bg-amber-600 px-3 py-1 rounded font-bold">Set</button>
             </form>
           <% end %>
@@ -177,30 +193,48 @@ defmodule AshWorkflowDemoWeb.DashboardLive do
         <%= for {state, title, bg} <- @columns do %>
           <div class={"rounded-xl p-4 min-h-[70vh] " <> bg <> " text-stone-900"}>
             <div class="flex items-center justify-between mb-3">
-              <h2 class="font-bold text-lg"><%= title %></h2>
-              <span class="text-sm bg-stone-900 text-stone-100 rounded-full px-2.5 py-0.5 font-semibold"><%= length(Map.get(@by_state, state, [])) %></span>
+              <h2 class="font-bold text-lg">{title}</h2>
+              <span class="text-sm bg-stone-900 text-stone-100 rounded-full px-2.5 py-0.5 font-semibold">
+                {length(Map.get(@by_state, state, []))}
+              </span>
             </div>
             <div class="space-y-3">
               <%= for c <- Map.get(@by_state, state, []) do %>
-                <div phx-click="open_card" phx-value-id={c.id} class="bg-white rounded-lg p-3 shadow cursor-pointer hover:shadow-lg hover:-translate-y-0.5 transition">
+                <div
+                  phx-click="open_card"
+                  phx-value-id={c.id}
+                  class="bg-white rounded-lg p-3 shadow cursor-pointer hover:shadow-lg hover:-translate-y-0.5 transition"
+                >
                   <div class="flex items-center gap-3">
                     <img src={c.avatar_url} class="w-12 h-12 rounded-full bg-stone-200 shrink-0" />
                     <div class="min-w-0 flex-1">
-                      <div class="font-bold text-sm truncate"><%= c.name %></div>
+                      <div class="font-bold text-sm truncate">{c.name}</div>
                       <%= if c.score do %>
-                        <div class="text-xs text-stone-500"><%= c.score %>/10</div>
+                        <div class="text-xs text-stone-500">{c.score}/10</div>
                       <% end %>
                     </div>
                   </div>
-                  <div class="text-xs text-stone-600 mt-2 italic line-clamp-2">"<%= c.pitch %>"</div>
+                  <div class="text-xs text-stone-600 mt-2 italic line-clamp-2">"{c.pitch}"</div>
 
                   <%= if state == :review do %>
                     <div class="text-xs text-red-700 font-bold mt-2">
-                      <%= max(0, 30 - seconds_since(c.state_entered_at, @now)) %>s left
+                      {max(0, 30 - seconds_since(c.state_entered_at, @now))}s left
                     </div>
                     <div class="flex gap-1 mt-2">
-                      <button phx-click="hire" phx-value-id={c.id} class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-1.5 rounded">Hire</button>
-                      <button phx-click="reject" phx-value-id={c.id} class="flex-1 bg-red-700 hover:bg-red-800 text-white text-xs font-bold py-1.5 rounded">Reject</button>
+                      <button
+                        phx-click="hire"
+                        phx-value-id={c.id}
+                        class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-1.5 rounded"
+                      >
+                        Hire
+                      </button>
+                      <button
+                        phx-click="reject"
+                        phx-value-id={c.id}
+                        class="flex-1 bg-red-700 hover:bg-red-800 text-white text-xs font-bold py-1.5 rounded"
+                      >
+                        Reject
+                      </button>
                     </div>
                   <% end %>
                 </div>
@@ -217,45 +251,69 @@ defmodule AshWorkflowDemoWeb.DashboardLive do
           phx-key="Escape"
           class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-6 z-50"
         >
-          <div phx-click-away="close_card" class="bg-white text-stone-900 rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden">
+          <div
+            phx-click-away="close_card"
+            class="bg-white text-stone-900 rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden"
+          >
             <div class={"p-6 text-white " <> color}>
               <div class="flex items-center gap-4">
                 <img src={@selected.avatar_url} class="w-20 h-20 rounded-full bg-white p-1 shadow" />
                 <div class="flex-1 min-w-0">
-                  <div class="text-2xl font-extrabold truncate"><%= @selected.name %></div>
-                  <div class="text-sm opacity-90"><%= label %></div>
+                  <div class="text-2xl font-extrabold truncate">{@selected.name}</div>
+                  <div class="text-sm opacity-90">{label}</div>
                 </div>
-                <button phx-click="close_card" class="text-white/80 hover:text-white text-2xl leading-none">&times;</button>
+                <button
+                  phx-click="close_card"
+                  class="text-white/80 hover:text-white text-2xl leading-none"
+                >
+                  &times;
+                </button>
               </div>
             </div>
             <div class="p-6 space-y-4">
               <div>
                 <div class="text-xs uppercase tracking-wider text-stone-500">Pitch</div>
-                <div class="mt-1 italic">"<%= @selected.pitch %>"</div>
+                <div class="mt-1 italic">"{@selected.pitch}"</div>
               </div>
 
               <%= if @selected.score do %>
                 <div class="bg-stone-100 rounded-xl p-4">
                   <div class="text-xs uppercase tracking-wider text-stone-500">Verify score</div>
                   <div class="flex items-baseline gap-2 mt-1">
-                    <div class="text-4xl font-black"><%= @selected.score %><span class="text-lg text-stone-400">/10</span></div>
-                    <div class="text-sm text-stone-600 italic">"<%= @selected.score_reason %>"</div>
+                    <div class="text-4xl font-black">
+                      {@selected.score}<span class="text-lg text-stone-400">/10</span>
+                    </div>
+                    <div class="text-sm text-stone-600 italic">"{@selected.score_reason}"</div>
                   </div>
                 </div>
               <% end %>
 
               <div class="text-xs text-stone-500">
-                Submitted <%= Calendar.strftime(@selected.inserted_at, "%H:%M:%S") %>
-                &middot; In state since <%= Calendar.strftime(@selected.state_entered_at, "%H:%M:%S") %>
+                Submitted {Calendar.strftime(@selected.inserted_at, "%H:%M:%S")} &middot; In state since {Calendar.strftime(
+                  @selected.state_entered_at,
+                  "%H:%M:%S"
+                )}
               </div>
 
               <%= if @selected.state == :review do %>
                 <div class="flex gap-2 pt-2">
-                  <button phx-click="hire" phx-value-id={@selected.id} class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-lg">Hire</button>
-                  <button phx-click="reject" phx-value-id={@selected.id} class="flex-1 bg-red-700 hover:bg-red-800 text-white font-bold py-3 rounded-lg">Reject</button>
+                  <button
+                    phx-click="hire"
+                    phx-value-id={@selected.id}
+                    class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-lg"
+                  >
+                    Hire
+                  </button>
+                  <button
+                    phx-click="reject"
+                    phx-value-id={@selected.id}
+                    class="flex-1 bg-red-700 hover:bg-red-800 text-white font-bold py-3 rounded-lg"
+                  >
+                    Reject
+                  </button>
                 </div>
                 <div class="text-center text-xs text-red-700 font-bold">
-                  <%= max(0, 30 - seconds_since(@selected.state_entered_at, @now)) %>s until auto-reject
+                  {max(0, 30 - seconds_since(@selected.state_entered_at, @now))}s until auto-reject
                 </div>
               <% end %>
             </div>

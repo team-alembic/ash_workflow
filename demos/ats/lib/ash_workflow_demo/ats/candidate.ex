@@ -15,28 +15,6 @@ defmodule AshWorkflowDemo.ATS.Candidate do
     repo AshWorkflowDemo.Repo
   end
 
-  workflow do
-    step :verifying do
-      action :run_verification
-      on_success :review
-      on_error :verification_failed
-    end
-
-    step :review do
-      transition :hire, to: :hired
-      transition :reject, to: :rejected
-      transition :position_filled, to: :position_filled
-
-      timeout :auto_reject, after: {30, :seconds}, transition_to: :auto_rejected
-    end
-
-    step :hired, terminal: true
-    step :rejected, terminal: true
-    step :auto_rejected, terminal: true
-    step :position_filled, terminal: true
-    step :verification_failed, terminal: true
-  end
-
   attributes do
     uuid_v7_primary_key :id
 
@@ -66,5 +44,27 @@ defmodule AshWorkflowDemo.ATS.Candidate do
       require_atomic? false
       change AshWorkflowDemo.ATS.Candidate.Cascade
     end
+  end
+
+  workflow do
+    step :verifying do
+      action :run_verification
+      on_success :review
+      on_error :verification_failed
+    end
+
+    step :review do
+      transition :hire, to: :hired
+      transition :reject, to: :rejected
+      transition :position_filled, to: :position_filled
+
+      timeout :auto_reject, after: {30, :seconds}, transition_to: :auto_rejected
+    end
+
+    step :hired, terminal: true
+    step :rejected, terminal: true
+    step :auto_rejected, terminal: true
+    step :position_filled, terminal: true
+    step :verification_failed, terminal: true
   end
 end

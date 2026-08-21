@@ -69,7 +69,9 @@ config :ash, include_embedded_source_by_default?: false
 config :spark,
   formatter: [
     remove_parens?: true,
-    "Ash.Resource": [section_order: [:resource, :attributes, :relationships, :actions, :policies, :workflow]]
+    "Ash.Resource": [
+      section_order: [:resource, :attributes, :relationships, :actions, :policies, :workflow]
+    ]
   ]
 
 import_config "#{config_env()}.exs"

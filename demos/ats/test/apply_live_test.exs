@@ -20,7 +20,9 @@ defmodule AshWorkflowDemoWeb.ApplyLiveTest do
     {:ok, view, _html} = live(conn, "/apply")
 
     assert {:error, {:live_redirect, %{to: path}}} =
-             render_submit(view, "submit", %{"candidate" => %{"name" => "TestCandidate", "pitch" => "a real pitch"}})
+             render_submit(view, "submit", %{
+               "candidate" => %{"name" => "TestCandidate", "pitch" => "a real pitch"}
+             })
 
     assert path =~ ~r|^/c/[0-9a-f-]+$|
 
@@ -40,7 +42,12 @@ defmodule AshWorkflowDemoWeb.ApplyLiveTest do
 
   test "pitch over 200 chars shows error", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/apply")
-    html = render_submit(view, "submit", %{"candidate" => %{"name" => "X", "pitch" => String.duplicate("a", 201)}})
+
+    html =
+      render_submit(view, "submit", %{
+        "candidate" => %{"name" => "X", "pitch" => String.duplicate("a", 201)}
+      })
+
     assert html =~ "200 characters"
   end
 end
