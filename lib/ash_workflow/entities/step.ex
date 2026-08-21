@@ -14,6 +14,18 @@ defmodule AshWorkflow.Entities.Step do
     timeouts: []
   ]
 
+  @type t :: %__MODULE__{
+          name: atom(),
+          action: atom() | nil,
+          on_success: atom() | nil,
+          on_error: atom() | nil,
+          policy: term() | nil,
+          initial: boolean(),
+          terminal: boolean(),
+          transitions: [AshWorkflow.Entities.Transition.t()],
+          timeouts: [AshWorkflow.Entities.Timeout.t()]
+        }
+
   @schema [
     name: [
       type: :atom,

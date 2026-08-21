@@ -37,6 +37,17 @@ defmodule AshWorkflow.Entities.Timeout do
     repeat: false
   ]
 
+  @type duration_unit :: :seconds | :minutes | :hours | :days
+  @type t :: %__MODULE__{
+          name: atom(),
+          after: {pos_integer(), duration_unit()},
+          action: atom() | nil,
+          transition_to: atom() | nil,
+          check_interval: String.t() | nil,
+          field: atom(),
+          repeat: boolean()
+        }
+
   @schema [
     name: [
       type: :atom,

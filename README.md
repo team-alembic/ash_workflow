@@ -302,4 +302,4 @@ You do **not** need to add `ash_state_machine` or `ash_oban` to your extensions 
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT — see [LICENSE](https://github.com/team-alembic/ash_workflow/blob/main/LICENSE).

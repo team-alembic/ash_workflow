@@ -84,9 +84,11 @@ defmodule AshWorkflow.MixProject do
         {"README.md", title: "Home"},
         "documentation/tutorials/getting-started-with-ash-workflow.md",
         "documentation/topics/automatic-vs-manual-steps.md",
+        "documentation/topics/error-handling.md",
         "documentation/topics/timeouts-and-deadlines.md",
         "documentation/topics/authorization.md",
         "documentation/topics/workflows-and-relationships.md",
+        "documentation/topics/bpmn-comparison.md",
         "documentation/dsls/DSL-AshWorkflow.md"
       ],
       groups_for_extras: [

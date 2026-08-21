@@ -10,7 +10,7 @@ defmodule AshWorkflow.Transformers.AddAttributes do
   - `public?: true` and `writable?: true`
 
   Does NOT add the `:state` attribute — that is handled by
-  `AshStateMachine.Transformers.AddState`.
+  AshStateMachine's `AddState` transformer.
 
   If the user has already defined a `state_entered_at` attribute, this transformer
   is a no-op.

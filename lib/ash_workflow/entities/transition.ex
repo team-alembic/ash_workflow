@@ -17,6 +17,13 @@ defmodule AshWorkflow.Entities.Transition do
   """
   defstruct [:name, :to, __spark_metadata__: nil, accept: [], routes: []]
 
+  @type t :: %__MODULE__{
+          name: atom(),
+          to: atom() | nil,
+          accept: [atom()],
+          routes: [AshWorkflow.Entities.Route.t()]
+        }
+
   @schema [
     name: [
       type: :atom,
