@@ -9,7 +9,9 @@ defmodule AshWorkflow.Transformers.AddStateMachine do
   - **`default_initial_state`** — same as above
   - **Transitions** for each step type:
     - *Automatic steps* — `transition :step_action, from: [:step_name], to: [:on_success]`.
-      If `on_error` is set, an additional transition to the error state is added.
+      If `on_error` is set, a transition named `__on_error_<step>` to the error
+      state is added — declared on the error handler action rather than on the
+      step's own action, since that is what AshOban invokes when the step fails.
     - *Manual steps* — one transition per declared `transition` entity,
       e.g. `transition :approve, from: [:review], to: [:approved]`
     - *Timeouts with `transition_to`* — a transition named `__timeout_<name>`,
@@ -22,6 +24,7 @@ defmodule AshWorkflow.Transformers.AddStateMachine do
 
   alias AshWorkflow.Entities.Step
   alias AshWorkflow.Entities.Transition
+  alias AshWorkflow.Transformers.AddActions
   alias Spark.Dsl.Transformer
 
   def transform(dsl) do
@@ -63,7 +66,13 @@ defmodule AshWorkflow.Transformers.AddStateMachine do
 
     error =
       if step.on_error do
-        [build_transition(step.action, [step.name], [step.on_error])]
+        [
+          build_transition(
+            AddActions.on_error_action_name(step),
+            [step.name],
+            [step.on_error]
+          )
+        ]
       else
         []
       end

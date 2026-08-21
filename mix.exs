@@ -68,6 +68,9 @@ defmodule AshWorkflow.MixProject do
       {:ash_oban, "~> 0.2"},
       {:igniter, "~> 0.6"},
       {:simple_sat, "~> 0.1", only: [:dev, :test]},
+
+      # Postgres + Oban integration tests
+      {:ash_postgres, "~> 2.0", only: [:dev, :test]},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:usage_rules, "~> 0.1", only: :dev},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false}
@@ -111,6 +114,8 @@ defmodule AshWorkflow.MixProject do
 
   defp aliases do
     [
+      test: ["ash.setup --quiet", "test"],
+      "test.reset": ["ecto.drop --quiet", "test"],
       docs: [
         "spark.cheat_sheets",
         "docs",

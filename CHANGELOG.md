@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `AshWorkflow.Info` introspection helpers: `terminal?/2`, `in_terminal_state?/1`, `initial_step/1`
 - Compile-time validation that a timeout `field` resolves to a datetime type, rather than only checking that the attribute exists
 - `documentation/topics/error-handling.md` and `documentation/topics/bpmn-comparison.md` guides
+- `mix ash_workflow.install` igniter installer, which configures Oban, the cron plugin, the workflow queue and the formatter import
+- Postgres and Oban integration test suite, covering trigger scheduling, execution, error routing and timeout firing against a real database
 
 ### Changed
 
@@ -19,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`on_error` now actually fires.** An automatic step's `on_error` target was declared as a state machine transition on the step's own action, but nothing ever invoked it — a failing step stayed in place and was retried instead of moving to the error state. AshWorkflow now generates an `__on_error_<step>` action and wires it to the AshOban trigger's `on_error`. If you were matching on state machine transitions for the error path, the transition is now declared on `__on_error_<step>` rather than on the step's action.
 - Expression evaluation errors in conditional transitions are now surfaced with the failing route and underlying error, instead of being silently treated as "no match"
 - Entity structs now define a `__spark_metadata__` field, fixing compatibility with newer Spark versions
 

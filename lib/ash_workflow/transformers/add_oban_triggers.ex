@@ -30,6 +30,7 @@ defmodule AshWorkflow.Transformers.AddObanTriggers do
   use Spark.Dsl.Transformer
 
   alias AshWorkflow.Entities.Step
+  alias AshWorkflow.Transformers.AddActions
   alias Spark.Dsl.Transformer
   import Ash.Expr, only: [ref: 1]
   require Ash.Expr
@@ -81,8 +82,15 @@ defmodule AshWorkflow.Transformers.AddObanTriggers do
         scheduler_module_name: scheduler_module,
         stream_with: :full_read
       )
+      |> maybe_put_on_error(step)
 
     Transformer.add_entity(dsl, [:oban, :triggers], trigger)
+  end
+
+  defp maybe_put_on_error(trigger, %{on_error: nil}), do: trigger
+
+  defp maybe_put_on_error(trigger, step) do
+    %{trigger | on_error: AddActions.on_error_action_name(step)}
   end
 
   defp add_timeout_trigger(dsl, resource, step, timeout, queue) do

@@ -47,6 +47,7 @@ defmodule AshWorkflow.Transformers.AddActions do
       |> add_transition_actions(steps)
       |> inject_automatic_step_changes(steps)
       |> add_timeout_actions(steps)
+      |> add_on_error_actions(steps)
 
     {:ok, dsl}
   end
@@ -208,6 +209,36 @@ defmodule AshWorkflow.Transformers.AddActions do
       end
     end)
   end
+
+  # An automatic step's `on_error` target needs an action for AshOban's trigger
+  # `on_error` to call. Without one the state machine permits the error
+  # transition but nothing ever performs it, so a failing step just stays put
+  # and gets retried forever.
+  defp add_on_error_actions(dsl, steps) do
+    steps
+    |> Enum.filter(&(&1.on_error && &1.action))
+    |> Enum.reduce(dsl, fn step, dsl ->
+      action =
+        Transformer.build_entity!(ResourceDsl, [:actions], :update,
+          name: on_error_action_name(step),
+          accept: [],
+          require_atomic?: false,
+          changes: [
+            Transformer.build_entity!(ResourceDsl, [:actions, :update], :change,
+              change: BuiltinChanges.transition_state(step.on_error)
+            ),
+            Transformer.build_entity!(ResourceDsl, [:actions, :update], :change,
+              change: ChangeBuiltins.set_attribute(:state_entered_at, &DateTime.utc_now/0)
+            )
+          ]
+        )
+
+      Transformer.add_entity(dsl, [:actions], action)
+    end)
+  end
+
+  @doc false
+  def on_error_action_name(%{name: name}), do: :"__on_error_#{name}"
 
   defp add_timeout_actions(dsl, steps) do
     dsl =

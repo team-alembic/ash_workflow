@@ -45,6 +45,10 @@ if Code.ensure_loaded?(Igniter) do
 
     use Igniter.Mix.Task
 
+    alias Igniter.Project.Application, as: IgniterApplication
+    alias Igniter.Project.Config, as: IgniterConfig
+    alias Igniter.Project.Formatter, as: IgniterFormatter
+
     @impl Igniter.Mix.Task
     def info(_argv, _composing_task) do
       %Igniter.Mix.Task.Info{
@@ -65,11 +69,11 @@ if Code.ensure_loaded?(Igniter) do
       options = igniter.args.options
       queue = String.to_atom(options[:queue])
       concurrency = options[:queue_concurrency]
-      app_name = Igniter.Project.Application.app_name(igniter)
+      app_name = IgniterApplication.app_name(igniter)
 
       igniter
       |> Igniter.compose_task("ash_oban.install", [])
-      |> Igniter.Project.Formatter.import_dep(:ash_workflow)
+      |> IgniterFormatter.import_dep(:ash_workflow)
       |> add_queue(app_name, queue, concurrency)
       |> Igniter.add_notice("""
       AshWorkflow installed.
@@ -102,7 +106,7 @@ if Code.ensure_loaded?(Igniter) do
     # not process unless it is declared. Leave an existing entry alone so
     # re-running the installer never lowers a tuned concurrency.
     defp add_queue(igniter, app_name, queue, concurrency) do
-      Igniter.Project.Config.configure(
+      IgniterConfig.configure(
         igniter,
         "config.exs",
         app_name,
