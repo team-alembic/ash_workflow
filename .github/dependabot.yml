@@ -1,0 +1,22 @@
+version: 2
+updates:
+  - package-ecosystem: mix
+    directory: /
+    schedule:
+      interval: monthly
+      day: thursday
+    versioning-strategy: lockfile-only
+    groups:
+      dev-dependencies:
+        dependency-type: development
+      production-dependencies:
+        dependency-type: production
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+      day: thursday
+    groups:
+      actions:
+        patterns: ["*"]

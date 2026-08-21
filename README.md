@@ -322,6 +322,13 @@ You do **not** need to add `ash_state_machine` or `ash_oban` to your extensions
 list — `AshWorkflow` includes them automatically — and both come in as
 dependencies of `ash_workflow`, so you don't need to declare them either.
 
+## Contributing
+
+Bug reports and pull requests are welcome — see
+[CONTRIBUTING.md](https://github.com/team-alembic/ash_workflow/blob/main/CONTRIBUTING.md).
+This project follows the
+[Contributor Covenant](https://github.com/team-alembic/ash_workflow/blob/main/CODE_OF_CONDUCT.md).
+
 ## License
 
 MIT — see [LICENSE](https://github.com/team-alembic/ash_workflow/blob/main/LICENSE).
