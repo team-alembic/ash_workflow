@@ -10,7 +10,7 @@ defmodule AshWorkflowTest.CheckIntervalWorkflow do
     extensions: [AshWorkflow]
 
   workflow do
-    check_interval("0 * * * *")
+    check_interval "0 * * * *"
 
     step :processing do
       action :process

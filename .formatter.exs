@@ -10,6 +10,7 @@ spark_locals_without_parens = [
   action: 1,
   initial: 1,
   queue: 1,
+  check_interval: 1,
   terminal: 1,
   policy: 1,
   on_success: 1,
