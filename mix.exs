@@ -2,6 +2,12 @@ defmodule AshWorkflow.MixProject do
   use Mix.Project
 
   @version "0.4.0"
+  @source_url "https://github.com/team-alembic/ash_workflow"
+
+  @description """
+  Declarative workflow orchestration for the Ash Framework — multi-step
+  workflows combining human actions, background jobs, and time-based deadlines.
+  """
 
   def project do
     [
@@ -12,8 +18,16 @@ defmodule AshWorkflow.MixProject do
       start_permanent: Mix.env() == :prod,
       consolidate_protocols: Mix.env() != :dev,
       deps: deps(),
+      aliases: aliases(),
+
+      # Hex
+      description: @description,
+      package: package(),
+
+      # Docs
+      name: "AshWorkflow",
       docs: docs(),
-      aliases: aliases()
+      source_url: @source_url
     ]
   end
 
@@ -22,6 +36,21 @@ defmodule AshWorkflow.MixProject do
   end
 
   defp elixirc_paths(_), do: ["lib"]
+
+  defp package do
+    [
+      name: "ash_workflow",
+      maintainers: ["Alembic Pty Ltd"],
+      licenses: ["MIT"],
+      links: %{
+        "GitHub" => @source_url,
+        "Changelog" => "#{@source_url}/blob/main/CHANGELOG.md",
+        "Ash Framework" => "https://ash-hq.org"
+      },
+      files:
+        ~w[lib .formatter.exs mix.exs README* LICENSE* CHANGELOG* documentation usage-rules.md usage-rules]
+    ]
+  end
 
   # Run "mix help compile.app" to learn about applications.
   def application do
@@ -49,6 +78,7 @@ defmodule AshWorkflow.MixProject do
     [
       main: "readme",
       source_ref: "v#{@version}",
+      source_url: @source_url,
       extra_section: "GUIDES",
       extras: [
         {"README.md", title: "Home"},
