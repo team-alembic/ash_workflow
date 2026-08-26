@@ -24,6 +24,11 @@ defmodule AshWorkflowDemo.ATS.Candidate do
     attribute :score, :integer, public?: true
     attribute :score_reason, :string, public?: true
 
+    # When the scorer is allowed to pick this candidate up. Set a few seconds
+    # into the future on :start so the audience sees the :submitted step on the
+    # projector, rather than the scorer blocking a connection to create suspense.
+    attribute :verify_after, :utc_datetime_usec, public?: true
+
     create_timestamp :inserted_at
     update_timestamp :updated_at
   end
@@ -31,6 +36,7 @@ defmodule AshWorkflowDemo.ATS.Candidate do
   actions do
     create :start do
       accept [:name, :pitch, :avatar_url]
+      change AshWorkflowDemo.ATS.Candidate.SetVerifyAfter
     end
 
     update :run_verification do
@@ -47,6 +53,15 @@ defmodule AshWorkflowDemo.ATS.Candidate do
   end
 
   workflow do
+    # The dwell the audience sees. :verify_after is a per-candidate timestamp,
+    # so the delay is data on the record rather than a sleep inside the scorer.
+    step :submitted do
+      timeout :begin_verification,
+        after: {1, :seconds},
+        field: :verify_after,
+        transition_to: :verifying
+    end
+
     step :verifying do
       action :run_verification
       on_success :review

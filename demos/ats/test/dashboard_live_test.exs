@@ -12,9 +12,12 @@ defmodule AshWorkflowDemoWeb.DashboardLiveTest do
   end
 
   defp seed_reviewable(name) do
-    {:ok, c} = ATS.start(name, "pitch", "https://example.com/a.svg")
-    {:ok, c} = Ash.update(c, action: :run_verification, authorize?: false)
-    c
+    {:ok, candidate} = ATS.start(name, "pitch", "https://example.com/a.svg")
+
+    candidate = ready_to_verify(candidate)
+    run_workflow_triggers(AshWorkflowDemo.ATS.Candidate)
+
+    reload(candidate)
   end
 
   test "dashboard renders with El Jefe branding and column counts", %{conn: conn} do
@@ -66,14 +69,14 @@ defmodule AshWorkflowDemoWeb.DashboardLiveTest do
     assert c2_after.state == :review
   end
 
-  test "insert_random adds a candidate in :verifying", %{conn: conn} do
+  test "insert_random adds a candidate in :submitted", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/")
     _html = render_click(view, "insert_random")
 
     %{results: candidates} = ATS.list_candidates!(authorize?: false)
     assert length(candidates) == 1
     [c] = candidates
-    assert c.state == :verifying
+    assert c.state == :submitted
   end
 
   test "reset transitions :review candidates to :position_filled", %{conn: conn} do

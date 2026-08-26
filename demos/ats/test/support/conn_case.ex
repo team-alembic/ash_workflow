@@ -28,6 +28,11 @@ defmodule AshWorkflowDemoWeb.ConnCase do
       import Plug.Conn
       import Phoenix.ConnTest
       import AshWorkflowDemoWeb.ConnCase
+
+      # Workflow-driving helpers: a LiveView test that needs a reviewable
+      # candidate has to get one the way the app does.
+      import AshWorkflowDemo.DataCase,
+        only: [run_workflow_triggers: 1, ready_to_verify: 1, reload: 1, age_by: 3]
     end
   end
 

@@ -82,7 +82,8 @@ defmodule AshWorkflowDemoWeb.DashboardLive do
   @impl true
   def handle_event("reset", _, socket) do
     # Only :review candidates can transition to :position_filled via the workflow.
-    # :verifying ones will auto-progress within ~5s and can be reset on a second click.
+    # :submitted/:verifying ones auto-progress within ~5s and can be reset on a
+    # second click.
     %{results: to_reset} =
       ATS.Candidate
       |> Ash.Query.filter(state == :review)
@@ -120,9 +121,15 @@ defmodule AshWorkflowDemoWeb.DashboardLive do
 
   defp load_candidates(socket) do
     %{results: candidates} = ATS.list_candidates!(authorize?: false)
-    by_state = Enum.group_by(candidates, & &1.state)
+    by_state = Enum.group_by(candidates, &column_for(&1.state))
     assign(socket, by_state: by_state)
   end
+
+  # :submitted is the wait state a candidate sits in until :verify_after passes.
+  # The board shows it in the same column as :verifying: from the audience's
+  # side it is one "we are looking at your application" phase.
+  defp column_for(:submitted), do: :verifying
+  defp column_for(state), do: state
 
   defp qr_svg(url) do
     url
@@ -134,6 +141,7 @@ defmodule AshWorkflowDemoWeb.DashboardLive do
   defp seconds_since(%DateTime{} = t, now), do: DateTime.diff(now, t, :second)
   defp seconds_since(_, _), do: 0
 
+  defp state_label(:submitted), do: {"Verifying", "bg-amber-500"}
   defp state_label(:verifying), do: {"Verifying", "bg-amber-500"}
   defp state_label(:review), do: {"Under review", "bg-blue-600"}
   defp state_label(:hired), do: {"Hired", "bg-emerald-600"}

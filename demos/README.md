@@ -9,7 +9,7 @@ re-skins of one another.
 
 | Demo | What it is for |
 |---|---|
-| [`ats`](ats) | A Phoenix LiveView app you can click through: conference attendees apply for a role, an automatic step scores them, and reviewers hire or reject before an auto-reject timeout fires |
+| [`ats`](ats) | **Wait states.** A Phoenix LiveView app you can click through: conference attendees apply for a role, sit in a wait state until their own `verify_after` deadline passes, get scored by an automatic step, and are hired or rejected before an auto-reject timeout fires |
 | [`document_approval`](document_approval) | **Conditional routes.** Two admins must sign off, so `:approve` is one action that deliberately does not advance the workflow the first time it is called |
 | [`order_fulfilment`](order_fulfilment) | **Error handling in a long automatic chain.** Four background stages, each with an `on_error` target, two of which recover by looping backwards into the chain |
 | [`subscription_dunning`](subscription_dunning) | **Timeouts.** A repeating dunning email measured from the state entry, and a one-shot suspension measured against a date stored on the record |

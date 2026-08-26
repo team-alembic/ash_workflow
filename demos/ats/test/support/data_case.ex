@@ -33,6 +33,61 @@ defmodule AshWorkflowDemo.DataCase do
   end
 
   @doc """
+  Runs the workflow's Oban triggers to completion, the way the DemoScheduler
+  does on stage. Tests that call an action directly prove the action works;
+  this proves the workflow actually drives it.
+  """
+  def run_workflow_triggers(resource, passes \\ 5) do
+    # Each pass schedules from the state the last pass left behind. The demo
+    # chains :submitted -> :verifying -> :review, and a scheduler only sees the
+    # state a record is in when it runs, so one pass is not enough.
+    Enum.reduce_while(1..passes, nil, fn _, _ ->
+      AshOban.schedule_and_run_triggers(resource)
+      result = Oban.drain_queue(queue: :workflow, with_recursion: true, with_scheduled: true)
+
+      if result.success + result.failure + result.discard == 0 do
+        {:halt, result}
+      else
+        {:cont, result}
+      end
+    end)
+  end
+
+  @doc """
+  Rewinds `state_entered_at` so a timeout's deadline has passed, without the
+  test waiting for wall-clock time.
+  """
+  def age_by(record, amount, unit) do
+    set_datetime(record, :state_entered_at, DateTime.add(DateTime.utc_now(), -amount, unit))
+  end
+
+  @doc "Forces a datetime attribute directly, bypassing the state machine."
+  def set_datetime(record, field, value) do
+    import Ecto.Query
+
+    table = AshPostgres.DataLayer.Info.table(record.__struct__)
+
+    {1, _} =
+      AshWorkflowDemo.Repo.update_all(
+        from(r in table, where: r.id == type(^record.id, :binary_id)),
+        set: [{field, value}]
+      )
+
+    Map.put(record, field, value)
+  end
+
+  @doc "Reloads a record, bypassing authorization."
+  def reload(record), do: Ash.get!(record.__struct__, record.id, authorize?: false)
+
+  @doc """
+  Sets the moment the scorer may pick a candidate up. `:submitted` is a wait
+  state gated on this field, so a test that wants verification to happen has to
+  put the deadline in the past.
+  """
+  def ready_to_verify(candidate),
+    do: set_datetime(candidate, :verify_after, DateTime.add(DateTime.utc_now(), -1, :second))
+
+  @doc """
   Sets up the sandbox based on the test tags.
   """
   def setup_sandbox(tags) do

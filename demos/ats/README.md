@@ -30,7 +30,7 @@ If you forget to set `TUNNEL_URL`, the dashboard shows a text input where you ca
 ## Demo flow
 
 1. Open dashboard. QR code is top-right.
-2. Audience scans QR → lands on `/apply`. Submitting creates a candidate in `:verifying`; within a few seconds they progress to `:review` with a fake AI score.
+2. Audience scans QR → lands on `/apply`. Submitting creates a candidate in `:submitted`, a wait state holding them until their own `verify_after` deadline passes; within a few seconds the automatic `:verifying` step scores them and they land in `:review`. The delay is a per-candidate timestamp, not a sleep, so a whole room applying at once does not queue up behind each other.
 3. On a `:review` card, a 30-second countdown runs. If El Jefe doesn't hire or reject, the workflow auto-rejects.
 4. Click **Hire** on one card — that candidate becomes `:hired` and every other `:review` candidate cascades to `:position_filled`.
 5. Candidates watch themselves on `/c/:id` — a mobile-optimised view with their current state. The winner sees confetti.

@@ -19,6 +19,9 @@ defmodule AshWorkflowDemoWeb.CandidateLive do
     {:noreply, assign(socket, candidate: c)}
   end
 
+  defp state_copy(:submitted),
+    do: {"Verifying…", "El Jefe's people are checking you out.", "bg-amber-500"}
+
   defp state_copy(:verifying),
     do: {"Verifying…", "El Jefe's people are checking you out.", "bg-amber-500"}
 

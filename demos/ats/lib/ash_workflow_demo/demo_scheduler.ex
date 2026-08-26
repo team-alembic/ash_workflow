@@ -15,7 +15,11 @@ defmodule AshWorkflowDemo.DemoScheduler do
 
   @tick_ms 1_000
 
-  @triggers [:verifying, :__timeout_trigger_review_auto_reject]
+  @triggers [
+    :__timeout_trigger_submitted_begin_verification,
+    :verifying,
+    :__timeout_trigger_review_auto_reject
+  ]
 
   @doc """
   The AshOban triggers this scheduler drives every tick.
