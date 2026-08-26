@@ -334,6 +334,13 @@ defmodule AshWorkflow.Transformers.AddActions do
     end)
   end
 
+  # Expands `defaults [...]` into real actions and marks primaries. Running
+  # before it means asking whether a primary read exists while the answer is
+  # still being decided, which is how this transformer used to generate a
+  # second action named `:read`.
+  def after?(Ash.Resource.Transformers.SetPrimaryActions), do: true
+  def after?(_), do: false
+
   def before?(AshStateMachine.Transformers.FillInTransitionDefaults), do: true
   def before?(AshStateMachine.Transformers.AddState), do: true
   def before?(AshStateMachine.Transformers.EnsureStateSelected), do: true

@@ -28,6 +28,15 @@ defmodule AshWorkflow.GeneratedReadActionTest do
     end
   end
 
+  describe "when the resource declares defaults [:read]" do
+    # This is the shape that broke the build on Elixir 1.15 through 1.18: the
+    # defaults are expanded by the same Ash transformer that marks primaries, so
+    # running before it meant seeing no read action and generating a second one.
+    test "the resource keeps its own :read, and nothing extra is generated" do
+      assert [%{name: :read, primary?: true}] = reads(AshWorkflowTest.Postgres.ApprovalWorkflow)
+    end
+  end
+
   describe "when the resource already has a read named :read that is not primary" do
     test "the generated action does not reuse the name" do
       names = Enum.map(reads(NonPrimaryReadWorkflow), & &1.name)
