@@ -98,10 +98,35 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
   end
 
   defp validate_step(step) do
-    if step.transitions == [] do
-      validate_automatic_step(step)
-    else
-      validate_manual_step(step)
+    cond do
+      Step.wait_state?(step) -> validate_wait_state(step)
+      step.transitions == [] -> validate_automatic_step(step)
+      true -> validate_manual_step(step)
+    end
+  end
+
+  defp validate_wait_state(step) do
+    cond do
+      step.on_success != nil ->
+        step_error(
+          step,
+          "Step :#{step.name} has no action, so on_success would never fire. A timeout's transition_to is what moves a wait state along."
+        )
+
+      step.on_error != nil ->
+        step_error(
+          step,
+          "Step :#{step.name} has no action, so on_error would never fire."
+        )
+
+      not Enum.any?(step.timeouts, & &1.transition_to) ->
+        step_error(
+          step,
+          "Step :#{step.name} has no action and no transitions, so a timeout is its only way out, but none of its timeouts declare transition_to. Records entering it would never leave."
+        )
+
+      true ->
+        validate_timeouts(step)
     end
   end
 

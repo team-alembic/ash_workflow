@@ -1,6 +1,15 @@
 # Automatic vs Manual Steps
 
-AshWorkflow steps come in three flavours: automatic, manual, and terminal.
+AshWorkflow steps come in four flavours: automatic, manual, wait states, and terminal.
+
+You never declare which kind a step is. The kind is inferred from its shape:
+
+| The step declares | It is |
+|---|---|
+| an `action` | automatic |
+| one or more `transition` entries | manual |
+| neither, plus a `timeout` with `transition_to` | a wait state |
+| `terminal: true` | terminal |
 
 ## Automatic steps
 
@@ -36,6 +45,33 @@ end
 ```
 
 If the action doesn't exist on the resource, compilation fails with a clear error.
+
+## Wait states
+
+A wait state runs nothing on entry and offers no transition anybody can call. Records sit in it until a timeout moves them on, which makes it the step to reach for when the only thing you are waiting on is the clock:
+
+```elixir
+step :cooling_off do
+  timeout :period_elapsed,
+    after: {14, :days},
+    transition_to: :active
+end
+```
+
+Because a timeout is the only exit, a wait state must declare at least one timeout with `transition_to`. One with only an action-style timeout would trap records forever, so the extension rejects it at compile time. `on_success` and `on_error` are also rejected: with no action to succeed or fail, neither could ever fire.
+
+A wait state's deadline can come from the record rather than the clock, using `field`. That is how you give each record its own delay:
+
+```elixir
+step :scheduled do
+  timeout :due,
+    after: {1, :seconds},
+    field: :run_at,
+    transition_to: :running
+end
+```
+
+See `d:AshWorkflow.workflow.step.timeout` and [Timeouts and Deadlines](timeouts-and-deadlines.md) for the full timeout surface.
 
 ## Manual steps
 

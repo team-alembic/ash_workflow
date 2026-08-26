@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Wait states.** A step that declares no action and no transitions, whose only exit is a timeout with `transition_to`, is now a valid step. Previously such a step was misclassified as automatic and failed to compile with `references action :, but no such action is defined`, which made "sit here until a deadline passes" inexpressible even though the timeout machinery supported it. Combined with a timeout `field`, this is how you give each record its own delay without blocking a process to wait for it.
+- `AshWorkflow.Entities.Step.wait_state?/1`, alongside the existing `manual?/1`.
+- Compile-time rejection of a wait state whose timeouts all lack `transition_to` (records could never leave), or which declares `on_success`/`on_error` (with no action, neither could fire).
 - `check_interval` on the `workflow` block, setting the Oban cron for every generated trigger on the resource — automatic steps included, which previously had no way to change their polling interval at all. Individual timeouts still override it.
 - Documentation of what polling costs: one scheduler per trigger, each querying on every tick regardless of whether any record is waiting, so the cost scales with the size of the workflow rather than the number of records.
 
@@ -22,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A step declaring neither an action, a transition, nor a timeout now reports what it needs, rather than the misleading `Automatic step :x references action :, but no such action is defined on the resource.`
 - The generated `__on_error_<step>` action is now covered by the generated policies and the AshOban bypass. On a resource with an authorizer, AshOban's invocation of it was forbidden, so a failing automatic step silently stayed put instead of routing to its error state.
 - Corrected the conditional route example in `AshWorkflow.Entities.Transition` docs, which used `to :target, when: ...` rather than the actual `route :target, when: ...`.
 

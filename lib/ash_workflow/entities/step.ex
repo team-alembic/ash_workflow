@@ -74,10 +74,23 @@ defmodule AshWorkflow.Entities.Step do
   Manual-ness is derived from the shape of the step: a step with
   `transitions` is manual; a step with an `action` is automatic; a step
   with `terminal: true` is an end state.
+
+  A step with neither transitions nor an action, whose only exit is a
+  timeout, is a *wait state* — it is manual in the sense that nothing runs
+  on entry, even though no caller can move it along either.
   """
   def manual?(%__MODULE__{terminal: true}), do: false
   def manual?(%__MODULE__{transitions: [_ | _]}), do: true
+  def manual?(%__MODULE__{action: nil, timeouts: [_ | _]}), do: true
   def manual?(%__MODULE__{}), do: false
+
+  @doc """
+  Returns `true` if the step is a wait state — no action runs on entry and no
+  caller-facing transition leaves it, so a timeout is its only exit.
+  """
+  def wait_state?(%__MODULE__{terminal: true}), do: false
+  def wait_state?(%__MODULE__{action: nil, transitions: [], timeouts: [_ | _]}), do: true
+  def wait_state?(%__MODULE__{}), do: false
 
   @doc """
   Finds the initial step from a list of steps.

@@ -184,8 +184,7 @@ defmodule AshWorkflow.Transformers.AddActions do
           # Defensive — verifiers can't catch this since they run after transformers
           raise DslError,
             path: [:workflow, :step, step.name],
-            message:
-              "Automatic step :#{step.name} references action :#{step.action}, but no such action is defined on the resource."
+            message: missing_action_message(step)
 
         existing_action ->
           transition_change =
@@ -208,6 +207,15 @@ defmodule AshWorkflow.Transformers.AddActions do
           |> Transformer.add_entity([:actions], updated_action)
       end
     end)
+  end
+
+  defp missing_action_message(%{action: nil} = step) do
+    "Step :#{step.name} must either declare an action (automatic step), at least one " <>
+      "transition (manual step), or a timeout with transition_to (wait state)."
+  end
+
+  defp missing_action_message(step) do
+    "Automatic step :#{step.name} references action :#{step.action}, but no such action is defined on the resource."
   end
 
   # An automatic step's `on_error` target needs an action for AshOban's trigger
