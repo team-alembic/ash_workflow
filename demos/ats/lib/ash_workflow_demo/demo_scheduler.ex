@@ -15,6 +15,16 @@ defmodule AshWorkflowDemo.DemoScheduler do
 
   @tick_ms 1_000
 
+  @triggers [:verifying, :__timeout_trigger_review_auto_reject]
+
+  @doc """
+  The AshOban triggers this scheduler drives every tick.
+
+  `safe_schedule/1` swallows a bad name, so drift here is invisible at runtime.
+  `AshWorkflowDemo.DemoSchedulerTest` asserts each one still exists.
+  """
+  def triggers, do: @triggers
+
   def start_link(_opts), do: GenServer.start_link(__MODULE__, nil, name: __MODULE__)
 
   @impl true
@@ -25,8 +35,7 @@ defmodule AshWorkflowDemo.DemoScheduler do
 
   @impl true
   def handle_info(:tick, state) do
-    safe_schedule(:verifying)
-    safe_schedule(:__timeout_trigger_auto_reject)
+    Enum.each(@triggers, &safe_schedule/1)
     schedule_tick()
     {:noreply, state}
   end
