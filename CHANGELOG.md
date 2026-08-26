@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The generated primary read action no longer collides with a read action the resource already defines. A resource whose `:read` was not primary — `defaults [:read]` produces exactly that — got a second action of the same name and failed to compile with "Multiple actions (2) with the name `read` defined". The generated action is now named `:__workflow_read` when `:read` is taken. Whether the clash surfaced depended on transformer ordering, so it appeared on some Elixir versions and not others.
 - A step declaring neither an action, a transition, nor a timeout now reports what it needs, rather than the misleading `Automatic step :x references action :, but no such action is defined on the resource.`
 - The generated `__on_error_<step>` action is now covered by the generated policies and the AshOban bypass. On a resource with an authorizer, AshOban's invocation of it was forbidden, so a failing automatic step silently stayed put instead of routing to its error state.
 - Corrected the conditional route example in `AshWorkflow.Entities.Transition` docs, which used `to :target, when: ...` rather than the actual `route :target, when: ...`.

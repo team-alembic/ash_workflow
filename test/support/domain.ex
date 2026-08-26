@@ -20,6 +20,7 @@ defmodule AshWorkflowTest.Domain do
     resource AshWorkflowTest.CustomQueueWorkflow
     resource AshWorkflowTest.FieldTimeoutWorkflow
     resource AshWorkflowTest.WaitStateWorkflow
+    resource AshWorkflowTest.NonPrimaryReadWorkflow
     resource AshWorkflowTest.FailingRouteWorkflow
     resource AshWorkflowTest.ErrorPathWorkflow
     resource AshWorkflowTest.CheckIntervalWorkflow

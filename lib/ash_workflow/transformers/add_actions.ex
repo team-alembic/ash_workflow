@@ -61,12 +61,25 @@ defmodule AshWorkflow.Transformers.AddActions do
 
       read_action =
         Transformer.build_entity!(ResourceDsl, [:actions], :read,
-          name: :read,
+          name: read_action_name(dsl),
           primary?: true,
           pagination: pagination
         )
 
       Transformer.add_entity(dsl, [:actions], read_action)
+    end
+  end
+
+  # ash_oban needs a primary read, and the resource has none. Normally that
+  # action is called `:read`, but the name may already be taken by a read that
+  # is not primary — `defaults [:read]` produces exactly that, and is not always
+  # marked primary by the time this transformer runs. Reusing the name in that
+  # case fails the build with "Multiple actions with the name `read` defined".
+  defp read_action_name(dsl) do
+    if Enum.any?(ResourceInfo.actions(dsl), &(&1.name == :read)) do
+      :__workflow_read
+    else
+      :read
     end
   end
 
