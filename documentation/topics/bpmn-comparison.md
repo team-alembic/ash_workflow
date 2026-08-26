@@ -30,7 +30,8 @@ AshWorkflow and Reactor cover **disjoint slices** of BPMN. Reactor is rich at th
 | Authorization on user-task completion | AshWorkflow step `policy` generates Ash policies on the transition action |
 | Code interface | AshWorkflow generates `Resource.approve(record)` style functions, equivalent to engine command APIs |
 | Process introspection | `AshWorkflow.Info` exposes `current_step`, `available_actions`, `steps`, the workflow graph |
-| Audit trail | Composable via AshPaperTrail on the host resource — not built in |
+| State history / time-travel | `transition_log` (see [Workflow history](workflow-history.md)) — opt-in, records one row per workflow event |
+| Audit trail | Composable via AshPaperTrail on the host resource — attribute-level, not built in |
 
 ## Partial coverage
 
