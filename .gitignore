@@ -24,3 +24,9 @@ ash_workflow-*.tar
 
 # Temporary files, for example, from tests.
 /tmp/
+
+# Dialyzer PLTs are machine-specific: they embed absolute paths to the OTP
+# install that built them, so a committed one breaks every other machine.
+# CI rebuilds them behind an OS/OTP-keyed cache.
+/priv/plts/*
+!/priv/plts/.gitkeep
