@@ -4,6 +4,7 @@ defmodule AshWorkflow.Info do
   """
 
   alias AshWorkflow.Entities.Step
+  alias AshWorkflow.Entities.TransitionLog
   alias Spark.Dsl.Extension
 
   @doc """
@@ -11,7 +12,9 @@ defmodule AshWorkflow.Info do
   """
   @spec steps(Ash.Resource.t()) :: [Step.t()]
   def steps(resource) do
-    Extension.get_entities(resource, [:workflow])
+    resource
+    |> Extension.get_entities([:workflow])
+    |> Enum.filter(&match?(%Step{}, &1))
   end
 
   @doc """
@@ -70,6 +73,17 @@ defmodule AshWorkflow.Info do
   @spec initial_step(Ash.Resource.t()) :: Step.t() | nil
   def initial_step(resource) do
     Step.find_initial(steps(resource))
+  end
+
+  @doc """
+  Returns the workflow's `transition_log` configuration, or `nil` if no
+  transition log is configured.
+  """
+  @spec transition_log(Ash.Resource.t() | map()) :: TransitionLog.t() | nil
+  def transition_log(resource) do
+    resource
+    |> Extension.get_entities([:workflow])
+    |> Enum.find(&match?(%TransitionLog{}, &1))
   end
 
   @doc """

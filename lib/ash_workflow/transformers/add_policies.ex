@@ -44,7 +44,11 @@ defmodule AshWorkflow.Transformers.AddPolicies do
     authorizers = Transformer.get_persisted(dsl, :authorizers) || []
 
     if Authorizer in authorizers do
-      steps = Transformer.get_entities(dsl, [:workflow])
+      steps =
+        dsl
+        |> Transformer.get_entities([:workflow])
+        |> Enum.filter(&match?(%Step{}, &1))
+
       existing_policies = Transformer.get_entities(dsl, [:policies])
 
       workflow_action_names = collect_workflow_action_names(dsl, steps)

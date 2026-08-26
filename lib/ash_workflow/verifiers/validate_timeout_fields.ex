@@ -12,12 +12,16 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutFields do
   use Spark.Dsl.Verifier
 
   alias Ash.Resource.Info, as: ResourceInfo
+  alias AshWorkflow.Entities.Step
   alias Spark.Dsl.Verifier
   alias Spark.Error.DslError
 
   @impl true
   def verify(dsl) do
-    steps = Verifier.get_entities(dsl, [:workflow])
+    steps =
+      dsl
+      |> Verifier.get_entities([:workflow])
+      |> Enum.filter(&match?(%Step{}, &1))
 
     steps
     |> Enum.reject(& &1.terminal)

@@ -28,7 +28,11 @@ defmodule AshWorkflow.Transformers.AddStateMachine do
   alias Spark.Dsl.Transformer
 
   def transform(dsl) do
-    steps = Transformer.get_entities(dsl, [:workflow])
+    steps =
+      dsl
+      |> Transformer.get_entities([:workflow])
+      |> Enum.filter(&match?(%Step{}, &1))
+
     first_step = Step.find_initial(steps)
 
     dsl =
