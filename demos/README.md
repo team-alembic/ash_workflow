@@ -14,6 +14,7 @@ re-skins of one another.
 | [`order_fulfilment`](order_fulfilment) | **Error handling in a long automatic chain.** Four background stages, each with an `on_error` target, two of which recover by looping backwards into the chain |
 | [`subscription_dunning`](subscription_dunning) | **Timeouts.** A repeating dunning email measured from the state entry, and a one-shot suspension measured against a date stored on the record |
 | [`support_ticket_sla`](support_ticket_sla) | **Routing and shared names.** Triage routes on priority; `:escalate` means different things in different steps; each queue has its own `:sla_breach` timeout |
+| [`workflow_timeline`](workflow_timeline) | **State history and time travel.** An incident-response workflow with `transition_log` enabled; a LiveView draws every incident as a Gantt-style band and a slider replays `state_at/2` across all of them at once |
 
 ## Which one to read first
 
@@ -21,6 +22,7 @@ re-skins of one another.
 - Wondering how failures behave: `order_fulfilment`.
 - Wondering when timeouts fire: `subscription_dunning`.
 - Want to see it running in a browser: `ats`.
+- Wondering what the transition log buys you: `workflow_timeline`.
 
 ## Running one
 

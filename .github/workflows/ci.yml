@@ -127,6 +127,7 @@ jobs:
           - order_fulfilment
           - subscription_dunning
           - support_ticket_sla
+          - workflow_timeline
 
     services:
       postgres:
