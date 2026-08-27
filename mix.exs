@@ -96,7 +96,8 @@ defmodule AshWorkflow.MixProject do
   defp deps do
     [
       {:mix_test_watch, "~> 1.2", only: [:dev, :test]},
-      {:ash, "~> 3.0"},
+      {:ash, github: "ash-project/ash", branch: "temporal", override: true},
+      {:ash_sql, github: "ash-project/ash_sql", branch: "temporal", override: true},
       {:ash_state_machine, "~> 0.2"},
       {:ash_oban, "~> 0.2"},
       # `runtime: false` because igniter is only ever used at compile time, by
@@ -108,7 +109,7 @@ defmodule AshWorkflow.MixProject do
       {:simple_sat, "~> 0.1", only: [:dev, :test]},
 
       # Postgres + Oban integration tests
-      {:ash_postgres, "~> 2.0", only: [:dev, :test]},
+      {:ash_postgres, github: "ash-project/ash_postgres", branch: "temporal", override: true, only: [:dev, :test]},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:usage_rules, "~> 1.2", only: :dev},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
