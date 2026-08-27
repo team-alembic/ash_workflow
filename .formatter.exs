@@ -14,6 +14,7 @@ spark_locals_without_parens = [
   terminal: 1,
   policy: 1,
   on_success: 1,
+  on_success: 2,
   on_error: 1,
   transition_log: 1,
   belongs_to_actor: 2

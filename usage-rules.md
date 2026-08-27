@@ -62,9 +62,66 @@ end
 ```
 
 - `action` (required): References a user-defined update action on the resource.
-- `on_success` (required): Step to transition to when the action succeeds.
+- `on_success` (required): The step to transition to when the action succeeds. Repeatable — see below.
 - `on_error` (optional): Step to transition to on failure. If omitted, the record stays in the current state on error.
 - Must NOT have `transitions` or `terminal true`.
+
+#### Conditional `on_success` routing
+
+`on_success` is a repeatable entity, not a scalar option. Declare it more
+than once, with a `when` condition, to fan an automatic step out to different
+states based on what its action computed — reusing the same `route` entity
+conditional transitions use:
+
+```elixir
+step :screening do
+  action :run_screening
+  on_success :interview,      when: expr(screen_score >= 5)
+  on_success :rejected_by_hr, when: expr(screen_score < 5)
+  on_error :screening_failed
+end
+```
+
+The common single-target case still has an inline shorthand:
+
+```elixir
+step :send_offer, action: :send_offer_email, on_success: :awaiting_response, on_error: :send_failed
+```
+
+- Entries are evaluated in declaration order; the first matching one wins.
+- An `on_success` with no `when` is unconditional — it always matches. At
+  most one unconditional `on_success` is allowed per step, and if conditional
+  entries are also present, the unconditional one must be declared **last**,
+  as the fallback:
+
+  ```elixir
+  step :triaging do
+    action :run_triage
+    on_success :escalated, when: expr(priority == :high)
+    on_success :queued                                    # fallback
+  end
+  ```
+
+  Declaring an unconditional `on_success` before conditional ones is a
+  compile-time error — it would shadow everything after it.
+- **Timing**: `on_success` conditions are evaluated *after* the step's own
+  action has run — including any attributes that action computed. This is
+  the opposite of a manual transition's `route` conditions (see `route` under
+  `transition`), which are evaluated against the record *before* the update
+  they guard is applied, since there is no "after" for a transition that
+  hasn't happened yet. The whole point of routing on `on_success` is to
+  branch on what the action produced, so it has to run after.
+- If every `on_success` is conditional and none matches at runtime, the
+  update fails with an error naming the step and the record.
+- Every `on_success` target must be a step declared elsewhere in the workflow.
+- Conditions use SQL-style three-valued logic: comparing a `nil` attribute
+  evaluates to `nil`, not `false`. A route whose condition evaluates to `nil`
+  simply doesn't match, same as `false` — it falls through to the next route
+  or the no-match error.
+- A route may target its own step (a same-step retry loop) or any earlier
+  step (a multi-step retry loop). Neither is rejected at compile time —
+  reachability validation only checks whether a step is reachable from the
+  initial step, not whether the path is acyclic.
 
 ### Manual Steps
 
@@ -396,6 +453,8 @@ AshWorkflow validates your workflow at compile time and raises clear errors for:
 - Invalid step configuration (e.g., a step with both `action` and `transitions`, or with neither)
 - Timeouts with both `action` and `transition_to` (or neither)
 - References to undefined steps (in `on_success`, `on_error`, `transition :to`, `timeout :transition_to`)
+- An automatic step declaring no `on_success`
+- More than one unconditional `on_success` on a step, or an unconditional `on_success` declared before a conditional one (it would shadow it)
 - Unreachable steps (not connected to the first step via any path)
 
 ## Important Caveats

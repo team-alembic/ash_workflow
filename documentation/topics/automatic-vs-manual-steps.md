@@ -30,6 +30,80 @@ end
 3. The extension has injected `transition_state(:review)` into your action, so on success the state advances
 4. If the action raises or returns an error, and `on_error` is set, the state moves there instead
 
+### Fanning out with multiple `on_success` entries
+
+`on_success` is a repeatable entity, not a scalar option — declaring it more
+than once, with a `when` condition, fans a record out to different states
+based on what the step's action computed. When an automatic step's outcome is
+itself a business decision — an AI screening step that either advances a
+candidate or rejects them, say — modelling the rejection as `on_error` is
+wrong: it wasn't a failure, it was an outcome, and `on_error` fires from
+*actual* failures (exceptions, validation errors). Declare more than one
+`on_success` instead, each with a `when`:
+
+```elixir
+step :screening do
+  action :run_screening
+  on_success :interview,      when: expr(screen_score >= 5)
+  on_success :rejected_by_hr, when: expr(screen_score < 5)
+  on_error :screening_failed
+end
+```
+
+Entries are evaluated in declaration order, first match wins. An `on_success`
+with no `when` is unconditional — it always matches, so at most one is
+allowed per step, and if conditional entries are also present the
+unconditional one must be declared last, as the fallback:
+
+```elixir
+step :triaging do
+  action :run_triage
+  on_success :escalated, when: expr(priority == :high)
+  on_success :queued                                    # fallback — no `when`
+end
+```
+
+Declaring an unconditional `on_success` before conditional ones is a
+compile-time error: it would always match first and shadow everything after
+it. If every `on_success` on a step is conditional and none matches at
+runtime, the update fails with an error naming the step and the record —
+there is no silent "stay put".
+
+Conditions follow SQL's three-valued logic, not Elixir's: comparing a `nil`
+attribute (one the action never set) evaluates to `nil`, not `false`. A route
+with a `nil` condition simply doesn't match — it falls through to the next
+route, or to the no-match error if there isn't one — the same as an
+explicitly `false` condition would. There's no separate "unknown" outcome to
+handle.
+
+An `on_success` route can target the step it's declared on, or any earlier
+step — both are legitimate retry patterns, not mistakes, and neither is
+rejected at compile time. Reachability validation only asks whether a step
+can be reached from the workflow's initial step, not whether the path to it
+is acyclic:
+
+```elixir
+step :attempting do
+  action :run_attempt
+  on_success :attempting, when: expr(attempts < 3)  # retry, same step
+  on_success :succeeded,  when: expr(attempts >= 3)
+end
+```
+
+The inline shorthand still works for the common single-target case:
+
+```elixir
+step :process_application, action: :process_application, on_success: :review, on_error: :processing_failed
+```
+
+**Timing matters here, and it's the opposite of manual `route`s.** A manual
+transition's `route` conditions run against the record *before* the update
+they guard — there's no "after" for something that hasn't happened yet.
+`on_success` conditions run *after* the step's own action, against whatever
+that action computed (`screen_score`, in the example above). That's
+deliberate: the entire reason to route on `on_success` is to branch on what
+the action produced, which doesn't exist until the action has run.
+
 ### User-defined actions
 
 You must define the update action yourself with your business logic. The extension appends `transition_state` and `state_entered_at` changes to it:

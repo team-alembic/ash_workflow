@@ -196,15 +196,18 @@ defmodule AshWorkflow.Info do
   Returns a graph representation of the workflow as a map.
 
   Each key is a step name, and the value is a map with `:transitions` (list of
-  target step names from manual transitions), `:on_success`/`:on_error` (for
-  automatic steps), and `:timeouts` (list of `{timeout_name, target}` tuples).
+  target step names from manual transitions), `:on_success` (the step's
+  single unconditional `on_success` target, or `nil` if it has none or is
+  conditional), `:on_success_targets` (every step `on_success` could reach —
+  one entry per declared `on_success`), `:on_error` (for automatic steps),
+  and `:timeouts` (list of `{timeout_name, target}` tuples).
 
   ## Example
 
       AshWorkflow.Info.workflow_graph(MyApp.OnboardingWorkflow)
       #=> %{
-      #=>   screening: %{transitions: [:interviewing, :rejected], on_success: nil, on_error: nil, timeouts: []},
-      #=>   interviewing: %{transitions: [:offer, :rejected], on_success: nil, on_error: nil, timeouts: []},
+      #=>   screening: %{transitions: [:interviewing, :rejected], on_success: nil, on_success_targets: [], on_error: nil, timeouts: []},
+      #=>   interviewing: %{transitions: [:offer, :rejected], on_success: nil, on_success_targets: [], on_error: nil, timeouts: []},
       #=>   ...
       #=> }
   """
@@ -226,13 +229,17 @@ defmodule AshWorkflow.Info do
     {step.name,
      %{
        transitions: transition_targets,
-       on_success: step.on_success,
+       on_success: bare_on_success(step),
+       on_success_targets: Step.on_success_targets(step),
        on_error: step.on_error,
        timeouts: timeout_targets,
        terminal: step.terminal,
        manual: Step.manual?(step)
      }}
   end
+
+  defp bare_on_success(%{on_success: [%{to: to, when: nil}]}), do: to
+  defp bare_on_success(%{}), do: nil
 
   defp transition_targets(%{routes: []} = t), do: [t.to]
   defp transition_targets(%{routes: routes}), do: Enum.map(routes, & &1.to)

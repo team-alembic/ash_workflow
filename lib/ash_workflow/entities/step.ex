@@ -4,20 +4,20 @@ defmodule AshWorkflow.Entities.Step do
   defstruct [
     :name,
     :action,
-    :on_success,
     :on_error,
     :policy,
     __spark_metadata__: nil,
     initial: false,
     terminal: false,
     transitions: [],
-    timeouts: []
+    timeouts: [],
+    on_success: []
   ]
 
   @type t :: %__MODULE__{
           name: atom(),
           action: atom() | nil,
-          on_success: atom() | nil,
+          on_success: [AshWorkflow.Entities.Route.t()],
           on_error: atom() | nil,
           policy: term() | nil,
           initial: boolean(),
@@ -47,12 +47,6 @@ defmodule AshWorkflow.Entities.Step do
       type: :boolean,
       default: false,
       doc: "If true, this is an end state with no outgoing transitions."
-    ],
-    on_success: [
-      type: :atom,
-      doc:
-        "The step to transition to on successful completion of an automatic step. " <>
-          "Required for automatic steps (i.e., steps with an `action` and no `transitions`)."
     ],
     on_error: [
       type: :atom,
@@ -91,6 +85,25 @@ defmodule AshWorkflow.Entities.Step do
   def wait_state?(%__MODULE__{terminal: true}), do: false
   def wait_state?(%__MODULE__{action: nil, transitions: [], timeouts: [_ | _]}), do: true
   def wait_state?(%__MODULE__{}), do: false
+
+  @doc """
+  Returns `true` if the step's `on_success` needs runtime evaluation to pick
+  its target — i.e. it is more than a single unconditional route.
+
+  A single `on_success` entry with no `when` is unconditional and resolves to
+  a plain `transition_state`. Anything else (any `when` present, or more than
+  one entry) requires evaluating conditions against the record after the
+  step's action runs.
+  """
+  def on_success_conditional?(%__MODULE__{on_success: [%{when: nil}]}), do: false
+  def on_success_conditional?(%__MODULE__{on_success: [_ | _]}), do: true
+  def on_success_conditional?(%__MODULE__{}), do: false
+
+  @doc """
+  Returns every step this step's `on_success` could reach, in declaration
+  order. Returns `[]` if no `on_success` is declared.
+  """
+  def on_success_targets(%__MODULE__{on_success: routes}), do: Enum.map(routes, & &1.to)
 
   @doc """
   Finds the initial step from a list of steps.

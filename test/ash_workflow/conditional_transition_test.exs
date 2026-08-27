@@ -15,7 +15,7 @@ defmodule AshWorkflow.ConditionalTransitionTest do
       name: name,
       action: opts[:action],
       terminal: opts[:terminal] || false,
-      on_success: opts[:on_success],
+      on_success: opts[:on_success] || [],
       on_error: opts[:on_error],
       policy: opts[:policy],
       transitions: opts[:transitions] || [],
