@@ -23,6 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Compile-time rejection of a transition name shared across steps that declare different policies. Because such steps merge into one action and Ash requires every applicable policy to pass, the differing policies blocked each other and nobody could call the action — a silent runtime lockout, now a build error with guidance.
 
+### Security
+
+- Updated the locked `ash` from 3.27.7 to 3.32.1, which carried four advisories. The most serious, EEF-CVE-2026-67579 (HIGH), is filter expression injection via a forged keyset pagination cursor — relevant here because the read action this extension generates for ash_oban's triggers uses keyset pagination. The dependency constraint (`~> 3.0`) was already permissive; only the lockfile held the old version.
+
 ### Fixed
 
 - The generated primary read action no longer collides with a read action the resource already defines. A resource whose `:read` was not primary — `defaults [:read]` produces exactly that — got a second action of the same name and failed to compile with "Multiple actions (2) with the name `read` defined". The transformer now runs after `Ash.Resource.Transformers.SetPrimaryActions`, which is what expands `defaults` and marks primaries — asking before it ran meant seeing no read action at all on some Elixir versions and generating a duplicate. As a second guard, the generated action is named `:__workflow_read` when `:read` is already taken.
