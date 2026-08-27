@@ -23,6 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Compile-time rejection of a transition name shared across steps that declare different policies. Because such steps merge into one action and Ash requires every applicable policy to pass, the differing policies blocked each other and nobody could call the action — a silent runtime lockout, now a build error with guidance.
 
+### Changed
+
+- **Breaking:** The minimum supported Elixir is now 1.17, raised from 1.15. The ash release carrying the security fixes below uses `Duration`, which does not exist before 1.17, and the newest ash that still compiles on 1.15 (3.30.1) remains affected by the HIGH advisory — so supporting 1.15/1.16 and shipping a patched ash were mutually exclusive.
+
 ### Security
 
 - Updated the locked `ash` from 3.27.7 to 3.32.1, which carried four advisories. The most serious, EEF-CVE-2026-67579 (HIGH), is filter expression injection via a forged keyset pagination cursor — relevant here because the read action this extension generates for ash_oban's triggers uses keyset pagination. The dependency constraint (`~> 3.0`) was already permissive; only the lockfile held the old version.
