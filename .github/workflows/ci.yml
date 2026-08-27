@@ -37,7 +37,7 @@ jobs:
           --health-retries 5
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - id: beam
         uses: erlef/setup-beam@v1
@@ -46,21 +46,21 @@ jobs:
           version-type: strict
 
       - name: Cache deps
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: deps
           key: deps-${{ runner.os }}-${{ steps.beam.outputs.elixir-version }}-${{ steps.beam.outputs.otp-version }}-${{ hashFiles('mix.lock') }}
           restore-keys: deps-${{ runner.os }}-${{ steps.beam.outputs.elixir-version }}-${{ steps.beam.outputs.otp-version }}-
 
       - name: Cache _build
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: _build
           key: build-${{ runner.os }}-${{ steps.beam.outputs.elixir-version }}-${{ steps.beam.outputs.otp-version }}-${{ hashFiles('mix.lock') }}
           restore-keys: build-${{ runner.os }}-${{ steps.beam.outputs.elixir-version }}-${{ steps.beam.outputs.otp-version }}-
 
       - name: Cache dialyzer PLT
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: priv/plts
           # v2: earlier runs cached a PLT built on a developer machine, whose
@@ -93,7 +93,7 @@ jobs:
             otp: "28"
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - id: beam
         uses: erlef/setup-beam@v1
@@ -102,7 +102,7 @@ jobs:
           otp-version: ${{ matrix.otp }}
 
       - name: Cache deps
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             deps
@@ -147,7 +147,7 @@ jobs:
         working-directory: demos/${{ matrix.demo }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - id: beam
         uses: erlef/setup-beam@v1
@@ -158,7 +158,7 @@ jobs:
           version-type: strict
 
       - name: Cache deps and build
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             demos/${{ matrix.demo }}/deps
