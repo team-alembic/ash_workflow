@@ -26,6 +26,7 @@ defmodule AshWorkflow.Transformers.AddStateMachine do
   alias AshWorkflow.Entities.Transition
   alias AshWorkflow.Transformers.AddActions
   alias Spark.Dsl.Transformer
+  alias Spark.Error.DslError
 
   def transform(dsl) do
     steps =
@@ -33,8 +34,27 @@ defmodule AshWorkflow.Transformers.AddStateMachine do
       |> Transformer.get_entities([:workflow])
       |> Enum.filter(&match?(%Step{}, &1))
 
-    first_step = Step.find_initial(steps)
+    case Step.find_initial(steps) do
+      nil -> raise no_steps_error()
+      first_step -> add_state_machine(dsl, steps, first_step)
+    end
+  end
 
+  # A resource with the extension but no steps yet — where every resource sits
+  # between `mix ash.extend` and its first step. `validate_workflow` reports
+  # this too, but verifiers run after transformers, and there is no state
+  # machine to build without a step to start in. Raising the same error here
+  # keeps the message the user sees the useful one rather than an internal
+  # `expected a map, got: nil`, or ash_state_machine complaining downstream
+  # about the `initial_states` this transformer never set.
+  defp no_steps_error do
+    DslError.exception(
+      path: [:workflow],
+      message: "Workflow must have at least one non-terminal step."
+    )
+  end
+
+  defp add_state_machine(dsl, steps, first_step) do
     dsl =
       dsl
       |> Transformer.set_option([:state_machine], :initial_states, [first_step.name])

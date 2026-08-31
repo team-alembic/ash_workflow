@@ -1,6 +1,8 @@
 defmodule AshWorkflow.Changes.RecordEventTest do
   use ExUnit.Case, async: true
 
+  require Ash.Query
+
   alias Ash.Resource.Change.Context
   alias Ash.Resource.Info, as: ResourceInfo
   alias AshWorkflow.Changes.RecordEvent
@@ -43,6 +45,77 @@ defmodule AshWorkflow.Changes.RecordEventTest do
       history = LoggedWorkflow.history(record)
       assert length(history) == 3
       assert Enum.all?(history, & &1.occurred_at)
+    end
+  end
+
+  describe "from_state on the atomic path" do
+    # An atomic update acts on a query, so the changeset has no `data` holding
+    # the pre-update state. AshOban drives every automatic step and timeout that
+    # way, so this is the common case, not the exotic one — and a nil from_state
+    # is indistinguishable from the legitimately-nil `:initial` row.
+    defp atomically(record, action) do
+      LoggedWorkflow
+      |> Ash.Query.do_filter(id: record.id)
+      |> Ash.bulk_update!(action, %{}, strategy: :atomic, return_errors?: true)
+
+      Ash.get!(LoggedWorkflow, record.id)
+    end
+
+    defp last_event(record), do: record |> LoggedWorkflow.history() |> List.last()
+
+    test "an atomic transition records the state it left" do
+      {:ok, record} = LoggedWorkflow.create(%{title: "atomic from_state"})
+      {:ok, record} = Ash.update(record, action: :process_intake)
+      assert record.state == :review
+
+      record = atomically(record, :approve)
+
+      assert record.state == :done
+      assert last_event(record).from_state == :review
+    end
+
+    test "a non-atomic transition still records the state it left" do
+      {:ok, record} = LoggedWorkflow.create(%{title: "non-atomic from_state"})
+      {:ok, record} = Ash.update(record, action: :process_intake)
+      {:ok, record} = Ash.update(record, action: :approve)
+
+      assert last_event(record).from_state == :review
+    end
+
+    test "every row but the first has a from_state, driving only atomic updates" do
+      {:ok, record} = LoggedWorkflow.create(%{title: "all atomic"})
+      record = atomically(record, :process_intake)
+      record = atomically(record, :approve)
+
+      [initial | rest] = LoggedWorkflow.history(record)
+
+      assert initial.from_state == nil, "the :initial row has nothing to have come from"
+      assert rest != []
+
+      for event <- rest do
+        assert event.from_state != nil,
+               "#{inspect(event.transition_name)} logged a nil from_state, which reads as an :initial row"
+      end
+    end
+
+    test "each row's from_state is the previous row's to_state" do
+      {:ok, record} = LoggedWorkflow.create(%{title: "chain"})
+      record = atomically(record, :process_intake)
+      record = atomically(record, :approve)
+
+      history = LoggedWorkflow.history(record)
+
+      history
+      |> Enum.zip(tl(history))
+      |> Enum.each(fn {previous, current} ->
+        assert current.from_state == previous.to_state
+      end)
+    end
+
+    test "the create row keeps a nil from_state" do
+      {:ok, record} = LoggedWorkflow.create(%{title: "create row"})
+
+      assert [%{from_state: nil, triggered_by: :initial}] = LoggedWorkflow.history(record)
     end
   end
 

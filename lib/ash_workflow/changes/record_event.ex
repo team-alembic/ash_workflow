@@ -94,7 +94,7 @@ defmodule AshWorkflow.Changes.RecordEvent do
 
     attrs = %{
       foreign_key => TransitionLogHelpers.primary_key_value!(record),
-      from_state: from_state(changeset, state_attribute),
+      from_state: from_state(changeset, state_attribute, log, foreign_key, record),
       to_state: Map.get(record, state_attribute),
       transition_name: opts[:transition_name] || changeset.action.name,
       occurred_at: DateTime.utc_now(),
@@ -116,6 +116,31 @@ defmodule AshWorkflow.Changes.RecordEvent do
     end
   end
 
-  defp from_state(%{action_type: :create}, _state_attribute), do: nil
-  defp from_state(changeset, state_attribute), do: Map.get(changeset.data, state_attribute)
+  defp from_state(%{action_type: :create}, _state_attribute, _log, _foreign_key, _record), do: nil
+
+  defp from_state(changeset, state_attribute, log, foreign_key, record) do
+    # An atomic update has no `data` to read the pre-update state from — it acts
+    # on a query, not a loaded record — and a partially selected record has the
+    # attribute unloaded. Both are the normal case for AshOban-driven steps and
+    # timeouts, which is most events on a busy workflow. Fall back to the state
+    # the last logged row landed in: every event is logged, so that is the state
+    # this transition is leaving.
+    case Map.get(changeset.data, state_attribute) do
+      nil -> last_logged_state(log, foreign_key, record)
+      %Ash.NotLoaded{} -> last_logged_state(log, foreign_key, record)
+      state -> state
+    end
+  end
+
+  defp last_logged_state(log, foreign_key, record) do
+    log.resource
+    |> Ash.Query.do_filter([{foreign_key, TransitionLogHelpers.primary_key_value!(record)}])
+    |> Ash.Query.sort(occurred_at: :desc)
+    |> Ash.Query.limit(1)
+    |> Ash.read!(authorize?: false)
+    |> case do
+      [row] -> row.to_state
+      [] -> nil
+    end
+  end
 end
