@@ -67,7 +67,9 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutFields do
         validate_field_type(attribute.type, step, timeout)
 
       calculation != nil ->
-        validate_field_type(calculation.type, step, timeout)
+        with {:cont, :ok} <- validate_calculation_is_expression(calculation, step, timeout) do
+          validate_field_type(calculation.type, step, timeout)
+        end
 
       true ->
         {:halt,
@@ -80,6 +82,36 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutFields do
           )}}
     end
   end
+
+  # Timeout fields are referenced from the trigger's `where` clause, which the
+  # data layer evaluates as SQL. Only expression calculations inline into a
+  # filter; a module calculation is computed in Elixir after the read and would
+  # raise when the scheduler builds its query.
+  defp validate_calculation_is_expression(
+         %{calculation: {module, _opts}} = _calculation,
+         step,
+         timeout
+       ) do
+    Code.ensure_compiled(module)
+
+    if function_exported?(module, :expression, 2) do
+      {:cont, :ok}
+    else
+      {:halt,
+       {:error,
+        DslError.exception(
+          path: [:workflow, :step, step.name],
+          message:
+            "Timeout :#{timeout.name} on step :#{step.name} references calculation :#{timeout.field}, " <>
+              "which is a module calculation and so cannot be evaluated by the data layer. " <>
+              "Timeout fields are used in the trigger's filter, so a calculation must be " <>
+              "expression-based (`calculate :#{timeout.field}, :utc_datetime_usec, expr(...)`) " <>
+              "or you must use a plain attribute."
+        )}}
+    end
+  end
+
+  defp validate_calculation_is_expression(_calculation, _step, _timeout), do: {:cont, :ok}
 
   defp validate_field_type(type, step, timeout) do
     storage_type = Ash.Type.storage_type(type)

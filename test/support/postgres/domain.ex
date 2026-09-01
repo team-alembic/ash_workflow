@@ -4,5 +4,7 @@ defmodule AshWorkflowTest.Postgres.Domain do
 
   resources do
     resource AshWorkflowTest.Postgres.ApprovalWorkflow
+    resource AshWorkflowTest.Postgres.NoIndexWorkflow
+    resource AshWorkflowTest.Postgres.OwnIndexWorkflow
   end
 end

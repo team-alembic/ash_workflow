@@ -9,11 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Indexes for the generated triggers.** Resources using `AshPostgres.DataLayer` now get a `(state, <timeout field>)` composite index per distinct timeout field, or `(state)` alone for workflows with no timeouts. Every trigger filters on `state`, and `ago/2` compiles to a bind parameter rather than a per-row function call, so a timeout's query reaches Postgres as `state = $1 AND state_entered_at <= $2` — indexable all along, but unindexed by default, which made every poll a sequential scan. Indexes are created `concurrently`, so adding them to an existing table does not lock it. An existing `custom_indexes` entry on the same fields takes precedence.
+- `generate_indexes?` on the `workflow` block, to turn that off.
+- `AshWorkflow.Info.recommended_indexes/1`, returning the same list as data, for resources on other data layers and for tooling.
+- **`pending_deadlines` calculation.** Lists the timeouts ahead of a record in its current step, soonest first, each with `due_at`, `kind` and `target`. Derived on read from the DSL and the record's own timestamps, so there is no new table and nothing that can drift out of sync — a forward-looking companion to the transition log's history. A `due_at` in the past means "was due", not "will fire": a non-repeating action timeout does not change state, so its deadline stays derivable after it fires.
 - **Wait states.** A step that declares no action and no transitions, whose only exit is a timeout with `transition_to`, is now a valid step. Previously such a step was misclassified as automatic and failed to compile with `references action :, but no such action is defined`, which made "sit here until a deadline passes" inexpressible even though the timeout machinery supported it. Combined with a timeout `field`, this is how you give each record its own delay without blocking a process to wait for it.
 - `AshWorkflow.Entities.Step.wait_state?/1`, alongside the existing `manual?/1`.
 - Compile-time rejection of a wait state whose timeouts all lack `transition_to` (records could never leave), or which declares `on_success`/`on_error` (with no action, neither could fire).
 - `check_interval` on the `workflow` block, setting the Oban cron for every generated trigger on the resource — automatic steps included, which previously had no way to change their polling interval at all. Individual timeouts still override it.
 - Documentation of what polling costs: one scheduler per trigger, each querying on every tick regardless of whether any record is waiting, so the cost scales with the size of the workflow rather than the number of records.
+
+### Changed
+
+- Triggers now stream with `:keyset` rather than `:full_read`. ash_oban suggests `:full_read` when a `where` clause changes between batches, which ours do, but keyset orders by primary key: unlike `:offset`, a row leaving the filter mid-stream cannot shift another row past the cursor. A record becoming eligible at a key the stream has already passed waits for the next poll, bounded by `check_interval`. In exchange, a backlog after downtime is no longer read into memory in one unpaginated read.
+
+### Fixed
+
+- A timeout `field` referencing a module calculation is now rejected at compile time. Only expression calculations inline into a data-layer filter, so a module calculation passed the verifier and then raised when the scheduler built its query. Use an expression calculation or a plain attribute.
 
 ### Changed
 

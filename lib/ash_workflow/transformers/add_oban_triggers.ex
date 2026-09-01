@@ -10,7 +10,7 @@ defmodule AshWorkflow.Transformers.AddObanTriggers do
   - Calls the step's action (which has `transition_state` injected by `AddActions`)
   - Uses explicit `worker_module_name` and `scheduler_module_name` to prevent
     dangling jobs if steps are renamed
-  - Streams with `:full_read` since the `where` clause depends on mutable state
+  - Streams with `:keyset` (see "Streaming" below)
 
   ## Timeout triggers
 
@@ -22,11 +22,36 @@ defmodule AshWorkflow.Transformers.AddObanTriggers do
   - For transition timeouts: calls the generated `__timeout_<step>_<name>` action
   - Uses the timeout's own `check_interval` if set, otherwise the workflow-level
     `check_interval` (default: every minute), to poll
-  - Streams with `:full_read` since the where clause depends on time
+  - Streams with `:keyset` (see "Streaming" below)
 
   Module names follow the pattern:
   - Worker: `{Resource}.AshWorkflow.Workers.{StepName}` or `...Timeouts.{TimeoutName}`
   - Scheduler: `{Resource}.AshWorkflow.Schedulers.{StepName}` or `...Timeouts.{TimeoutName}`
+
+  ## Streaming
+
+  Triggers stream with `:keyset`. ash_oban suggests `:full_read` when a `where`
+  clause changes between batches, which ours do — both `state == :step` (records
+  leave as they are processed) and `field <= ago(...)` (records enter as time
+  passes). Keyset is still the right choice here because it orders by primary
+  key, which never changes: unlike `:offset`, a row leaving the filter mid-stream
+  cannot shift another row past the cursor. The only effect is that a record
+  becoming eligible mid-stream, at a key the stream has already passed, waits for
+  the next poll — bounded by `check_interval`, and irrelevant at the timescale
+  timeouts operate on.
+
+  What `:full_read` costs in exchange is memory: it loads every matching record
+  in one unpaginated read, so a backlog after downtime is read into memory all at
+  once. Keyset bounds that.
+
+  ## Indexing
+
+  The generated `where` clauses are index-friendly, which is easy to miss:
+  `ago/2` compiles to a bind parameter, not a function call over each row, so a
+  timeout's filter reaches Postgres as `state = $1 AND state_entered_at <= $2`.
+  A composite index on `(state, state_entered_at)` therefore serves every
+  automatic-step trigger and every default-field timeout. See
+  `AshWorkflow.Info.recommended_indexes/1`.
   """
   use Spark.Dsl.Transformer
 
@@ -90,7 +115,7 @@ defmodule AshWorkflow.Transformers.AddObanTriggers do
         worker_module_name: worker_module,
         scheduler_module_name: scheduler_module,
         scheduler_cron: defaults[:check_interval],
-        stream_with: :full_read
+        stream_with: :keyset
       )
       |> maybe_put_on_error(step)
 
@@ -142,7 +167,7 @@ defmodule AshWorkflow.Transformers.AddObanTriggers do
         scheduler_module_name: scheduler_module,
         # nil means the timeout did not override the workflow-level setting.
         scheduler_cron: timeout.check_interval || defaults[:check_interval],
-        stream_with: :full_read
+        stream_with: :keyset
       )
 
     Transformer.add_entity(dsl, [:oban, :triggers], trigger)

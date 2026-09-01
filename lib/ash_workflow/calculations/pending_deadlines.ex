@@ -1,0 +1,84 @@
+defmodule AshWorkflow.Calculations.PendingDeadlines do
+  @moduledoc """
+  Ash calculation listing the timeouts still ahead of a record in its current
+  step, soonest first.
+
+  Each entry is a map with `:name`, `:due_at`, `:kind` (`:action` or
+  `:transition`) and `:target` (the destination step for transition timeouts,
+  `nil` for action timeouts).
+
+  ## What this is not
+
+  This is the schedule *implied* by the DSL and the record's current field
+  values — `field + after`, computed on read. It is not a record of what has
+  already fired.
+
+  For a transition timeout that distinction does not arise: firing changes the
+  state, so the deadline leaves the list. But a non-repeating action timeout
+  does not change state, so its deadline keeps being derivable after it has
+  fired, and it will still appear here with a `due_at` in the past. Read a past
+  `due_at` as "was due", not "will fire".
+
+  A timeout whose `field` is `nil` on the record has no derivable deadline and
+  is omitted.
+  """
+  use Ash.Resource.Calculation
+
+  @impl true
+  @spec init(Keyword.t()) :: {:ok, Keyword.t()}
+  def init(opts), do: {:ok, opts}
+
+  @impl true
+  @spec load(Ash.Query.t(), Keyword.t(), map()) :: [atom()]
+  def load(_query, opts, _context) do
+    fields =
+      opts[:timeouts]
+      |> Map.values()
+      |> List.flatten()
+      |> Enum.map(& &1.field)
+      |> Enum.uniq()
+
+    [:state | fields]
+  end
+
+  @impl true
+  @spec calculate([Ash.Resource.record()], Keyword.t(), map()) :: [[map()]]
+  def calculate(records, opts, _context) do
+    Enum.map(records, fn record ->
+      opts[:timeouts]
+      |> Map.get(record.state, [])
+      |> Enum.flat_map(&deadline(&1, record))
+      |> Enum.sort_by(& &1.due_at, DateTime)
+    end)
+  end
+
+  defp deadline(timeout, record) do
+    case as_datetime(Map.get(record, timeout.field)) do
+      nil ->
+        []
+
+      from ->
+        {value, unit} = timeout.after
+
+        [
+          %{
+            name: timeout.name,
+            due_at: DateTime.add(from, value, singular_unit(unit)),
+            kind: timeout.kind,
+            target: timeout.target
+          }
+        ]
+    end
+  end
+
+  # Timeout fields are verified to be a datetime type, but that includes the
+  # naive variants, which have no zone to compare against.
+  defp as_datetime(%DateTime{} = value), do: value
+  defp as_datetime(%NaiveDateTime{} = value), do: DateTime.from_naive!(value, "Etc/UTC")
+  defp as_datetime(nil), do: nil
+
+  defp singular_unit(:days), do: :day
+  defp singular_unit(:hours), do: :hour
+  defp singular_unit(:minutes), do: :minute
+  defp singular_unit(:seconds), do: :second
+end

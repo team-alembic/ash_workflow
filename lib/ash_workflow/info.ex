@@ -3,14 +3,18 @@ defmodule AshWorkflow.Info do
   Introspection helpers for AshWorkflow resources.
   """
 
+  alias Ash.Resource.Info, as: ResourceInfo
   alias AshWorkflow.Entities.Step
   alias AshWorkflow.Entities.TransitionLog
   alias Spark.Dsl.Extension
 
   @doc """
   Returns all workflow step entities for a resource.
+
+  Accepts either a compiled resource module or an in-progress DSL state, so
+  transformers can share the same introspection.
   """
-  @spec steps(Ash.Resource.t()) :: [Step.t()]
+  @spec steps(Ash.Resource.t() | map()) :: [Step.t()]
   def steps(resource) do
     resource
     |> Extension.get_entities([:workflow])
@@ -84,6 +88,54 @@ defmodule AshWorkflow.Info do
     resource
     |> Extension.get_entities([:workflow])
     |> Enum.find(&match?(%TransitionLog{}, &1))
+  end
+
+  @doc """
+  Returns the composite indexes that make the generated Oban triggers cheap,
+  as a list of attribute-name lists, most useful first.
+
+  Every trigger's `where` clause filters on `state`, and every timeout also
+  filters on its `field`. Because `ago/2` compiles to a bind parameter rather
+  than a per-row function call, a timeout's filter reaches the data layer as
+  `state = $1 AND state_entered_at <= $2` — an ordinary composite range scan.
+  Without these indexes each poll is a sequential scan.
+
+  A `[:state, field]` index also serves the automatic-step triggers, which
+  filter on `state` alone, since `state` is the leading column. `[:state]` is
+  only returned on its own when a workflow declares no timeouts at all.
+
+  Calculation-backed timeout fields are omitted: they are not columns, so they
+  cannot be indexed directly.
+
+  For resources using `AshPostgres.DataLayer` these are added automatically as
+  `custom_indexes` — see `AshWorkflow.Transformers.AddIndexes`. This function is
+  for everyone else, and for tooling.
+
+  ## Example
+
+      AshWorkflow.Info.recommended_indexes(MyApp.CandidatePipeline)
+      #=> [[:state, :state_entered_at], [:state, :last_session_date]]
+  """
+  @spec recommended_indexes(Ash.Resource.t() | map()) :: [[atom()]]
+  def recommended_indexes(resource) do
+    steps = steps(resource) |> Enum.reject(& &1.terminal)
+
+    timeout_fields =
+      steps
+      |> Enum.flat_map(& &1.timeouts)
+      |> Enum.map(& &1.field)
+      |> Enum.filter(&column?(resource, &1))
+      |> Enum.uniq()
+      |> Enum.sort_by(&(&1 != :state_entered_at))
+
+    case timeout_fields do
+      [] -> if Enum.any?(steps, &(not Step.manual?(&1))), do: [[:state]], else: []
+      fields -> Enum.map(fields, &[:state, &1])
+    end
+  end
+
+  defp column?(resource, field) do
+    ResourceInfo.attribute(resource, field) != nil
   end
 
   @doc """

@@ -8,6 +8,7 @@ defmodule AshWorkflow.Transformers.AddCalculations do
   - `:available_actions` — list of user-facing transition names for the current step
   - `:steps` — list of all workflow step names (static, same for every record)
   - `:current_step` — the name of the workflow's current step
+  - `:pending_deadlines` — the timeouts ahead of the record in its current step
   - `:entered_current_state_at` — only when a `transition_log` is configured
   """
   use Spark.Dsl.Transformer
@@ -54,9 +55,36 @@ defmodule AshWorkflow.Transformers.AddCalculations do
              :atom,
              AshWorkflow.Calculations.CurrentStep,
              public?: true
+           ),
+         {:ok, dsl} <-
+           Builder.add_new_calculation(
+             dsl,
+             :pending_deadlines,
+             {:array, :map},
+             {AshWorkflow.Calculations.PendingDeadlines, timeouts: timeouts_map(steps)},
+             public?: true
            ) do
       add_entered_current_state_at(dsl)
     end
+  end
+
+  # Flattened at compile time so the calculation does no DSL introspection per
+  # record. Terminal steps are excluded: a record there has no deadlines ahead.
+  defp timeouts_map(steps) do
+    steps
+    |> Enum.reject(&(&1.terminal or &1.timeouts == []))
+    |> Map.new(fn step ->
+      {step.name,
+       Enum.map(step.timeouts, fn timeout ->
+         %{
+           name: timeout.name,
+           field: timeout.field,
+           after: timeout.after,
+           kind: if(timeout.transition_to, do: :transition, else: :action),
+           target: timeout.transition_to
+         }
+       end)}
+    end)
   end
 
   defp add_entered_current_state_at(dsl) do

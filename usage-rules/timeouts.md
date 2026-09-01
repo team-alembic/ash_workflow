@@ -23,6 +23,41 @@ end
 
 Polling is not free, and its cost scales with the number of triggers on the resource rather than the number of records: each automatic step and each timeout gets its own scheduler, and each runs a filtered query on every tick whether or not anything is waiting. Eight triggers at the default interval is 480 queries an hour. Match the interval to the precision the deadline needs — for day-scale workflows, hourly behaves identically to users.
 
+## Inspecting What Is Scheduled
+
+`pending_deadlines` lists the timeouts ahead of a record in its current step, soonest first:
+
+```elixir
+record = Ash.load!(record, :pending_deadlines)
+
+record.pending_deadlines
+#=> [
+#=>   %{name: :nudge, due_at: ~U[2026-09-03 10:00:00Z], kind: :action, target: nil},
+#=>   %{name: :escalation, due_at: ~U[2026-09-08 10:00:00Z], kind: :transition, target: :escalated}
+#=> ]
+```
+
+Nothing is stored — each `due_at` is `field + after`, computed on read. That makes it a forward-looking companion to the transition log's backward-looking history, with no extra table and nothing that can drift out of sync.
+
+Read a `due_at` in the past as "was due", not "will fire". A transition timeout leaves the list once it fires, because firing changes the state. A non-repeating action timeout does not change state, so its deadline stays derivable after it has fired and will still be listed.
+
+## Indexing
+
+Each poll filters on `state`, and each timeout also filters on its `field`. `ago/2` compiles to a bind parameter rather than a per-row function call, so a timeout's query reaches Postgres as `state = $1 AND state_entered_at <= $2` — an ordinary composite range scan. With an index on `(state, state_entered_at)` a poll that finds nothing costs almost nothing; without one it is a sequential scan of the table, on every tick, for every trigger.
+
+On `AshPostgres.DataLayer` these indexes are added for you, one per distinct timeout `field`, plus `(state)` alone for workflows with no timeouts. A `custom_indexes` entry you declare on the same fields takes precedence, and `generate_indexes? false` on the `workflow` block turns the generation off entirely:
+
+```elixir
+workflow do
+  generate_indexes? false
+  # ...
+end
+```
+
+On other data layers, `AshWorkflow.Info.recommended_indexes/1` returns the same list so you can create them yourself.
+
+Timeout fields backed by calculations are not indexed, since they are not columns. Prefer a plain attribute for a timeout `field` on a large table.
+
 ## Action Timeouts vs Transition Timeouts
 
 ### Action Timeouts

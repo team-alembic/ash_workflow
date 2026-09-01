@@ -97,6 +97,22 @@ defmodule AshWorkflow do
         at the default. Raise it for workflows measured in days, and override
         individual timeouts with `check_interval` on the timeout itself.
         """
+      ],
+      generate_indexes?: [
+        type: :boolean,
+        default: true,
+        doc: """
+        Whether to add the composite indexes the generated triggers rely on.
+        Only applies to resources using `AshPostgres.DataLayer`; other data
+        layers ignore it.
+
+        Every trigger filters on `state`, and every timeout also filters on its
+        `field`, so without `(state, field)` indexes each poll is a sequential
+        scan. Set to `false` if you manage these indexes yourself — a
+        `custom_indexes` entry on the same fields already takes precedence.
+
+        See `AshWorkflow.Info.recommended_indexes/1`.
+        """
       ]
     ],
     entities: [@step, @transition_log]
@@ -110,6 +126,7 @@ defmodule AshWorkflow do
       AshWorkflow.Transformers.AddStateMachine,
       AshWorkflow.Transformers.AddActions,
       AshWorkflow.Transformers.AddObanTriggers,
+      AshWorkflow.Transformers.AddIndexes,
       AshWorkflow.Transformers.AddPolicies,
       AshWorkflow.Transformers.AddCodeInterface,
       AshWorkflow.Transformers.AddCalculations
