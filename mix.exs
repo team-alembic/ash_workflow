@@ -91,7 +91,12 @@ defmodule AshWorkflow.MixProject do
       {:ash, "~> 3.0"},
       {:ash_state_machine, "~> 0.2"},
       {:ash_oban, "~> 0.2"},
-      {:igniter, "~> 0.6", optional: true},
+      # `runtime: false` because igniter is only ever used at compile time, by
+      # the mix tasks. Without it, a project depending on this library by path
+      # — every demo — inherits igniter as an application to start, and fails
+      # with "could not find application file: igniter.app" whenever the
+      # optional dep was fetched but not compiled.
+      {:igniter, "~> 0.6", optional: true, runtime: false},
       {:simple_sat, "~> 0.1", only: [:dev, :test]},
 
       # Postgres + Oban integration tests
