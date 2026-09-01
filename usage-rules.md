@@ -212,13 +212,57 @@ The log resource must define `from_state`, `to_state`, `transition_name`, `trigg
 
 When configured, the resource gains:
 
-- `state_at/2` — the state a record was in at a given `DateTime`, resolved by walking the log.
-- `history/1` — the full list of log rows for a record, ordered oldest first.
+- `state_at/3` — the state a record was in at a given `DateTime`, resolved by walking the log.
+- `history/2` — the full list of log rows for a record, ordered oldest first.
 - `entered_current_state_at` — a calculation for when the state last *actually* changed, ignoring repeat rows (see below).
+
+Both take an `effective: true` option, which omits rows a later undo reversed. See Undo below.
 
 A repeating timeout writes a log row with `from_state == to_state` — it's not a state change, but it's a recorded event, and it's what lets the log reproduce `state_entered_at`'s value. This means `state_entered_at` (a timer anchor, reset by repeats) and `entered_current_state_at` (ignores repeats, the honest "entered this state" fact) can disagree. See [Workflow history](documentation/topics/workflow-history.md) for the full explanation and the documented aggregate-query recipe for "how many records were in state S at time Y".
 
 This is not an audit trail (attribute-level changes) — pair it with AshPaperTrail for that — and not event sourcing; `state` stays a plain column.
+
+## Undo
+
+Undo rewinds a record to the state it occupied before its most recent state change. It requires a `transition_log`, and it is opt-in twice: an `undo` block on the workflow, plus `undoable?: true` on each transition that may be rewound.
+
+```elixir
+workflow do
+  transition_log MyApp.TicketTransition do
+    belongs_to_actor :user, MyApp.Accounts.User
+  end
+
+  undo do
+    within {30, :minutes}
+    same_actor? true
+  end
+
+  step :triage do
+    transition :escalate, to: :urgent_queue, undoable?: true
+    transition :close, to: :closed  # not undoable
+  end
+end
+```
+
+- `undoable?` (on `transition`, default `false`): whether this transition may be rewound. Nothing is undoable unless you say so.
+- `within` (optional): how long after a transition it may still be undone, e.g. `{30, :minutes}`. Defaults to no limit.
+- `same_actor?` (optional, default `false`): restrict undo to the actor recorded on the transition. Requires `belongs_to_actor` on the log.
+- `policy` (optional): an `Ash.Policy.Check` tuple applied to the generated `undo` action. Step policies do not apply — an undo spans two states, and which step it rewinds into is only known at runtime.
+
+**An undo appends a row; it never mutates or deletes one.** The new row carries `triggered_by: :undo` and an `undoes_id` pointing at the row it reverses, so the log stays append-only and two readings of history stay derivable from the same rows:
+
+- `history(record)` / `state_at(record, at)` — what actually happened, including states the record briefly occupied and rewound out of.
+- `history(record, effective: true)` / `state_at(record, at, effective: true)` — what stands after corrections, with reversed rows omitted.
+
+Prefer the literal reading for audit and for explaining side effects; prefer the effective reading for timeline UIs. Undoing an undo is a redo, and needs no special handling: it marks the undo row superseded in turn.
+
+The resource gains a generated `undo` update action, plus `undoable?/2` (can this be undone) and `undo_target/2` (where it would land). Note that Ash's code interface separately generates `can_undo?/2`, which asks whether the *actor is authorized* to call `undo` — a different question.
+
+**Undo restores state, not attributes.** A transition with `accept` does not have its accepted values rolled back, and side effects an action performed — an email sent, a payment taken — are not compensated. Mark a transition `undoable?: true` only when rewinding it is safe on its own.
+
+Undo is refused, with a reason on `AshWorkflow.Errors.UndoNotPermitted`, when: the last state change was not an undoable transition (`:not_undoable` — this is what keeps automatic steps, timeouts and error paths out of reach), there is no state change to undo (`:no_history`), the `within` window has passed (`:window_expired`), or `same_actor?` does not match (`:different_actor` / `:no_actor`).
+
+A transition whose target is an *automatic* step is undoable only until that step runs: once its Oban trigger fires, the head of the log is the automatic step's own row, and undo refuses with `:not_undoable`.
 
 ## Authorization
 

@@ -13,12 +13,22 @@ defmodule AshWorkflow.Changes.RecordEvent do
   ## Options
 
     * `:triggered_by` (required) — one of `:initial`, `:manual`, `:automatic`,
-      `:timeout`, `:error_path`.
+      `:timeout`, `:error_path`, `:undo`.
     * `:transition_name` (optional) — the name recorded on the log row.
       Defaults to `changeset.action.name`, which is enough for most sites, but
       several of the actions `AddActions` generates use an internal hidden
       name (e.g. `__on_error_process`) that would be confusing in history, so
-      those sites pass a human-facing name explicitly.
+      those sites pass a human-facing name explicitly. An undo takes the name
+      of the row it reverses, so the pair reads as one decision and its
+      reversal rather than as two unrelated events.
+
+  ## Undo
+
+  `AshWorkflow.Changes.UndoTransition` puts the row being reversed into the
+  changeset context, and this change writes its primary key to the log's
+  `undoes` foreign key. That pointer is what makes an undo additive: the
+  reversed row is left exactly as written, and both readings of history stay
+  derivable from the same rows — see `AshWorkflow.TransitionLog.effective/1`.
 
   ## Atomicity
 
@@ -39,7 +49,7 @@ defmodule AshWorkflow.Changes.RecordEvent do
   alias AshWorkflow.Info
   alias AshWorkflow.TransitionLog, as: TransitionLogHelpers
 
-  @triggered_by_values [:initial, :manual, :automatic, :timeout, :error_path]
+  @triggered_by_values [:initial, :manual, :automatic, :timeout, :error_path, :undo]
 
   @impl true
   @spec init(Keyword.t()) :: {:ok, Keyword.t()} | {:error, String.t()}
@@ -92,14 +102,18 @@ defmodule AshWorkflow.Changes.RecordEvent do
     foreign_key = TransitionLogHelpers.foreign_key!(log.resource, workflow_resource)
     state_attribute = AshStateMachine.Info.state_machine_state_attribute!(workflow_resource)
 
+    undone_row = undone_row(changeset)
+
     attrs = %{
       foreign_key => TransitionLogHelpers.primary_key_value!(record),
       from_state: from_state(changeset, state_attribute, log, foreign_key, record),
       to_state: Map.get(record, state_attribute),
-      transition_name: opts[:transition_name] || changeset.action.name,
+      transition_name: transition_name(undone_row, opts, changeset),
       occurred_at: DateTime.utc_now(),
       triggered_by: opts[:triggered_by]
     }
+
+    attrs = put_undoes(attrs, log, undone_row)
 
     case {TransitionLog.belongs_to_actor(log), context.actor} do
       {nil, _actor} ->
@@ -113,6 +127,27 @@ defmodule AshWorkflow.Changes.RecordEvent do
           TransitionLogHelpers.foreign_key_for_relationship!(log.resource, belongs_to_actor.name)
 
         Map.put(attrs, actor_foreign_key, TransitionLogHelpers.primary_key_value!(actor))
+    end
+  end
+
+  defp undone_row(changeset) do
+    changeset.context
+    |> Map.get(:ash_workflow, %{})
+    |> Map.get(:undoes)
+  end
+
+  defp transition_name(nil, opts, changeset), do: opts[:transition_name] || changeset.action.name
+  defp transition_name(undone_row, _opts, _changeset), do: undone_row.transition_name
+
+  defp put_undoes(attrs, _log, nil), do: attrs
+
+  defp put_undoes(attrs, log, undone_row) do
+    case TransitionLogHelpers.undoes_foreign_key(log.resource) do
+      nil ->
+        attrs
+
+      foreign_key ->
+        Map.put(attrs, foreign_key, TransitionLogHelpers.primary_key_value!(undone_row))
     end
   end
 

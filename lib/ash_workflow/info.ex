@@ -5,7 +5,9 @@ defmodule AshWorkflow.Info do
 
   alias Ash.Resource.Info, as: ResourceInfo
   alias AshWorkflow.Entities.Step
+  alias AshWorkflow.Entities.Transition
   alias AshWorkflow.Entities.TransitionLog
+  alias AshWorkflow.Entities.Undo
   alias Spark.Dsl.Extension
 
   @doc """
@@ -136,6 +138,58 @@ defmodule AshWorkflow.Info do
 
   defp column?(resource, field) do
     ResourceInfo.attribute(resource, field) != nil
+  end
+
+  @doc """
+  Returns the workflow's `undo` configuration, or `nil` if undo is not enabled.
+  """
+  @spec undo(Ash.Resource.t() | map()) :: Undo.t() | nil
+  def undo(resource) do
+    resource
+    |> Extension.get_entities([:workflow])
+    |> Enum.find(&match?(%Undo{}, &1))
+  end
+
+  @doc """
+  Returns the set of state changes that may be rewound, as `{from_state,
+  to_state}` tuples describing the *forward* move.
+
+  A conditional transition contributes one edge per route, so undo permits
+  exactly the moves the transition could actually have made. Returns an empty
+  list when undo is not enabled.
+
+  ## Example
+
+      AshWorkflow.Info.undoable_edges(MyApp.OnboardingWorkflow)
+      #=> [{:review, :approved}, {:review, :rejected}]
+  """
+  @spec undoable_edges(Ash.Resource.t() | map()) :: [{atom(), atom()}]
+  def undoable_edges(resource) do
+    if undo(resource) do
+      resource
+      |> steps()
+      |> Enum.filter(&Step.manual?/1)
+      |> Enum.flat_map(&step_undoable_edges/1)
+      |> Enum.uniq()
+    else
+      []
+    end
+  end
+
+  defp step_undoable_edges(step) do
+    step.transitions
+    |> Enum.filter(& &1.undoable?)
+    |> Enum.flat_map(fn transition ->
+      Enum.map(Transition.all_targets(transition), &{step.name, &1})
+    end)
+  end
+
+  @doc """
+  Returns `true` if the forward move `from_state -> to_state` may be rewound.
+  """
+  @spec undoable_edge?(Ash.Resource.t() | map(), atom(), atom()) :: boolean()
+  def undoable_edge?(resource, from_state, to_state) do
+    {from_state, to_state} in undoable_edges(resource)
   end
 
   @doc """

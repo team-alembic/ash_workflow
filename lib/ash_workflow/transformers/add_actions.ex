@@ -20,6 +20,11 @@ defmodule AshWorkflow.Transformers.AddActions do
     a hidden update action named `__timeout_<step>_<name>` that transitions to the
     target state and records the event (`triggered_by: :timeout`).
 
+  - **Undo action** — when the workflow declares an `undo` block, a single
+    `:undo` update action that rewinds the record to the state before its most
+    recent undoable state change. Not atomic: the target is only known after
+    reading the transition log.
+
   - **Primary read action** — if the workflow has automatic steps (which generate
     Oban triggers) and no primary read action is defined, generates one with
     keyset pagination enabled (required by ash_oban).
@@ -37,9 +42,11 @@ defmodule AshWorkflow.Transformers.AddActions do
   alias AshStateMachine.BuiltinChanges
   alias AshWorkflow.Changes.ConditionalTransition
   alias AshWorkflow.Changes.RecordEvent
+  alias AshWorkflow.Changes.UndoTransition
   alias AshWorkflow.Entities.Route
   alias AshWorkflow.Entities.Step
   alias AshWorkflow.Entities.Transition
+  alias AshWorkflow.Info
   alias Spark.Dsl.Transformer
   alias Spark.Error.DslError
 
@@ -57,6 +64,7 @@ defmodule AshWorkflow.Transformers.AddActions do
       |> inject_automatic_step_changes(steps)
       |> add_timeout_actions(steps)
       |> add_on_error_actions(steps)
+      |> add_undo_action()
 
     {:ok, dsl}
   end
@@ -187,6 +195,37 @@ defmodule AshWorkflow.Transformers.AddActions do
         |> Transformer.add_entity([:actions], updated_action)
     end
   end
+
+  # One action for every undoable edge, rather than one per transition. The
+  # rewind target comes from the log row being reversed, so a single action can
+  # serve every undoable transition on the resource — including conditional
+  # ones, whose forward target was itself only known at runtime.
+  defp add_undo_action(dsl) do
+    if Info.undo(dsl) do
+      action =
+        Transformer.build_entity!(ResourceDsl, [:actions], :update,
+          name: undo_action_name(),
+          accept: [],
+          require_atomic?: false,
+          changes: [
+            Transformer.build_entity!(ResourceDsl, [:actions, :update], :change,
+              change: {UndoTransition, []}
+            ),
+            Transformer.build_entity!(ResourceDsl, [:actions, :update], :change,
+              change: {RecordEvent, triggered_by: :undo}
+            )
+          ]
+        )
+
+      Transformer.add_entity(dsl, [:actions], action)
+    else
+      dsl
+    end
+  end
+
+  @doc "Name of the generated undo action."
+  @spec undo_action_name() :: atom()
+  def undo_action_name, do: :undo
 
   defp build_routes_for_transition(step_transitions) do
     require Ash.Expr

@@ -3,7 +3,7 @@ defmodule AshWorkflow.Transformers.AddPolicies do
   Generates Ash policies from workflow step declarations.
 
   Ensures workflow resources work out of the box when `Authorizer`
-  is present by injecting three layers of policies:
+  is present by injecting four layers of policies:
 
   1. **AshOban bypass** — allows Oban-triggered actions (automatic steps and
      timeouts) to execute without an actor. Uses `AshOban.Checks.AshObanInteraction`
@@ -24,7 +24,10 @@ defmodule AshWorkflow.Transformers.AddPolicies do
            authorize_if {Ash.Policy.Check.ActorAttributeEquals, ...}
          end
 
-  3. **Default allow** — a catch-all `authorize_if always()` scoped to workflow
+  3. **Undo policy** — when the workflow declares `undo do policy ... end`, a
+     policy scoped to the generated `:undo` action.
+
+  4. **Default allow** — a catch-all `authorize_if always()` scoped to workflow
      transition actions, automatic step actions, timeout actions, read actions,
      and user-defined create actions, so workflow initialization and background
      execution aren't blocked by other policies on the resource.
@@ -37,6 +40,7 @@ defmodule AshWorkflow.Transformers.AddPolicies do
   alias Ash.Policy.Authorizer
   alias Ash.Policy.Check.Builtins, as: PolicyBuiltins
   alias AshWorkflow.Entities.Step
+  alias AshWorkflow.Info
   alias AshWorkflow.Transformers.AddActions
   alias Spark.Dsl.Transformer
 
@@ -68,6 +72,7 @@ defmodule AshWorkflow.Transformers.AddPolicies do
           add_step_policy(dsl, step, existing_policies)
         end)
 
+      dsl = add_undo_policy(dsl, existing_policies)
       dsl = add_default_allow_policy(dsl, workflow_action_names)
 
       {:ok, dsl}
@@ -108,11 +113,37 @@ defmodule AshWorkflow.Transformers.AddPolicies do
         end
       end)
 
+    undo_actions = if Info.undo(dsl), do: [AddActions.undo_action_name()], else: []
+
     Enum.uniq(
       create_actions ++
         read_actions ++
-        transition_actions ++ automatic_actions ++ timeout_actions ++ on_error_actions(steps)
+        transition_actions ++
+        automatic_actions ++ timeout_actions ++ on_error_actions(steps) ++ undo_actions
     )
+  end
+
+  # Undo gets its own policy rather than inheriting a step's. An undo spans two
+  # states and which step it rewinds into is only known once the log has been
+  # read, so there is no step whose policy could correctly apply to it.
+  defp add_undo_policy(dsl, existing_policies) do
+    undo_action = AddActions.undo_action_name()
+
+    with %{policy: check} when not is_nil(check) <- Info.undo(dsl),
+         false <- Enum.any?(existing_policies, &action_covered?(&1, undo_action)) do
+      authorize_if =
+        Transformer.build_entity!(Authorizer, [:policies, :policy], :authorize_if, check: check)
+
+      policy =
+        Transformer.build_entity!(Authorizer, [:policies], :policy,
+          condition: PolicyBuiltins.action([undo_action]),
+          policies: [authorize_if]
+        )
+
+      Transformer.add_entity(dsl, [:policies], policy)
+    else
+      _ -> dsl
+    end
   end
 
   defp collect_oban_action_names(steps) do

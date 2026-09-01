@@ -15,13 +15,14 @@ defmodule AshWorkflow.Entities.Transition do
 
   A transition must have either `to` or at least one route, not both.
   """
-  defstruct [:name, :to, __spark_metadata__: nil, accept: [], routes: []]
+  defstruct [:name, :to, __spark_metadata__: nil, accept: [], routes: [], undoable?: false]
 
   @type t :: %__MODULE__{
           name: atom(),
           to: atom() | nil,
           accept: [atom()],
-          routes: [AshWorkflow.Entities.Route.t()]
+          routes: [AshWorkflow.Entities.Route.t()],
+          undoable?: boolean()
         }
 
   @schema [
@@ -38,6 +39,21 @@ defmodule AshWorkflow.Entities.Transition do
       type: {:list, :atom},
       default: [],
       doc: "List of resource attributes the generated transition action should accept as input."
+    ],
+    undoable?: [
+      type: :boolean,
+      default: false,
+      doc: """
+      If true, this transition may be rewound by the generated `undo` action.
+
+      Requires an `undo` block on the workflow. Opt-in per transition rather
+      than per workflow, because undoing a decision that has already had
+      effects outside the workflow — an offer sent, a payment taken — cannot be
+      made safe by the extension. The default is that nothing is undoable.
+
+      Note that undo restores *state*, not attributes: a transition with
+      `accept` does not have its accepted values rolled back.
+      """
     ]
   ]
 

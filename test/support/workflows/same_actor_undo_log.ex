@@ -1,6 +1,6 @@
-defmodule AshWorkflowTest.LoggedTransition do
+defmodule AshWorkflowTest.SameActorUndoLog do
   @moduledoc """
-  The transition log for `AshWorkflowTest.LoggedWorkflow`.
+  The transition log for `AshWorkflowTest.SameActorUndoWorkflow`.
   """
 
   use Ash.Resource,
@@ -22,6 +22,10 @@ defmodule AshWorkflowTest.LoggedTransition do
         :triggered_by
       ]
     end
+
+    update :update do
+      accept [:occurred_at]
+    end
   end
 
   attributes do
@@ -34,7 +38,7 @@ defmodule AshWorkflowTest.LoggedTransition do
   end
 
   relationships do
-    belongs_to :workflow, AshWorkflowTest.LoggedWorkflow,
+    belongs_to :workflow, AshWorkflowTest.SameActorUndoWorkflow,
       allow_nil?: false,
       public?: true,
       attribute_public?: true,

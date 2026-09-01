@@ -60,6 +60,17 @@ defmodule AshWorkflow do
     ]
   }
 
+  @undo %Spark.Dsl.Entity{
+    name: :undo,
+    describe: """
+    Enables undo for this workflow. Requires a `transition_log`, and at least
+    one transition marked `undoable?: true`. See `AshWorkflow.Entities.Undo`.
+    """,
+    target: Entities.Undo,
+    imports: [AshWorkflow.Checks],
+    schema: Entities.Undo.attribute_schema()
+  }
+
   @step %Spark.Dsl.Entity{
     name: :step,
     describe:
@@ -115,7 +126,7 @@ defmodule AshWorkflow do
         """
       ]
     ],
-    entities: [@step, @transition_log]
+    entities: [@step, @transition_log, @undo]
   }
 
   use Spark.Dsl.Extension,
@@ -135,6 +146,7 @@ defmodule AshWorkflow do
       AshWorkflow.Verifiers.ValidateWorkflow,
       AshWorkflow.Verifiers.ValidateTimeoutFields,
       AshWorkflow.Verifiers.ValidateTimeoutPrecision,
-      AshWorkflow.Verifiers.ValidateTransitionLog
+      AshWorkflow.Verifiers.ValidateTransitionLog,
+      AshWorkflow.Verifiers.ValidateUndo
     ]
 end

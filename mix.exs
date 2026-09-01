@@ -131,6 +131,7 @@ defmodule AshWorkflow.MixProject do
         "documentation/topics/error-handling.md",
         "documentation/topics/timeouts-and-deadlines.md",
         "documentation/topics/workflow-history.md",
+        "documentation/topics/undo.md",
         "documentation/topics/authorization.md",
         "documentation/topics/workflows-and-relationships.md",
         "documentation/topics/bpmn-comparison.md",
@@ -146,7 +147,9 @@ defmodule AshWorkflow.MixProject do
         Entities: [
           AshWorkflow.Entities.Step,
           AshWorkflow.Entities.Transition,
-          AshWorkflow.Entities.Timeout
+          AshWorkflow.Entities.Timeout,
+          AshWorkflow.Entities.TransitionLog,
+          AshWorkflow.Entities.Undo
         ],
         Checks: [AshWorkflow.Checks],
         Internals: ~r/.*/

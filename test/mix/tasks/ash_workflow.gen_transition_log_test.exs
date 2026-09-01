@@ -43,8 +43,10 @@ defmodule Mix.Tasks.AshWorkflow.Gen.TransitionLogTest do
     assert content =~ "attribute(:occurred_at, :utc_datetime_usec, allow_nil?: false"
     assert content =~ "attribute(:triggered_by, :atom, allow_nil?: false"
     assert content =~ "belongs_to(:workflow, AshWorkflowTest.Workflow"
+    assert content =~ "belongs_to(:undoes, __MODULE__"
     assert content =~ "create :create do"
     assert content =~ ":workflow_id"
+    assert content =~ ":undoes_id"
 
     {_igniter, domain_content} = source!(igniter, AshWorkflowTest.Domain)
     assert domain_content =~ "AshWorkflowTest.WorkflowTransition"

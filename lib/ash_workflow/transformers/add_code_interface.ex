@@ -10,7 +10,10 @@ defmodule AshWorkflow.Transformers.AddCodeInterface do
 
   Skips definitions that the user has already declared.
 
-  Also injects `state_at/2` and `history/1` directly onto the resource module
+  When the workflow declares an `undo` block, also adds `define :undo` and
+  injects `undoable?/2` and `undo_target/2` onto the resource module.
+
+  Also injects `state_at/3` and `history/2` directly onto the resource module
   (via `Spark.Dsl.Transformer.eval/3`, not the `code_interface` DSL) when a
   `transition_log` is configured. They are plain functions rather than
   code-interface definitions because `state_at/2` resolves in Elixir by
@@ -20,6 +23,7 @@ defmodule AshWorkflow.Transformers.AddCodeInterface do
   use Spark.Dsl.Transformer
 
   alias AshWorkflow.Entities.Step
+  alias AshWorkflow.Transformers.AddActions
   alias Spark.Dsl.Transformer
 
   def transform(dsl) do
@@ -38,12 +42,18 @@ defmodule AshWorkflow.Transformers.AddCodeInterface do
       |> Enum.map(& &1.name)
       |> Enum.uniq()
 
+    undo_names =
+      if AshWorkflow.Info.undo(dsl), do: [AddActions.undo_action_name()], else: []
+
     dsl =
-      Enum.reduce(transition_names, dsl, fn name, dsl ->
+      Enum.reduce(transition_names ++ undo_names, dsl, fn name, dsl ->
         maybe_add_define(dsl, name, defined_names)
       end)
 
-    dsl = add_transition_log_functions(dsl)
+    dsl =
+      dsl
+      |> add_transition_log_functions()
+      |> add_undo_functions()
 
     {:ok, dsl}
   end
@@ -63,15 +73,50 @@ defmodule AshWorkflow.Transformers.AddCodeInterface do
             transition log. Returns `nil` if `at` predates the earliest logged
             row.
             """
-            @spec state_at(Ash.Resource.record(), DateTime.t()) :: atom() | nil
-            def state_at(record, at), do: AshWorkflow.TransitionLog.state_at(record, at)
+            @spec state_at(Ash.Resource.record(), DateTime.t(), Keyword.t()) :: atom() | nil
+            def state_at(record, at, opts \\ []),
+              do: AshWorkflow.TransitionLog.state_at(record, at, opts)
 
             @doc """
             Returns this record's transition log rows, ordered by
             `occurred_at` ascending.
             """
-            @spec history(Ash.Resource.record()) :: [Ash.Resource.record()]
-            def history(record), do: AshWorkflow.TransitionLog.history(record)
+            @spec history(Ash.Resource.record(), Keyword.t()) :: [Ash.Resource.record()]
+            def history(record, opts \\ []),
+              do: AshWorkflow.TransitionLog.history(record, opts)
+          end
+        )
+    end
+  end
+
+  defp add_undo_functions(dsl) do
+    case AshWorkflow.Info.undo(dsl) do
+      nil ->
+        dsl
+
+      _undo ->
+        Transformer.eval(
+          dsl,
+          [],
+          quote do
+            @doc """
+            Returns `true` if this record's most recent state change can be
+            undone by `actor`.
+
+            Asks the same question the `undo` action asks, without writing.
+            Distinct from the code interface's own `can_undo?/2`, which asks
+            whether the actor is authorized to call `undo` at all.
+            """
+            @spec undoable?(Ash.Resource.record(), term()) :: boolean()
+            def undoable?(record, actor \\ nil), do: AshWorkflow.Undo.undoable?(record, actor)
+
+            @doc """
+            Returns the state `undo` would rewind this record to, or `nil` if
+            it cannot be undone.
+            """
+            @spec undo_target(Ash.Resource.record(), term()) :: atom() | nil
+            def undo_target(record, actor \\ nil),
+              do: AshWorkflow.Undo.undo_target(record, actor)
           end
         )
     end

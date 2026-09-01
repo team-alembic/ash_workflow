@@ -14,6 +14,9 @@ defmodule AshWorkflow.Transformers.AddStateMachine do
       step's own action, since that is what AshOban invokes when the step fails.
     - *Manual steps* — one transition per declared `transition` entity,
       e.g. `transition :approve, from: [:review], to: [:approved]`
+    - *Undoable transitions* — when the workflow declares an `undo` block, two
+      `:undo` transitions per undoable edge, one in each direction, so both a
+      rewind and a subsequent redo are permitted.
     - *Timeouts with `transition_to`* — a transition named `__timeout_<step>_<name>`,
       e.g. `transition :__timeout_review_escalation, from: [:review], to: [:escalated]`
 
@@ -24,6 +27,7 @@ defmodule AshWorkflow.Transformers.AddStateMachine do
 
   alias AshWorkflow.Entities.Step
   alias AshWorkflow.Entities.Transition
+  alias AshWorkflow.Info
   alias AshWorkflow.Transformers.AddActions
   alias Spark.Dsl.Transformer
   alias Spark.Error.DslError
@@ -60,7 +64,7 @@ defmodule AshWorkflow.Transformers.AddStateMachine do
       |> Transformer.set_option([:state_machine], :initial_states, [first_step.name])
       |> Transformer.set_option([:state_machine], :default_initial_state, first_step.name)
 
-    transitions = build_transitions(steps)
+    transitions = build_transitions(steps) ++ undo_transitions(dsl)
 
     dsl =
       Enum.reduce(transitions, dsl, fn transition, dsl ->
@@ -82,6 +86,21 @@ defmodule AshWorkflow.Transformers.AddStateMachine do
         true ->
           automatic_transitions(step) ++ timeout_transitions(step)
       end
+    end)
+  end
+
+  # Two entries per undoable edge, both on the `:undo` action: one to rewind
+  # the move, one to re-apply it. The second is what makes undoing an undo
+  # legal — the state machine has to permit the redo direction even though the
+  # forward transition that normally travels it is a different action.
+  defp undo_transitions(dsl) do
+    dsl
+    |> Info.undoable_edges()
+    |> Enum.flat_map(fn {from_state, to_state} ->
+      [
+        build_transition(AddActions.undo_action_name(), [to_state], [from_state]),
+        build_transition(AddActions.undo_action_name(), [from_state], [to_state])
+      ]
     end)
   end
 

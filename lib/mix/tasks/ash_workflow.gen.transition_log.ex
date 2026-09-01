@@ -213,13 +213,30 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
           attribute_public?: true,
           attribute_writable?: true
 
+        # Set on an undo row, pointing at the row it reverses. Undo appends
+        # rather than mutating, so the reversed row stays exactly as written
+        # and both readings of history stay derivable from the same rows.
+        belongs_to :undoes, __MODULE__,
+          allow_nil?: true,
+          public?: true,
+          attribute_public?: true,
+          attribute_writable?: true
+
         #{actor_relationship(actor)}
       end
       """
     end
 
     defp accepted_attributes(nil) do
-      [:workflow_id, :from_state, :to_state, :transition_name, :occurred_at, :triggered_by]
+      [
+        :workflow_id,
+        :undoes_id,
+        :from_state,
+        :to_state,
+        :transition_name,
+        :occurred_at,
+        :triggered_by
+      ]
     end
 
     defp accepted_attributes(actor) do

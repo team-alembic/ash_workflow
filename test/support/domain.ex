@@ -32,6 +32,10 @@ defmodule AshWorkflowTest.Domain do
     resource AshWorkflowTest.LoggedWorkflow
     resource AshWorkflowTest.LoggedTransition
     resource AshWorkflowTest.Reviewer
+    resource AshWorkflowTest.UndoWorkflow
+    resource AshWorkflowTest.UndoLog
+    resource AshWorkflowTest.SameActorUndoWorkflow
+    resource AshWorkflowTest.SameActorUndoLog
     resource AshWorkflowTest.BackfillWorkflow
     resource AshWorkflowTest.BackfillTransition
   end
