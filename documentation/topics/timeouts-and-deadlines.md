@@ -69,6 +69,8 @@ end
 
 When a repeating timeout fires, the extension resets `state_entered_at` to the current time. This restarts the duration window — so `after: {3, :days}` means the action fires every 3 days, not every scheduler cycle.
 
+This reset is why `state_entered_at` is a timer anchor rather than a reliable "when did we enter this state" fact — a workflow that's been waiting for nine days with reminders every two reports `state_entered_at` as two days ago. If you need the honest answer, see [Workflow history](workflow-history.md), which adds an `entered_current_state_at` calculation that ignores repeat resets.
+
 Non-repeating timeouts (the default) use Oban's `trigger_once?` to prevent re-firing after the action completes. Transition timeouts (with `transition_to`) don't need either mechanism since the state change naturally prevents re-firing.
 
 ## Data-driven deadlines with `field`

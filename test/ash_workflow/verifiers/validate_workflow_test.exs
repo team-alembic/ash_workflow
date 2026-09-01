@@ -7,6 +7,8 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflowTest do
   """
   use ExUnit.Case
 
+  import AshWorkflowTest.DslAssertions
+
   alias AshWorkflow.Entities.{Step, Timeout, Transition}
   alias AshWorkflow.Verifiers.ValidateWorkflow
 
@@ -348,6 +350,52 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflowTest do
 
       assert {:error, %Spark.Error.DslError{message: message}} = ValidateWorkflow.verify(dsl)
       assert message =~ "at least one non-terminal step"
+    end
+  end
+
+  describe "compiling a resource with no steps" do
+    # The tests above call the verifier directly. These compile a real resource,
+    # because the transformers run first: a step-less workflow used to raise
+    # `expected a map, got: nil` from AddStateMachine before the verifier could
+    # report anything useful. That is the state of every resource between
+    # `mix ash.extend` and writing its first step.
+    test "the extension with no workflow block at all reports the missing steps" do
+      assert_dsl_error(
+        """
+        defmodule NoWorkflowBlockResource do
+          use Ash.Resource,
+            domain: AshWorkflowTest.Domain,
+            data_layer: Ash.DataLayer.Ets,
+            extensions: [AshWorkflow]
+
+          attributes do
+            uuid_v7_primary_key :id
+          end
+        end
+        """,
+        ~r/at least one non-terminal step/
+      )
+    end
+
+    test "an empty workflow block reports the missing steps" do
+      assert_dsl_error(
+        """
+        defmodule EmptyWorkflowBlockResource do
+          use Ash.Resource,
+            domain: AshWorkflowTest.Domain,
+            data_layer: Ash.DataLayer.Ets,
+            extensions: [AshWorkflow]
+
+          workflow do
+          end
+
+          attributes do
+            uuid_v7_primary_key :id
+          end
+        end
+        """,
+        ~r/at least one non-terminal step/
+      )
     end
   end
 

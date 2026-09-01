@@ -67,13 +67,13 @@ defmodule AshWorkflow.Transformers.AddObanTriggersTest do
       assert trigger.trigger_once? == false
     end
 
-    test "repeating action timeout injects state_entered_at reset into action" do
+    test "repeating action timeout injects a RecordEvent that resets state_entered_at" do
       action =
         Ash.Resource.Info.action(AshWorkflowTest.RepeatingTimeoutWorkflow, :send_follow_up)
 
       assert Enum.any?(action.changes, fn
-               %{change: {Ash.Resource.Change.SetAttribute, opts}} ->
-                 opts[:attribute] == :state_entered_at
+               %{change: {AshWorkflow.Changes.RecordEvent, opts}} ->
+                 opts[:triggered_by] == :timeout
 
                _ ->
                  false

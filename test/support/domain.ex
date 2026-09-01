@@ -26,5 +26,10 @@ defmodule AshWorkflowTest.Domain do
     resource AshWorkflowTest.CheckIntervalWorkflow
     resource AshWorkflowTest.AuthorizedErrorPathWorkflow
     resource AshWorkflowTest.SharedTimeoutNameWorkflow
+    resource AshWorkflowTest.LoggedWorkflow
+    resource AshWorkflowTest.LoggedTransition
+    resource AshWorkflowTest.Reviewer
+    resource AshWorkflowTest.BackfillWorkflow
+    resource AshWorkflowTest.BackfillTransition
   end
 end

@@ -10,7 +10,10 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
 
   @impl true
   def verify(dsl) do
-    steps = Verifier.get_entities(dsl, [:workflow])
+    steps =
+      dsl
+      |> Verifier.get_entities([:workflow])
+      |> Enum.filter(&match?(%Step{}, &1))
 
     with :ok <- validate_has_steps(steps),
          :ok <- validate_single_initial(steps),

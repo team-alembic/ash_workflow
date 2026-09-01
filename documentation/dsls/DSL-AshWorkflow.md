@@ -18,6 +18,8 @@ Define a workflow by declaring steps, transitions, and timeouts.
    * transition
      * route
    * timeout
+ * [transition_log](#workflow-transition_log)
+   * belongs_to_actor
 
 
 
@@ -172,6 +174,65 @@ Target: `AshWorkflow.Entities.Timeout`
 ### Introspection
 
 Target: `AshWorkflow.Entities.Step`
+
+### workflow.transition_log
+```elixir
+transition_log resource
+```
+
+
+Declares an opt-in transition log resource that records one row per
+workflow event. See `AshWorkflow.Entities.TransitionLog`.
+
+
+### Nested DSLs
+ * [belongs_to_actor](#workflow-transition_log-belongs_to_actor)
+
+
+
+
+### Arguments
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`resource`](#workflow-transition_log-resource){: #workflow-transition_log-resource .spark-required} | `atom` |  | The transition log resource module. Scaffolded with `mix ash_workflow.gen.transition_log` and validated at compile time by `AshWorkflow.Verifiers.ValidateTransitionLog`. |
+
+
+
+### workflow.transition_log.belongs_to_actor
+```elixir
+belongs_to_actor name, destination
+```
+
+
+Configures actor capture on the transition log.
+
+
+
+
+
+### Arguments
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`name`](#workflow-transition_log-belongs_to_actor-name){: #workflow-transition_log-belongs_to_actor-name .spark-required} | `atom` |  | The attribute on the transition log resource that stores the actor, e.g. :user. |
+| [`destination`](#workflow-transition_log-belongs_to_actor-destination){: #workflow-transition_log-belongs_to_actor-destination .spark-required} | `atom` |  | The actor resource module, e.g. MyApp.Accounts.User. |
+
+
+
+
+
+
+### Introspection
+
+Target: `AshWorkflow.Entities.BelongsToActor`
+
+
+
+
+### Introspection
+
+Target: `AshWorkflow.Entities.TransitionLog`
 
 
 

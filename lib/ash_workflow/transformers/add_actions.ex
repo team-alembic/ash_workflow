@@ -7,31 +7,36 @@ defmodule AshWorkflow.Transformers.AddActions do
   - **Transition actions** (for manual steps) — one `:update` action per declared
     `transition` entity. Each includes:
     - `BuiltinChanges.transition_state(target)` to move the state
-    - `set_attribute(:state_entered_at, &DateTime.utc_now/0)` to track when the
-      new state was entered
+    - `AshWorkflow.Changes.RecordEvent` (`triggered_by: :manual`) to write through
+      `state_entered_at` and append a log row if a `transition_log` is configured
 
   - **Automatic step action injection** — for automatic steps, the user defines
     their own update action with business logic. This transformer finds that action
     by the step's `action` name and appends `transition_state` and
-    `state_entered_at` changes to it. Raises at compile time if the action is not
-    defined on the resource.
+    `RecordEvent` (`triggered_by: :automatic`) changes to it. Raises at compile
+    time if the action is not defined on the resource.
 
   - **Timeout transition actions** — for timeouts with `transition_to`, generates
-    a hidden update action named `__timeout_<step>_<name>` that transitions to the target
-    state and updates `state_entered_at`.
+    a hidden update action named `__timeout_<step>_<name>` that transitions to the
+    target state and records the event (`triggered_by: :timeout`).
 
   - **Primary read action** — if the workflow has automatic steps (which generate
     Oban triggers) and no primary read action is defined, generates one with
     keyset pagination enabled (required by ash_oban).
+
+  Also adds a resource-global `change RecordEvent, on: [:create]`
+  (`triggered_by: :initial`), since workflows are started through the user's
+  own create action rather than a generated one — there is no per-action call
+  site to inject into for that event.
   """
   use Spark.Dsl.Transformer
 
   alias Ash.Resource.Builder
-  alias Ash.Resource.Change.Builtins, as: ChangeBuiltins
   alias Ash.Resource.Dsl, as: ResourceDsl
   alias Ash.Resource.Info, as: ResourceInfo
   alias AshStateMachine.BuiltinChanges
   alias AshWorkflow.Changes.ConditionalTransition
+  alias AshWorkflow.Changes.RecordEvent
   alias AshWorkflow.Entities.Route
   alias AshWorkflow.Entities.Step
   alias AshWorkflow.Entities.Transition
@@ -39,11 +44,15 @@ defmodule AshWorkflow.Transformers.AddActions do
   alias Spark.Error.DslError
 
   def transform(dsl) do
-    steps = Transformer.get_entities(dsl, [:workflow])
+    steps =
+      dsl
+      |> Transformer.get_entities([:workflow])
+      |> Enum.filter(&match?(%Step{}, &1))
 
     dsl =
       dsl
       |> add_read_action()
+      |> add_initial_event_change()
       |> add_transition_actions(steps)
       |> inject_automatic_step_changes(steps)
       |> add_timeout_actions(steps)
@@ -52,12 +61,31 @@ defmodule AshWorkflow.Transformers.AddActions do
     {:ok, dsl}
   end
 
+  defp add_initial_event_change(dsl) do
+    change =
+      Transformer.build_entity!(ResourceDsl, [:changes], :change,
+        change: {RecordEvent, triggered_by: :initial},
+        on: [:create]
+      )
+
+    Transformer.add_entity(dsl, [:changes], change)
+  end
+
   defp add_read_action(dsl) do
     if ResourceInfo.primary_action(dsl, :read) != nil do
       dsl
     else
+      # Keyset pagination is required by ash_oban. `required?: false` with
+      # `paginate_by_default?: true` keeps reads paginated as they always have
+      # been, while allowing `page: false` to opt out — Ash's default of
+      # `required?: true` makes opting out raise PaginationRequired.
       {:ok, pagination} =
-        Builder.build_pagination(keyset?: true, default_limit: 100)
+        Builder.build_pagination(
+          keyset?: true,
+          default_limit: 100,
+          required?: false,
+          paginate_by_default?: true
+        )
 
       read_action =
         Transformer.build_entity!(ResourceDsl, [:actions], :read,
@@ -119,12 +147,12 @@ defmodule AshWorkflow.Transformers.AddActions do
         ]
       end
 
-    timestamp_change =
+    record_event_change =
       Transformer.build_entity!(ResourceDsl, [:actions, :update], :change,
-        change: ChangeBuiltins.set_attribute(:state_entered_at, &DateTime.utc_now/0)
+        change: {RecordEvent, triggered_by: :manual, transition_name: name}
       )
 
-    changes = transition_changes ++ [timestamp_change]
+    changes = transition_changes ++ [record_event_change]
 
     accepted =
       step_transitions
@@ -205,14 +233,14 @@ defmodule AshWorkflow.Transformers.AddActions do
               change: BuiltinChanges.transition_state(step.on_success)
             )
 
-          timestamp_change =
+          record_event_change =
             Transformer.build_entity!(ResourceDsl, [:actions, :update], :change,
-              change: ChangeBuiltins.set_attribute(:state_entered_at, &DateTime.utc_now/0)
+              change: {RecordEvent, triggered_by: :automatic}
             )
 
           updated_action = %{
             existing_action
-            | changes: existing_action.changes ++ [transition_change, timestamp_change]
+            | changes: existing_action.changes ++ [transition_change, record_event_change]
           }
 
           dsl
@@ -249,7 +277,7 @@ defmodule AshWorkflow.Transformers.AddActions do
               change: BuiltinChanges.transition_state(step.on_error)
             ),
             Transformer.build_entity!(ResourceDsl, [:actions, :update], :change,
-              change: ChangeBuiltins.set_attribute(:state_entered_at, &DateTime.utc_now/0)
+              change: {RecordEvent, triggered_by: :error_path, transition_name: step.action}
             )
           ]
         )
@@ -288,7 +316,7 @@ defmodule AshWorkflow.Transformers.AddActions do
                 change: BuiltinChanges.transition_state(timeout.transition_to)
               ),
               Transformer.build_entity!(ResourceDsl, [:actions, :update], :change,
-                change: ChangeBuiltins.set_attribute(:state_entered_at, &DateTime.utc_now/0)
+                change: {RecordEvent, triggered_by: :timeout, transition_name: timeout.name}
               )
             ]
           )
@@ -317,14 +345,14 @@ defmodule AshWorkflow.Transformers.AddActions do
               "Repeating timeout :#{timeout.name} on step :#{step.name} references action :#{timeout.action}, but no such action is defined on the resource."
 
         existing_action ->
-          timestamp_change =
+          record_event_change =
             Transformer.build_entity!(ResourceDsl, [:actions, :update], :change,
-              change: ChangeBuiltins.set_attribute(:state_entered_at, &DateTime.utc_now/0)
+              change: {RecordEvent, triggered_by: :timeout}
             )
 
           updated_action = %{
             existing_action
-            | changes: existing_action.changes ++ [timestamp_change]
+            | changes: existing_action.changes ++ [record_event_change]
           }
 
           dsl

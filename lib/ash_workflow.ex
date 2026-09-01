@@ -38,6 +38,28 @@ defmodule AshWorkflow do
     schema: Entities.Timeout.attribute_schema()
   }
 
+  @belongs_to_actor %Spark.Dsl.Entity{
+    name: :belongs_to_actor,
+    describe: "Configures actor capture on the transition log.",
+    target: Entities.BelongsToActor,
+    args: [:name, :destination],
+    schema: Entities.BelongsToActor.attribute_schema()
+  }
+
+  @transition_log %Spark.Dsl.Entity{
+    name: :transition_log,
+    describe: """
+    Declares an opt-in transition log resource that records one row per
+    workflow event. See `AshWorkflow.Entities.TransitionLog`.
+    """,
+    target: Entities.TransitionLog,
+    args: [:resource],
+    schema: Entities.TransitionLog.attribute_schema(),
+    entities: [
+      belongs_to_actor: [@belongs_to_actor]
+    ]
+  }
+
   @step %Spark.Dsl.Entity{
     name: :step,
     describe:
@@ -77,7 +99,7 @@ defmodule AshWorkflow do
         """
       ]
     ],
-    entities: [@step]
+    entities: [@step, @transition_log]
   }
 
   use Spark.Dsl.Extension,
@@ -94,6 +116,7 @@ defmodule AshWorkflow do
     ],
     verifiers: [
       AshWorkflow.Verifiers.ValidateWorkflow,
-      AshWorkflow.Verifiers.ValidateTimeoutFields
+      AshWorkflow.Verifiers.ValidateTimeoutFields,
+      AshWorkflow.Verifiers.ValidateTransitionLog
     ]
 end

@@ -91,7 +91,7 @@ defmodule AshWorkflow.MixProject do
       {:ash, "~> 3.0"},
       {:ash_state_machine, "~> 0.2"},
       {:ash_oban, "~> 0.2"},
-      {:igniter, "~> 0.6"},
+      {:igniter, "~> 0.6", optional: true},
       {:simple_sat, "~> 0.1", only: [:dev, :test]},
 
       # Postgres + Oban integration tests
@@ -117,6 +117,7 @@ defmodule AshWorkflow.MixProject do
         "documentation/topics/automatic-vs-manual-steps.md",
         "documentation/topics/error-handling.md",
         "documentation/topics/timeouts-and-deadlines.md",
+        "documentation/topics/workflow-history.md",
         "documentation/topics/authorization.md",
         "documentation/topics/workflows-and-relationships.md",
         "documentation/topics/bpmn-comparison.md",

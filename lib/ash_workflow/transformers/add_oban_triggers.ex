@@ -37,7 +37,11 @@ defmodule AshWorkflow.Transformers.AddObanTriggers do
   require Ash.Expr
 
   def transform(dsl) do
-    steps = Transformer.get_entities(dsl, [:workflow])
+    steps =
+      dsl
+      |> Transformer.get_entities([:workflow])
+      |> Enum.filter(&match?(%Step{}, &1))
+
     resource = Transformer.get_persisted(dsl, :module)
 
     defaults = [
