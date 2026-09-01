@@ -4,6 +4,9 @@ defmodule WorkflowTimeline.Seeder do
   timeline demo. Used by both `priv/repo/seeds.exs` and the "Generate
   incident history" button on the timeline page.
 
+  `seed_undoable_incident!/0` serves the undo page instead, and deliberately
+  does not backdate — see its own docs.
+
   `AshWorkflow.Changes.RecordEvent` always stamps `occurred_at` with
   `DateTime.utc_now/0`, so a live action can never write a backdated row.
   Instead this module runs the real actions — so every row is produced by
@@ -42,6 +45,28 @@ defmodule WorkflowTimeline.Seeder do
     |> run_scenario!(scenario, responder)
     |> backdate!(started_ago)
   end
+
+  @doc """
+  Creates one incident on the undo-enabled copy of the workflow and walks it
+  as far as `:investigating`, which is where its transitions become undoable.
+
+  Left in the present rather than backdated: the undo page's `within {1,
+  :hours}` window is part of what it demonstrates, and a backdated incident
+  would arrive already expired.
+  """
+  @spec seed_undoable_incident!() :: Ash.Resource.record()
+  def seed_undoable_incident! do
+    title = Enum.random(@titles)
+
+    {:ok, incident} =
+      IncidentResponse.report_undoable(title, "#{title}. Reported by monitoring.")
+
+    Ash.update!(incident, action: :classify_severity, authorize?: false)
+  end
+
+  @doc "Returns an arbitrary responder to act as, or `nil` if none are seeded."
+  @spec any_responder() :: Ash.Resource.record() | nil
+  def any_responder, do: random_responder()
 
   @doc "Seeds `count` incidents spread across varied scenarios and start times."
   @spec seed_many!(non_neg_integer()) :: [Ash.Resource.record()]

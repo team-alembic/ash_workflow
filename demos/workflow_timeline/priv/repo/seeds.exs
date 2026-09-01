@@ -25,6 +25,13 @@ end)
 
 Seeder.seed_many!(10)
 
+# The undo page's own incidents. Not backdated: undo is configured `within {1,
+# :hours}`, so a ten-day-old incident would arrive with its window already shut.
+for _ <- 1..3, do: Seeder.seed_undoable_incident!()
+
 Application.delete_env(:workflow_timeline, :fast_tests)
 
-IO.puts("Seeded #{length(responders)} responders and 10 incidents with backdated history.")
+IO.puts(
+  "Seeded #{length(responders)} responders, 10 incidents with backdated history, " <>
+    "and 3 undoable incidents."
+)

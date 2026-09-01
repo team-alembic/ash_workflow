@@ -187,7 +187,12 @@ defmodule WorkflowTimelineWeb.TimelineLive do
     ~H"""
     <div class="min-h-screen bg-stone-900 text-stone-100 p-6">
       <header class="mb-6">
-        <h1 class="text-3xl font-black">Incident timeline</h1>
+        <div class="flex items-center gap-4">
+          <h1 class="text-3xl font-black">Incident timeline</h1>
+          <.link navigate={~p"/undo"} class="text-blue-400 hover:text-blue-300 underline">
+            the same workflow, with undo →
+          </.link>
+        </div>
         <p class="text-stone-400">
           Drag the playhead to see what every incident's workflow state was at that instant —
           derived from the transition log, not from the current row.
