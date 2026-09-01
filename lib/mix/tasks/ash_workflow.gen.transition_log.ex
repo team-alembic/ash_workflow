@@ -41,7 +41,14 @@ defmodule Mix.Tasks.AshWorkflow.Gen.TransitionLog.Docs do
   end
 end
 
-if Code.ensure_loaded?(Igniter) do
+# Guarded on the struct this task builds rather than on `Igniter` itself.
+# `Code.ensure_loaded?(Igniter)` can be true during a cold parallel build while
+# `Igniter.Mix.Task.Info` has not been written yet, and since Elixir 1.19 the
+# type checker turns a reference to an unavailable struct into a compile
+# error rather than a warning — which broke every demo that depends on this
+# library by path. Ensuring the struct module specifically both tests for it
+# and loads it.
+if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
   defmodule Mix.Tasks.AshWorkflow.Gen.TransitionLog do
     @shortdoc "#{__MODULE__.Docs.short_doc()}"
     @moduledoc __MODULE__.Docs.long_doc()

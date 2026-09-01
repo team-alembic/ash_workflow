@@ -52,6 +52,11 @@ defmodule WorkflowTimeline.MixProject do
       {:ash_postgres, "~> 2.0"},
       {:ash_oban, "~> 0.5"},
       {:ash_workflow, path: "../.."},
+      # Declared explicitly, though nothing here calls it directly: igniter is
+      # an optional dependency of ash, ash_postgres and spark, so it lands in
+      # deps/ without ever being compiled — and Mix then fails to start the
+      # application it can see but cannot find a .app file for.
+      {:igniter, "~> 0.6", only: [:dev, :test]},
       {:oban, "~> 2.18"}
     ]
   end

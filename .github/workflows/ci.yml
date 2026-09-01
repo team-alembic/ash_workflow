@@ -52,12 +52,13 @@ jobs:
           key: deps-${{ runner.os }}-${{ steps.beam.outputs.elixir-version }}-${{ steps.beam.outputs.otp-version }}-${{ hashFiles('mix.lock') }}
           restore-keys: deps-${{ runner.os }}-${{ steps.beam.outputs.elixir-version }}-${{ steps.beam.outputs.otp-version }}-
 
+      # No restore-keys: see the demo job's `_build` cache for why a build
+      # restored from a different lock is worse than no cache at all.
       - name: Cache _build
         uses: actions/cache@v6
         with:
           path: _build
           key: build-${{ runner.os }}-${{ steps.beam.outputs.elixir-version }}-${{ steps.beam.outputs.otp-version }}-${{ hashFiles('mix.lock') }}
-          restore-keys: build-${{ runner.os }}-${{ steps.beam.outputs.elixir-version }}-${{ steps.beam.outputs.otp-version }}-
 
       - name: Cache dialyzer PLT
         uses: actions/cache@v6
@@ -104,11 +105,16 @@ jobs:
       - name: Cache deps
         uses: actions/cache@v6
         with:
-          path: |
-            deps
-            _build
-          key: compile-${{ runner.os }}-${{ matrix.elixir }}-${{ matrix.otp }}-${{ hashFiles('mix.lock') }}
-          restore-keys: compile-${{ runner.os }}-${{ matrix.elixir }}-${{ matrix.otp }}-
+          path: deps
+          key: compile-deps-${{ runner.os }}-${{ matrix.elixir }}-${{ matrix.otp }}-${{ hashFiles('mix.lock') }}
+          restore-keys: compile-deps-${{ runner.os }}-${{ matrix.elixir }}-${{ matrix.otp }}-
+
+      # No restore-keys: see the demo job's `_build` cache.
+      - name: Cache _build
+        uses: actions/cache@v6
+        with:
+          path: _build
+          key: compile-build-${{ runner.os }}-${{ matrix.elixir }}-${{ matrix.otp }}-${{ hashFiles('mix.lock') }}
 
       - run: mix deps.get
 
@@ -158,14 +164,26 @@ jobs:
           version-file: .tool-versions
           version-type: strict
 
-      - name: Cache deps and build
+      # `deps` may be restored from an older lock: `mix deps.get` reconciles it
+      # against the current one.
+      - name: Cache deps
         uses: actions/cache@v6
         with:
-          path: |
-            demos/${{ matrix.demo }}/deps
-            demos/${{ matrix.demo }}/_build
-          key: demo-${{ matrix.demo }}-${{ runner.os }}-${{ steps.beam.outputs.elixir-version }}-${{ hashFiles(format('demos/{0}/mix.lock', matrix.demo)) }}
-          restore-keys: demo-${{ matrix.demo }}-${{ runner.os }}-${{ steps.beam.outputs.elixir-version }}-
+          path: demos/${{ matrix.demo }}/deps
+          key: demo-deps-${{ matrix.demo }}-${{ runner.os }}-${{ steps.beam.outputs.elixir-version }}-${{ hashFiles(format('demos/{0}/mix.lock', matrix.demo)) }}
+          restore-keys: demo-deps-${{ matrix.demo }}-${{ runner.os }}-${{ steps.beam.outputs.elixir-version }}-
+
+      # `_build` deliberately has no restore-keys. Nothing reconciles a build
+      # against a lock it was not built from: a `_build` restored from before a
+      # dependency was added leaves Mix believing everything is compiled, and
+      # the missing dep surfaces as "could not find application file" at
+      # startup rather than as a compile error. An exact-match-or-nothing key
+      # means a lock change costs a cold build and buys a correct one.
+      - name: Cache _build
+        uses: actions/cache@v6
+        with:
+          path: demos/${{ matrix.demo }}/_build
+          key: demo-build-${{ matrix.demo }}-${{ runner.os }}-${{ steps.beam.outputs.elixir-version }}-${{ hashFiles(format('demos/{0}/mix.lock', matrix.demo)) }}
 
       - run: mix deps.get
 
