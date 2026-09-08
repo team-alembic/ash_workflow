@@ -106,9 +106,27 @@ Use cases include:
 Supported units: `:seconds`, `:minutes`, `:hours`, `:days`.
 
 ```elixir
-timeout :quick_check, after: {30, :seconds}, action: :check_status
 timeout :hourly_ping, after: {1, :hours}, action: :send_ping
 timeout :weekly_expire, after: {7, :days}, transition_to: :expired
+```
+
+One minute is the shortest deadline the scheduler can honour. Timeouts fire
+when an Oban cron scheduler next notices the deadline has passed, and cron
+cannot poll more often than once a minute, so `after: {30, :seconds}` would
+fire up to 60 seconds late — an error larger than the deadline. The extension
+rejects a sub-minute `after` at compile time rather than making a promise it
+cannot keep.
+
+If you need one anyway, set `check_interval: false` to generate no cron and run
+the trigger yourself:
+
+```elixir
+# Nothing polls for this one. Call AshOban.schedule/2, or drive it from your
+# own process, as often as the deadline requires.
+timeout :quick_check,
+  after: {30, :seconds},
+  action: :check_status,
+  check_interval: false
 ```
 
 ## Polling interval and precision
