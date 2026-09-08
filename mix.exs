@@ -18,6 +18,7 @@ defmodule AshWorkflow.MixProject do
       start_permanent: Mix.env() == :prod,
       consolidate_protocols: Mix.env() != :dev,
       deps: deps(),
+      usage_rules: usage_rules(),
       aliases: aliases(),
       dialyzer: [
         plt_add_apps: [:mix, :ex_unit],
@@ -85,6 +86,13 @@ defmodule AshWorkflow.MixProject do
   end
 
   # Run "mix help deps" to learn about dependencies.
+  defp usage_rules do
+    [
+      file: ".rules/usage-rules.md",
+      usage_rules: [~r/.*/]
+    ]
+  end
+
   defp deps do
     [
       {:mix_test_watch, "~> 1.2", only: [:dev, :test]},
@@ -102,7 +110,7 @@ defmodule AshWorkflow.MixProject do
       # Postgres + Oban integration tests
       {:ash_postgres, "~> 2.0", only: [:dev, :test]},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
-      {:usage_rules, "~> 0.1", only: :dev},
+      {:usage_rules, "~> 1.2", only: :dev},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
       {:ex_check, "~> 0.16", only: [:dev, :test], runtime: false},
