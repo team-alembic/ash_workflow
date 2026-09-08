@@ -59,7 +59,11 @@ defmodule AshWorkflowDemo.ATS.Candidate do
       timeout :begin_verification,
         after: {1, :seconds},
         field: :verify_after,
-        transition_to: :verifying
+        transition_to: :verifying,
+        # AshWorkflowDemo.DemoScheduler invokes this trigger every second,
+        # which is what makes a sub-minute deadline honourable here. Cron alone
+        # could not, so without this the duration is a compile error.
+        self_scheduled?: true
     end
 
     step :verifying do
@@ -73,7 +77,12 @@ defmodule AshWorkflowDemo.ATS.Candidate do
       transition :reject, to: :rejected
       transition :position_filled, to: :position_filled
 
-      timeout :auto_reject, after: {30, :seconds}, transition_to: :auto_rejected
+      # Also driven by DemoScheduler — a 30-second deadline is exactly what cron
+      # cannot express, which is why the demo schedules it itself.
+      timeout :auto_reject,
+        after: {30, :seconds},
+        transition_to: :auto_rejected,
+        self_scheduled?: true
     end
 
     step :hired, terminal: true

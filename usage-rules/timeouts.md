@@ -6,6 +6,8 @@ Timeouts in AshWorkflow are powered by Oban cron jobs. When a step has timeouts,
 
 The check happens on the schedule defined by `check_interval` (default: every minute). This means timeouts are not precise to the second — they fire on the next cron tick after the deadline has passed.
 
+**One minute is the shortest deadline you can ask for.** Cron cannot poll more often than once a minute, so a sub-minute `after` would fire up to 60 seconds late — an error larger than the deadline itself. `after: {30, :seconds}` is a compile error. Set `self_scheduled?: true` if something other than cron drives the trigger at the resolution the deadline needs.
+
 Set `check_interval` on the `workflow` block to change it for every trigger on the resource, or on an individual `timeout` to override that default:
 
 ```elixir
@@ -148,7 +150,7 @@ Supported units for the `after` tuple:
 
 | Unit | Example |
 |---|---|
-| `:seconds` | `{30, :seconds}` |
+| `:seconds` | `{90, :seconds}` |
 | `:minutes` | `{15, :minutes}` |
 | `:hours` | `{4, :hours}` |
 | `:days` | `{7, :days}` |
@@ -172,6 +174,26 @@ If you need both (send a notification AND change state), use two timeouts at the
 timeout :escalation_notice, after: {7, :days}, action: :send_escalation_notice
 timeout :escalation, after: {7, :days}, transition_to: :escalated
 ```
+
+### Asking for a sub-minute deadline
+
+```elixir
+# Bad — compile error, cron cannot poll this often
+timeout :quick_check, after: {30, :seconds}, action: :check_status
+```
+
+Either lengthen the deadline to at least `{1, :minutes}`, or declare that you drive the trigger yourself:
+
+```elixir
+timeout :quick_check,
+  after: {30, :seconds},
+  action: :check_status,
+  self_scheduled?: true
+```
+
+`self_scheduled?: true` changes nothing about what is generated — the scheduler and its cron still exist, so `AshOban.schedule/2` and `AshOban.schedule_and_run_triggers/1` keep working. It records that something calls them more often than the cron does, and permits the shorter duration. `demos/ats` is the worked example: a GenServer ticks every second and invokes the trigger, which is what makes its 30-second deadline honourable.
+
+This also applies when a custom `field` carries the deadline. `{1, :minutes}` and `{1, :seconds}` both mean "once that instant has passed" — the polling interval, not the duration, decides how soon after — so use `{1, :minutes}`.
 
 ### Forgetting to define the timeout action
 

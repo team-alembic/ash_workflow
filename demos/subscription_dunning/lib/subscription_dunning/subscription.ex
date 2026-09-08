@@ -52,10 +52,12 @@ defmodule SubscriptionDunning.Subscription do
       timeout :dunning_email, after: {3, :days}, action: :send_dunning_email, repeat: true
 
       # Fires once, against a date the billing system put on the record. The
-      # duration is relative to that field, so {1, :seconds} means "as soon as
-      # grace_period_ends_at has passed" — durations must be positive.
+      # duration is relative to that field, so {1, :minutes} means "as soon as
+      # grace_period_ends_at has passed" — durations must be positive, and must
+      # be at least a minute because cron cannot poll faster than that. With an
+      # hourly check_interval the exact duration makes no observable difference.
       timeout :grace_expired,
-        after: {1, :seconds},
+        after: {1, :minutes},
         field: :grace_period_ends_at,
         transition_to: :suspended
     end

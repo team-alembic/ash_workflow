@@ -65,7 +65,7 @@ A wait state's deadline can come from the record rather than the clock, using `f
 ```elixir
 step :scheduled do
   timeout :due,
-    after: {1, :seconds},
+    after: {1, :minutes},
     field: :run_at,
     transition_to: :running
 end

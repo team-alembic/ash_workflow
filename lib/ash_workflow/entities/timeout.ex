@@ -32,6 +32,7 @@ defmodule AshWorkflow.Entities.Timeout do
     :action,
     :transition_to,
     :check_interval,
+    self_scheduled?: false,
     __spark_metadata__: nil,
     field: :state_entered_at,
     repeat: false
@@ -44,6 +45,7 @@ defmodule AshWorkflow.Entities.Timeout do
           action: atom() | nil,
           transition_to: atom() | nil,
           check_interval: String.t() | nil,
+          self_scheduled?: boolean(),
           field: atom(),
           repeat: boolean()
         }
@@ -77,6 +79,24 @@ defmodule AshWorkflow.Entities.Timeout do
       type: :boolean,
       default: false,
       doc: "If true, re-fire the timeout on the same interval."
+    ],
+    self_scheduled?: [
+      type: :boolean,
+      default: false,
+      doc: """
+      Declares that you run this timeout's trigger yourself, more often than a
+      cron expression can ask for.
+
+      Cron cannot poll more often than once a minute, so a sub-minute `after`
+      is normally a compile error — the deadline would fire up to 60 seconds
+      late. Setting this asserts that something else drives the trigger at the
+      resolution the deadline needs, and permits the shorter duration.
+
+      This changes nothing about what is generated: the scheduler module and
+      its cron are still created, so `AshOban.schedule/2` and
+      `AshOban.schedule_and_run_triggers/1` keep working. It only records the
+      claim, and silences the check that would otherwise reject the duration.
+      """
     ],
     check_interval: [
       type: :string,

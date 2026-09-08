@@ -21,7 +21,7 @@ directly in the tests.
 
 ```elixir
 timeout :grace_expired,
-  after: {1, :seconds},
+  after: {1, :minutes},
   field: :grace_period_ends_at,
   transition_to: :suspended
 ```

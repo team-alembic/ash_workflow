@@ -14,7 +14,7 @@ defmodule AshWorkflowTest.WaitStateWorkflow do
   workflow do
     step :queued do
       timeout :release,
-        after: {1, :seconds},
+        after: {1, :minutes},
         field: :release_at,
         transition_to: :running
     end
