@@ -205,6 +205,15 @@ Be plain-eyed about what this does and doesn't give you:
   doesn't support that, so a crash between the two can drop a log row without
   rolling back the state change.
 
+## Undoing a logged transition
+
+The log is also what makes [undo](undo.md) possible: an undo rewinds to the
+state on the previous row, and records the rewind as a *new* row pointing at
+the one it reverses. Nothing here is ever mutated or deleted, so both accounts
+stay derivable from the same rows — `history/2` and `state_at/3` take an
+`effective: true` option that omits reversed rows, and answer literally without
+it.
+
 ## What this is not
 
 Not an audit trail. The log records workflow events — state transitions and

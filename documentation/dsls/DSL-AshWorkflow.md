@@ -20,6 +20,7 @@ Define a workflow by declaring steps, transitions, and timeouts.
    * timeout
  * [transition_log](#workflow-transition_log)
    * belongs_to_actor
+ * [undo](#workflow-undo)
 
 
 
@@ -93,6 +94,7 @@ Declares a named transition from this manual step to another step.
 |------|------|---------|------|
 | [`to`](#workflow-step-transition-to){: #workflow-step-transition-to } | `atom` |  | The step to transition to. Omit when using conditional routes. |
 | [`accept`](#workflow-step-transition-accept){: #workflow-step-transition-accept } | `list(atom)` | `[]` | List of resource attributes the generated transition action should accept as input. |
+| [`undoable?`](#workflow-step-transition-undoable?){: #workflow-step-transition-undoable? } | `boolean` | `false` | If true, this transition may be rewound by the generated `undo` action. Requires an `undo` block on the workflow. Opt-in per transition rather than per workflow, because undoing a decision that has already had effects outside the workflow — an offer sent, a payment taken — cannot be made safe by the extension. The default is that nothing is undoable. Note that undo restores *state*, not attributes: a transition with `accept` does not have its accepted values rolled back. |
 
 
 ### workflow.step.transition.route
@@ -235,6 +237,34 @@ Target: `AshWorkflow.Entities.BelongsToActor`
 ### Introspection
 
 Target: `AshWorkflow.Entities.TransitionLog`
+
+### workflow.undo
+
+
+Enables undo for this workflow. Requires a `transition_log`, and at least
+one transition marked `undoable?: true`. See `AshWorkflow.Entities.Undo`.
+
+
+
+
+
+
+
+### Options
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`within`](#workflow-undo-within){: #workflow-undo-within } | `any` |  | How long after a transition it may still be undone, e.g. `{30, :minutes}`. Measured against the undone row's `occurred_at`. Defaults to `nil`, which places no time limit on undo. |
+| [`same_actor?`](#workflow-undo-same_actor?){: #workflow-undo-same_actor? } | `boolean` | `false` | If true, only the actor recorded on a transition may undo it. Requires `belongs_to_actor` on the `transition_log` — without a recorded actor there is nothing to compare against, so this is rejected at compile time. |
+| [`policy`](#workflow-undo-policy){: #workflow-undo-policy } | `any` |  | An Ash policy check applied to the generated `undo` action. Accepts any `{module, opts}` tuple implementing `Ash.Policy.Check`. Step policies do not apply to undo: an undo spans two states, and which step it rewinds into is only known at runtime. Without this option the `undo` action falls under the extension's default-allow policy, like every other generated action. |
+
+
+
+
+
+### Introspection
+
+Target: `AshWorkflow.Entities.Undo`
 
 
 

@@ -1,6 +1,7 @@
-defmodule AshWorkflowTest.LoggedTransition do
+defmodule AshWorkflowTest.UndoLog do
   @moduledoc """
-  The transition log for `AshWorkflowTest.LoggedWorkflow`.
+  The transition log for `AshWorkflowTest.UndoWorkflow`, including the
+  self-referencing `undoes` pointer that undo rows carry.
   """
 
   use Ash.Resource,
@@ -22,6 +23,10 @@ defmodule AshWorkflowTest.LoggedTransition do
         :triggered_by
       ]
     end
+
+    update :update do
+      accept [:occurred_at]
+    end
   end
 
   attributes do
@@ -34,7 +39,7 @@ defmodule AshWorkflowTest.LoggedTransition do
   end
 
   relationships do
-    belongs_to :workflow, AshWorkflowTest.LoggedWorkflow,
+    belongs_to :workflow, AshWorkflowTest.UndoWorkflow,
       allow_nil?: false,
       public?: true,
       attribute_public?: true,

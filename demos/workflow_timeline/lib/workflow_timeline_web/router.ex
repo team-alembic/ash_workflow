@@ -14,5 +14,6 @@ defmodule WorkflowTimelineWeb.Router do
     pipe_through :browser
 
     live "/", TimelineLive
+    live "/undo", UndoLive
   end
 end
