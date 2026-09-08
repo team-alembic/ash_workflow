@@ -13,7 +13,7 @@ defmodule AshWorkflowTest.Postgres.OnSuccessObanTest do
 
   alias AshWorkflowTest.Postgres.ScreeningWorkflow
 
-  defp submit(attrs \\ %{}) do
+  defp submit(attrs) do
     ScreeningWorkflow.submit!(Map.merge(%{candidate_name: "Some Candidate"}, attrs))
   end
 
@@ -94,6 +94,51 @@ defmodule AshWorkflowTest.Postgres.OnSuccessObanTest do
       still_routed = Ash.get!(ScreeningWorkflow, workflow.id, authorize?: false)
       assert still_routed.state == :interview
       assert DateTime.compare(still_routed.state_entered_at, routed.state_entered_at) == :eq
+    end
+  end
+
+  describe "transition log recording a conditionally routed target" do
+    # RecordEvent and ConditionalOnSuccess are two separate changes appended
+    # to the same action. If the log ever recorded the state the record was
+    # in when the changes list was built, rather than the state the route
+    # actually picked, this would silently log the wrong target — exactly the
+    # kind of bug that only shows up with a real conditional route, run for
+    # real. Both branches are asserted so a log that merely stamped whatever
+    # `to_state` happened to be right for one of them wouldn't pass.
+    test "logs the interview target chosen for a strong candidate" do
+      workflow = submit(%{candidate_name: "Strong Candidate"})
+      run_trigger!()
+
+      reloaded = Ash.get!(ScreeningWorkflow, workflow.id, authorize?: false)
+
+      assert [_initial, routed] = ScreeningWorkflow.history(reloaded)
+      assert routed.from_state == :screening
+      assert routed.to_state == :interview
+      assert routed.triggered_by == :automatic
+    end
+
+    test "logs the rejected_by_hr target chosen for a weak candidate" do
+      workflow = submit(%{candidate_name: "Weak Candidate"})
+      run_trigger!()
+
+      reloaded = Ash.get!(ScreeningWorkflow, workflow.id, authorize?: false)
+
+      assert [_initial, routed] = ScreeningWorkflow.history(reloaded)
+      assert routed.from_state == :screening
+      assert routed.to_state == :rejected_by_hr
+      assert routed.triggered_by == :automatic
+    end
+
+    test "logs the on_error target independently of on_success routing" do
+      workflow = submit(%{candidate_name: "Strong Candidate", should_fail: true})
+      run_trigger!()
+
+      reloaded = Ash.get!(ScreeningWorkflow, workflow.id, authorize?: false)
+
+      assert [_initial, routed] = ScreeningWorkflow.history(reloaded)
+      assert routed.from_state == :screening
+      assert routed.to_state == :screening_failed
+      assert routed.triggered_by == :error_path
     end
   end
 end

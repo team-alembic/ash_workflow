@@ -21,6 +21,8 @@ defmodule AshWorkflowTest.Postgres.ScreeningWorkflow do
   end
 
   workflow do
+    transition_log AshWorkflowTest.Postgres.ScreeningTransition
+
     step :screening do
       action :run_screening
 
