@@ -13,7 +13,7 @@ defmodule AshWorkflowTest.Postgres.ScreeningWorkflow do
   use Ash.Resource,
     domain: AshWorkflowTest.Postgres.Domain,
     data_layer: AshPostgres.DataLayer,
-    extensions: [AshWorkflow]
+    extensions: [AshWorkflow, AshOban]
 
   postgres do
     table "screening_workflows"

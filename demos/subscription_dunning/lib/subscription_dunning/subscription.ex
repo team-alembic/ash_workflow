@@ -28,7 +28,7 @@ defmodule SubscriptionDunning.Subscription do
   use Ash.Resource,
     domain: SubscriptionDunning.Domain,
     data_layer: AshPostgres.DataLayer,
-    extensions: [AshWorkflow]
+    extensions: [AshWorkflow, AshOban]
 
   postgres do
     table "subscriptions"

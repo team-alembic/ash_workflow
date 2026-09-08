@@ -118,6 +118,26 @@ defmodule AshWorkflow do
     name: :workflow,
     describe: "Define a workflow by declaring steps, transitions, and timeouts.",
     schema: [
+      scheduler: [
+        type: {:custom, AshWorkflow.Scheduler, :validate, []},
+        doc: """
+        The module that decides when this workflow's automatic steps and
+        timeouts run, optionally with its options:
+
+            scheduler AshWorkflow.Scheduler.Oban
+            scheduler {AshWorkflow.Scheduler.Oban, check_interval: "0 * * * *"}
+
+        Defaults to the `:scheduler` application environment for `:ash_workflow`,
+        and to `AshWorkflow.Scheduler.Oban` when that is unset.
+
+        `AshWorkflow.Scheduler.Oban` requires the resource to also have the
+        `AshOban` extension. AshWorkflow does not add it, so that a workflow
+        using a scheduler unrelated to Oban does not carry the ash_oban DSL.
+
+        See `AshWorkflow.Scheduler` for the behaviour an implementation
+        satisfies.
+        """
+      ],
       queue: [
         type: :atom,
         default: :workflow,
@@ -160,12 +180,12 @@ defmodule AshWorkflow do
 
   use Spark.Dsl.Extension,
     sections: [@workflow],
-    add_extensions: [AshStateMachine, AshOban],
+    add_extensions: [AshStateMachine],
     transformers: [
       AshWorkflow.Transformers.AddAttributes,
       AshWorkflow.Transformers.AddStateMachine,
       AshWorkflow.Transformers.AddActions,
-      AshWorkflow.Transformers.AddObanTriggers,
+      AshWorkflow.Transformers.AddScheduler,
       AshWorkflow.Transformers.AddIndexes,
       AshWorkflow.Transformers.AddPolicies,
       AshWorkflow.Transformers.AddCodeInterface,

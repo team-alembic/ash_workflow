@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A pluggable scheduler.** `AshWorkflow.Scheduler` is the behaviour a module implements to decide when a workflow's automatic steps and timeouts run. Choose one on the `workflow` block with `scheduler`, or once for an application with `config :ash_workflow, scheduler: ...`. `AshWorkflow.Scheduler.Oban` is the default and generates the same AshOban triggers as before, with the same trigger, worker and scheduler module names, so nothing already enqueued is orphaned.
+- `AshWorkflow.Scheduler.Work` describes one unit of scheduled work in AshWorkflow's own terms. It carries `match`, an expression selecting records eligible now, and `deadline`, the rule for computing the exact instant — the same fact in the two shapes that opposite scheduling strategies need. A scheduler that polls reads one; a scheduler that arms timers reads the other.
+- `AshWorkflow.Scheduler.execute/3` runs a unit of work and routes failure to the step's `on_error`. It belongs to AshWorkflow rather than to each implementation, so changing the scheduler changes when work happens and never what it does.
+- `AshWorkflow.Info.scheduler/1`.
+
+### Changed
+
+- **Breaking:** Resources must add the `AshOban` extension themselves:
+
+      use Ash.Resource,
+        domain: MyApp.Domain,
+        extensions: [AshWorkflow, AshOban]
+
+  AshWorkflow no longer adds it. `add_extensions` is static in `use Spark.Dsl.Extension`, so it cannot depend on which scheduler a workflow selects — and a workflow whose deadlines are run by something other than Oban should not carry the ash_oban DSL. `AshWorkflow.Scheduler.Oban` checks for the extension and fails at compile time with the fix in the message. `AshStateMachine` is still added for you.
+- `AshWorkflow.Transformers.AddObanTriggers` is replaced by `AshWorkflow.Transformers.AddScheduler`, which builds the `Work` list and delegates to the selected scheduler.
+
 - **`self_scheduled?` on a timeout.** Declares that something other than cron drives this trigger, at whatever resolution the deadline needs, which permits a deadline shorter than a cron expression can ask for. It changes nothing about what is generated — the scheduler module and its cron still exist, so `AshOban.schedule/2` and `AshOban.schedule_and_run_triggers/1` keep working. `demos/ats` is the worked example: a GenServer ticks every second and invokes the trigger, which is what makes its 30-second deadline honourable.
 
 ### Changed

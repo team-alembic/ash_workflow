@@ -10,7 +10,7 @@ defmodule AshWorkflowTest.FieldTimeoutWorkflow do
   use Ash.Resource,
     domain: AshWorkflowTest.Domain,
     data_layer: Ash.DataLayer.Ets,
-    extensions: [AshWorkflow]
+    extensions: [AshWorkflow, AshOban]
 
   workflow do
     step :active do

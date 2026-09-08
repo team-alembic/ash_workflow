@@ -8,7 +8,7 @@ defmodule AshWorkflowTest.Postgres.OwnIndexWorkflow do
   use Ash.Resource,
     domain: AshWorkflowTest.Postgres.Domain,
     data_layer: AshPostgres.DataLayer,
-    extensions: [AshWorkflow]
+    extensions: [AshWorkflow, AshOban]
 
   postgres do
     table "own_index_workflows"

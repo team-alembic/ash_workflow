@@ -27,7 +27,7 @@ defmodule BasicWorkflow.DocumentApproval do
   use Ash.Resource,
     domain: BasicWorkflow.Domain,
     data_layer: AshPostgres.DataLayer,
-    extensions: [AshWorkflow]
+    extensions: [AshWorkflow, AshOban]
 
   postgres do
     table "document_approvals"

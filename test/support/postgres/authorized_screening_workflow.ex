@@ -26,7 +26,7 @@ defmodule AshWorkflowTest.Postgres.AuthorizedScreeningWorkflow do
     domain: AshWorkflowTest.Postgres.Domain,
     data_layer: AshPostgres.DataLayer,
     authorizers: [Ash.Policy.Authorizer],
-    extensions: [AshWorkflow]
+    extensions: [AshWorkflow, AshOban]
 
   postgres do
     table "authorized_screening_workflows"

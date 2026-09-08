@@ -7,7 +7,7 @@ defmodule AshWorkflowTest.Postgres.NoIndexWorkflow do
   use Ash.Resource,
     domain: AshWorkflowTest.Postgres.Domain,
     data_layer: AshPostgres.DataLayer,
-    extensions: [AshWorkflow]
+    extensions: [AshWorkflow, AshOban]
 
   postgres do
     table "no_index_workflows"

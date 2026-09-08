@@ -9,7 +9,7 @@ defmodule AshWorkflow.Verifiers.ValidateUndoTest do
       use Ash.Resource,
         domain: AshWorkflowTest.Domain,
         data_layer: Ash.DataLayer.Ets,
-        extensions: [AshWorkflow]
+        extensions: [AshWorkflow, AshOban]
 
       workflow do
     #{workflow_block}
@@ -72,7 +72,7 @@ defmodule AshWorkflow.Verifiers.ValidateUndoTest do
           use Ash.Resource,
             domain: AshWorkflowTest.Domain,
             data_layer: Ash.DataLayer.Ets,
-            extensions: [AshWorkflow]
+            extensions: [AshWorkflow, AshOban]
 
           workflow do
             transition_log NoUndoesLog
@@ -164,7 +164,7 @@ defmodule AshWorkflow.Verifiers.ValidateUndoTest do
           use Ash.Resource,
             domain: AshWorkflowTest.Domain,
             data_layer: Ash.DataLayer.Ets,
-            extensions: [AshWorkflow]
+            extensions: [AshWorkflow, AshOban]
 
           workflow do
             transition_log ActorlessLog

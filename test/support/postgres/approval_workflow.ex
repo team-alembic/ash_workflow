@@ -12,7 +12,7 @@ defmodule AshWorkflowTest.Postgres.ApprovalWorkflow do
   use Ash.Resource,
     domain: AshWorkflowTest.Postgres.Domain,
     data_layer: AshPostgres.DataLayer,
-    extensions: [AshWorkflow]
+    extensions: [AshWorkflow, AshOban]
 
   postgres do
     table "approval_workflows"

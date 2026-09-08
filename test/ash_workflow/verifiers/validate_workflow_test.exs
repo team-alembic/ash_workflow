@@ -508,7 +508,7 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflowTest do
           use Ash.Resource,
             domain: AshWorkflowTest.Domain,
             data_layer: Ash.DataLayer.Ets,
-            extensions: [AshWorkflow]
+            extensions: [AshWorkflow, AshOban]
 
           attributes do
             uuid_v7_primary_key :id
@@ -526,7 +526,7 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflowTest do
           use Ash.Resource,
             domain: AshWorkflowTest.Domain,
             data_layer: Ash.DataLayer.Ets,
-            extensions: [AshWorkflow]
+            extensions: [AshWorkflow, AshOban]
 
           workflow do
           end
@@ -550,7 +550,7 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflowTest do
             domain: AshWorkflowTest.Domain,
             data_layer: Ash.DataLayer.Ets,
             authorizers: [Ash.Policy.Authorizer],
-            extensions: [AshWorkflow]
+            extensions: [AshWorkflow, AshOban]
 
           workflow do
             step :queue do

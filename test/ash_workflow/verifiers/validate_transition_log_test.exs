@@ -26,7 +26,7 @@ defmodule AshWorkflow.Verifiers.ValidateTransitionLogTest do
           use Ash.Resource,
             domain: AshWorkflowTest.Domain,
             data_layer: Ash.DataLayer.Ets,
-            extensions: [AshWorkflow]
+            extensions: [AshWorkflow, AshOban]
 
           workflow do
             transition_log MissingAttributesLog
@@ -73,7 +73,7 @@ defmodule AshWorkflow.Verifiers.ValidateTransitionLogTest do
           use Ash.Resource,
             domain: AshWorkflowTest.Domain,
             data_layer: Ash.DataLayer.Ets,
-            extensions: [AshWorkflow]
+            extensions: [AshWorkflow, AshOban]
 
           workflow do
             transition_log BadOccurredAtLog
@@ -120,7 +120,7 @@ defmodule AshWorkflow.Verifiers.ValidateTransitionLogTest do
           use Ash.Resource,
             domain: AshWorkflowTest.Domain,
             data_layer: Ash.DataLayer.Ets,
-            extensions: [AshWorkflow]
+            extensions: [AshWorkflow, AshOban]
 
           workflow do
             transition_log NoBelongsToLog
@@ -148,7 +148,7 @@ defmodule AshWorkflow.Verifiers.ValidateTransitionLogTest do
           use Ash.Resource,
             domain: AshWorkflowTest.Domain,
             data_layer: Ash.DataLayer.Ets,
-            extensions: [AshWorkflow]
+            extensions: [AshWorkflow, AshOban]
 
           workflow do
             transition_log Nonexistent.Log.Module.That.Does.Not.Exist
@@ -199,7 +199,7 @@ defmodule AshWorkflow.Verifiers.ValidateTransitionLogTest do
           use Ash.Resource,
             domain: AshWorkflowTest.Domain,
             data_layer: Ash.DataLayer.Ets,
-            extensions: [AshWorkflow]
+            extensions: [AshWorkflow, AshOban]
 
           workflow do
             transition_log MismatchedActorLog do

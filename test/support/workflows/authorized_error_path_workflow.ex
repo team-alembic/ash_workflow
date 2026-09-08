@@ -12,7 +12,7 @@ defmodule AshWorkflowTest.AuthorizedErrorPathWorkflow do
     domain: AshWorkflowTest.Domain,
     data_layer: Ash.DataLayer.Ets,
     authorizers: [Ash.Policy.Authorizer],
-    extensions: [AshWorkflow]
+    extensions: [AshWorkflow, AshOban]
 
   workflow do
     step :processing do

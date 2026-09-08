@@ -93,6 +93,20 @@ defmodule AshWorkflow.Info do
   end
 
   @doc """
+  Returns the workflow's scheduler as `{module, options}`.
+
+  Falls back to the `:scheduler` application environment for `:ash_workflow`,
+  and then to `AshWorkflow.Scheduler.Oban`.
+  """
+  @spec scheduler(Ash.Resource.t() | map()) :: {module(), keyword()}
+  def scheduler(resource) do
+    case Extension.get_opt(resource, [:workflow], :scheduler, nil) do
+      nil -> AshWorkflow.Scheduler.default()
+      {module, opts} -> {module, opts}
+    end
+  end
+
+  @doc """
   Returns the composite indexes that make the generated Oban triggers cheap,
   as a list of attribute-name lists, most useful first.
 

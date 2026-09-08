@@ -7,7 +7,7 @@ defmodule AshWorkflowDemo.ATS.Candidate do
   use Ash.Resource,
     domain: AshWorkflowDemo.ATS,
     data_layer: AshPostgres.DataLayer,
-    extensions: [AshWorkflow],
+    extensions: [AshWorkflow, AshOban],
     notifiers: [AshWorkflowDemo.ATS.Candidate.Notifier]
 
   postgres do

@@ -17,10 +17,54 @@ Add AshWorkflow to the extensions list on your Ash resource:
 use Ash.Resource,
   domain: MyApp.Domain,
   data_layer: AshPostgres.DataLayer,
-  extensions: [AshWorkflow]
+  extensions: [AshWorkflow, AshOban]
 ```
 
-AshWorkflow requires `ash_state_machine` and `ash_oban` as dependencies. You do NOT need to add `AshStateMachine` or `AshOban` to the extensions list — AshWorkflow generates and injects the necessary DSL for both automatically.
+AshWorkflow adds `AshStateMachine` for you. **You must add `AshOban` yourself**, as shown above, because the default scheduler generates AshOban triggers. Omitting it is a compile error naming the fix.
+
+The reason it is not added for you: the scheduler is pluggable, and a workflow whose deadlines are run by something other than Oban should not carry the ash_oban DSL. See "Scheduling" below.
+
+## Scheduling
+
+Automatic steps and timeouts are run by a scheduler, chosen on the `workflow` block:
+
+```elixir
+workflow do
+  scheduler AshWorkflow.Scheduler.Oban        # the default
+  # or, with options:
+  scheduler {AshWorkflow.Scheduler.Oban, check_interval: "0 * * * *"}
+end
+```
+
+Set it once for an application instead:
+
+```elixir
+config :ash_workflow, scheduler: {AshWorkflow.Scheduler.Oban, queue: :workflow}
+```
+
+`AshWorkflow.Scheduler.Oban` polls: it turns each automatic step and each timeout into an AshOban trigger whose `where` clause finds eligible records. Polling is what puts a floor under accuracy — cron cannot ask for less than a minute, which is why a sub-minute `after` is rejected.
+
+To write your own, implement `AshWorkflow.Scheduler`. It has one required callback:
+
+```elixir
+defmodule MyApp.Scheduler do
+  use AshWorkflow.Scheduler
+
+  @impl AshWorkflow.Scheduler
+  def transform(dsl, works, opts) do
+    # `works` is every AshWorkflow.Scheduler.Work this workflow declared.
+    # Add whatever you need to the resource, or nothing.
+    {:ok, dsl}
+  end
+end
+```
+
+Each `AshWorkflow.Scheduler.Work` describes one unit of scheduled work without reference to Oban. Two of its fields carry the same fact in different shapes, so opposite strategies both work:
+
+- `match` — an Ash expression selecting records eligible **now**. All a polling scheduler needs.
+- `deadline` — `%{field:, after:}`, the rule for computing the exact instant. All a scheduler that arms timers needs. `nil` for an automatic step, which is eligible as soon as a record occupies it.
+
+Call `AshWorkflow.Scheduler.execute/3` when the moment arrives. It runs the action and routes failure to the step's `on_error`, so swapping schedulers changes when work happens and never what it does.
 
 ## Defining a Workflow
 

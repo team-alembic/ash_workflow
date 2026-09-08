@@ -7,7 +7,7 @@ defmodule AshWorkflowTest.SixtySecondsWorkflow do
   use Ash.Resource,
     domain: AshWorkflowTest.Domain,
     data_layer: Ash.DataLayer.Ets,
-    extensions: [AshWorkflow]
+    extensions: [AshWorkflow, AshOban]
 
   workflow do
     step :waiting do
