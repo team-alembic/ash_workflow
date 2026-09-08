@@ -83,7 +83,7 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
       step.action != nil ->
         step_error(step, "Terminal step :#{step.name} must not have an action.")
 
-      step.on_success != nil ->
+      step.on_success != [] ->
         step_error(step, "Terminal step :#{step.name} must not have on_success.")
 
       step.on_error != nil ->
@@ -110,7 +110,7 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
 
   defp validate_wait_state(step) do
     cond do
-      step.on_success != nil ->
+      step.on_success != [] ->
         step_error(
           step,
           "Step :#{step.name} has no action, so on_success would never fire. A timeout's transition_to is what moves a wait state along."
@@ -141,7 +141,7 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
           "Step :#{step.name} has transitions and therefore cannot also define an action. User actions are defined via transitions."
         )
 
-      step.on_success != nil ->
+      step.on_success != [] ->
         step_error(
           step,
           "Step :#{step.name} has transitions and therefore cannot also define on_success. Use transitions instead."
@@ -166,11 +166,51 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
           "Step :#{step.name} must either declare an action (automatic step) or at least one transition (manual step)."
         )
 
-      step.on_success == nil ->
-        step_error(step, "Automatic step :#{step.name} must have on_success.")
+      step.on_success == [] ->
+        step_error(
+          step,
+          "Automatic step :#{step.name} must have on_success."
+        )
 
       true ->
-        validate_timeouts(step)
+        with :ok <- validate_on_success_ordering(step) do
+          validate_timeouts(step)
+        end
+    end
+  end
+
+  # An `on_success` entry with no `when` is unconditional and always matches,
+  # so at most one is allowed per step, and if conditional entries are also
+  # present the unconditional one must come last — it is the fallback that
+  # runs only when nothing more specific matched. An unconditional entry
+  # declared earlier would shadow every entry after it, since it always
+  # matches first.
+  defp validate_on_success_ordering(%{on_success: routes} = step) do
+    unconditional_indexes =
+      routes
+      |> Enum.with_index()
+      |> Enum.filter(fn {route, _index} -> is_nil(route.when) end)
+      |> Enum.map(fn {_route, index} -> index end)
+
+    cond do
+      length(unconditional_indexes) > 1 ->
+        step_error(
+          step,
+          "Step :#{step.name} has more than one unconditional on_success (no `when`). " <>
+            "Only one is allowed, as the trailing fallback after any conditional ones."
+        )
+
+      unconditional_indexes != [] and List.first(unconditional_indexes) != length(routes) - 1 ->
+        step_error(
+          step,
+          "Step :#{step.name} has an unconditional on_success before conditional ones. " <>
+            "An unconditional on_success always matches, so it would shadow every " <>
+            "on_success declared after it. Move it last, as the fallback, or add a " <>
+            "`when` condition to it."
+        )
+
+      true ->
+        :ok
     end
   end
 
@@ -201,13 +241,26 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
     step_names = MapSet.new(steps, & &1.name)
 
     Enum.reduce_while(steps, :ok, fn step, :ok ->
-      with :ok <- validate_ref(step_names, step.on_success, step, "on_success"),
+      with :ok <- validate_on_success_refs(step_names, step),
            :ok <- validate_ref(step_names, step.on_error, step, "on_error"),
            :ok <- validate_transition_refs(step_names, step),
            :ok <- validate_timeout_refs(step_names, step) do
         {:cont, :ok}
       else
         error -> {:halt, error}
+      end
+    end)
+  end
+
+  defp validate_on_success_refs(step_names, step) do
+    targets = Step.on_success_targets(step)
+
+    Enum.reduce_while(targets, :ok, fn target, :ok ->
+      if MapSet.member?(step_names, target) do
+        {:cont, :ok}
+      else
+        {:halt,
+         step_error(step, "Step :#{step.name} on_success references unknown step :#{target}.")}
       end
     end)
   end
@@ -376,8 +429,7 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
 
           step ->
             successors =
-              [step.on_success, step.on_error]
-              |> Enum.reject(&is_nil/1)
+              Step.on_success_targets(step) ++ ([step.on_error] |> Enum.reject(&is_nil/1))
 
             transition_targets =
               Enum.flat_map(step.transitions, &Transition.all_targets/1)

@@ -38,5 +38,13 @@ defmodule AshWorkflowTest.Domain do
     resource AshWorkflowTest.SameActorUndoLog
     resource AshWorkflowTest.BackfillWorkflow
     resource AshWorkflowTest.BackfillTransition
+    resource AshWorkflowTest.OnSuccessWorkflow
+    resource AshWorkflowTest.OnSuccessShorthandWorkflow
+    resource AshWorkflowTest.OnSuccessFallbackWorkflow
+    resource AshWorkflowTest.OnSuccessNilConditionWorkflow
+    resource AshWorkflowTest.OnSuccessThreeWayWorkflow
+    resource AshWorkflowTest.OnSuccessSelfLoopWorkflow
+    resource AshWorkflowTest.OnSuccessBackwardLoopWorkflow
+    resource AshWorkflowTest.OnSuccessCalculationWorkflow
   end
 end

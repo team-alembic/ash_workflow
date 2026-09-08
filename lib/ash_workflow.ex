@@ -18,6 +18,34 @@ defmodule AshWorkflow do
     schema: Entities.Route.attribute_schema()
   }
 
+  @on_success %Spark.Dsl.Entity{
+    name: :on_success,
+    describe:
+      "Declares a step to transition to when this step's action succeeds, optionally " <>
+        "guarded by a `when` condition. Repeatable: declare it more than once to fan out " <>
+        "to different states depending on what the action computed. Entries are evaluated " <>
+        "in declaration order, first match wins, against the record *after* the step's " <>
+        "action has run. An entry with no `when` is unconditional and must be declared " <>
+        "last, since it always matches and would otherwise shadow any entries after it.",
+    target: Entities.Route,
+    imports: [Ash.Expr],
+    args: [:to],
+    schema: [
+      to: [
+        type: :atom,
+        required: true,
+        doc: "The step to transition to."
+      ],
+      when: [
+        type: :any,
+        required: false,
+        doc:
+          "An Ash expression evaluated against the record after the action has run. " <>
+            "Use `expr(attribute == value)`. Omit for an unconditional route."
+      ]
+    ]
+  }
+
   @transition %Spark.Dsl.Entity{
     name: :transition,
     describe: "Declares a named transition from this manual step to another step.",
@@ -81,7 +109,8 @@ defmodule AshWorkflow do
     imports: [AshWorkflow.Checks],
     entities: [
       transitions: [@transition],
-      timeouts: [@timeout]
+      timeouts: [@timeout],
+      on_success: [@on_success]
     ]
   }
 

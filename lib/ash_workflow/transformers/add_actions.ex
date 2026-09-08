@@ -40,6 +40,7 @@ defmodule AshWorkflow.Transformers.AddActions do
   alias Ash.Resource.Dsl, as: ResourceDsl
   alias Ash.Resource.Info, as: ResourceInfo
   alias AshStateMachine.BuiltinChanges
+  alias AshWorkflow.Changes.ConditionalOnSuccess
   alias AshWorkflow.Changes.ConditionalTransition
   alias AshWorkflow.Changes.RecordEvent
   alias AshWorkflow.Changes.UndoTransition
@@ -267,26 +268,52 @@ defmodule AshWorkflow.Transformers.AddActions do
             message: missing_action_message(step)
 
         existing_action ->
-          transition_change =
-            Transformer.build_entity!(ResourceDsl, [:actions, :update], :change,
-              change: BuiltinChanges.transition_state(step.on_success)
-            )
-
-          record_event_change =
-            Transformer.build_entity!(ResourceDsl, [:actions, :update], :change,
-              change: {RecordEvent, triggered_by: :automatic}
-            )
-
-          updated_action = %{
-            existing_action
-            | changes: existing_action.changes ++ [transition_change, record_event_change]
-          }
-
-          dsl
-          |> Transformer.remove_entity([:actions], &(&1.name == step.action))
-          |> Transformer.add_entity([:actions], updated_action)
+          apply_on_success_changes(dsl, step, existing_action)
       end
     end)
+  end
+
+  defp apply_on_success_changes(dsl, step, existing_action) do
+    {transition_change, conditional?} = build_on_success_change(step)
+
+    record_event_change =
+      Transformer.build_entity!(ResourceDsl, [:actions, :update], :change,
+        change: {RecordEvent, triggered_by: :automatic}
+      )
+
+    updated_action = %{
+      existing_action
+      | changes: existing_action.changes ++ [transition_change, record_event_change]
+    }
+
+    updated_action =
+      if conditional?,
+        do: Map.put(updated_action, :require_atomic?, false),
+        else: updated_action
+
+    dsl
+    |> Transformer.remove_entity([:actions], &(&1.name == step.action))
+    |> Transformer.add_entity([:actions], updated_action)
+  end
+
+  defp build_on_success_change(step) do
+    if Step.on_success_conditional?(step) do
+      change =
+        Transformer.build_entity!(ResourceDsl, [:actions, :update], :change,
+          change: {ConditionalOnSuccess, routes: step.on_success, step_name: step.name}
+        )
+
+      {change, true}
+    else
+      target = step.on_success |> List.first() |> then(&(&1 && &1.to))
+
+      change =
+        Transformer.build_entity!(ResourceDsl, [:actions, :update], :change,
+          change: BuiltinChanges.transition_state(target)
+        )
+
+      {change, false}
+    end
   end
 
   defp missing_action_message(%{action: nil} = step) do

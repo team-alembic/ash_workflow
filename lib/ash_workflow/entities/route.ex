@@ -1,8 +1,8 @@
 defmodule AshWorkflow.Entities.Route do
   @moduledoc "A conditional target for a transition. Evaluated at runtime using `Ash.Expr.eval/2`."
-  defstruct [:to, :when]
+  defstruct [:to, :when, __spark_metadata__: nil]
 
-  @type t :: %__MODULE__{to: atom(), when: Ash.Expr.t()}
+  @type t :: %__MODULE__{to: atom(), when: Ash.Expr.t() | nil}
 
   @schema [
     to: [

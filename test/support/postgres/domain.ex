@@ -6,5 +6,9 @@ defmodule AshWorkflowTest.Postgres.Domain do
     resource AshWorkflowTest.Postgres.ApprovalWorkflow
     resource AshWorkflowTest.Postgres.NoIndexWorkflow
     resource AshWorkflowTest.Postgres.OwnIndexWorkflow
+    resource AshWorkflowTest.Postgres.ScreeningWorkflow
+    resource AshWorkflowTest.Postgres.ScreeningTransition
+    resource AshWorkflowTest.Postgres.AuthorizedScreeningWorkflow
+    resource AshWorkflowTest.Postgres.ScreeningWithTimeoutWorkflow
   end
 end

@@ -9,7 +9,7 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflowTest do
 
   import AshWorkflowTest.DslAssertions
 
-  alias AshWorkflow.Entities.{Step, Timeout, Transition}
+  alias AshWorkflow.Entities.{Route, Step, Timeout, Transition}
   alias AshWorkflow.Verifiers.ValidateWorkflow
 
   defp build_dsl(steps) do
@@ -23,13 +23,21 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflowTest do
       name: name,
       action: opts[:action],
       terminal: opts[:terminal] || false,
-      on_success: opts[:on_success],
+      on_success: on_success(opts[:on_success]),
       on_error: opts[:on_error],
       policy: opts[:policy],
       transitions: opts[:transitions] || [],
       timeouts: opts[:timeouts] || []
     }
   end
+
+  # A bare atom is the shorthand for a single unconditional on_success entry.
+  # A list is used directly, for tests that need more than one entry.
+  defp on_success(nil), do: []
+  defp on_success(target) when is_atom(target), do: [route(target, nil)]
+  defp on_success(routes) when is_list(routes), do: routes
+
+  defp route(to, condition \\ nil), do: %Route{to: to, when: condition}
 
   defp transition(name, to) do
     %Transition{name: name, to: to}
@@ -197,6 +205,140 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflowTest do
 
       assert {:error, %Spark.Error.DslError{message: message}} = ValidateWorkflow.verify(dsl)
       assert message =~ "Terminal step :done must not have timeouts"
+    end
+  end
+
+  describe "on_success validation" do
+    test "a bare (unconditional) on_success is valid" do
+      dsl =
+        build_dsl([
+          step(:process, action: :do_work, on_success: :done),
+          step(:done, terminal: true)
+        ])
+
+      assert :ok = ValidateWorkflow.verify(dsl)
+    end
+
+    test "multiple conditional on_success entries alone are valid" do
+      dsl =
+        build_dsl([
+          step(:process,
+            action: :do_work,
+            on_success: [route(:path_a, true), route(:path_b, true)]
+          ),
+          step(:path_a, terminal: true),
+          step(:path_b, terminal: true)
+        ])
+
+      assert :ok = ValidateWorkflow.verify(dsl)
+    end
+
+    test "conditional entries with a trailing unconditional fallback are valid" do
+      dsl =
+        build_dsl([
+          step(:process,
+            action: :do_work,
+            on_success: [route(:path_a, true), route(:fallback)]
+          ),
+          step(:path_a, terminal: true),
+          step(:fallback, terminal: true)
+        ])
+
+      assert :ok = ValidateWorkflow.verify(dsl)
+    end
+
+    test "an unconditional on_success declared before conditional ones fails" do
+      dsl =
+        build_dsl([
+          step(:process,
+            action: :do_work,
+            on_success: [route(:fallback), route(:path_a, true)]
+          ),
+          step(:path_a, terminal: true),
+          step(:fallback, terminal: true)
+        ])
+
+      assert {:error, %Spark.Error.DslError{message: message}} = ValidateWorkflow.verify(dsl)
+      assert message =~ "unconditional on_success before conditional ones"
+      assert message =~ "shadow"
+    end
+
+    test "more than one unconditional on_success fails" do
+      dsl =
+        build_dsl([
+          step(:process,
+            action: :do_work,
+            on_success: [route(:path_a), route(:path_b)]
+          ),
+          step(:path_a, terminal: true),
+          step(:path_b, terminal: true)
+        ])
+
+      assert {:error, %Spark.Error.DslError{message: message}} = ValidateWorkflow.verify(dsl)
+      assert message =~ "more than one unconditional on_success"
+    end
+
+    test "automatic step with no on_success fails" do
+      dsl =
+        build_dsl([
+          step(:process, action: :do_work),
+          step(:done, terminal: true)
+        ])
+
+      assert {:error, %Spark.Error.DslError{message: message}} = ValidateWorkflow.verify(dsl)
+      assert message =~ "must have on_success"
+    end
+
+    test "an on_success target referencing an unknown step fails" do
+      dsl =
+        build_dsl([
+          step(:process,
+            action: :do_work,
+            on_success: [route(:nonexistent, true)]
+          )
+        ])
+
+      assert {:error, %Spark.Error.DslError{message: message}} = ValidateWorkflow.verify(dsl)
+      assert message =~ "on_success references unknown step :nonexistent"
+    end
+
+    test "manual step with on_success fails" do
+      dsl =
+        build_dsl([
+          step(:review,
+            on_success: [route(:done, true)],
+            transitions: [transition(:go, :done)]
+          ),
+          step(:done, terminal: true)
+        ])
+
+      assert {:error, %Spark.Error.DslError{message: message}} = ValidateWorkflow.verify(dsl)
+      assert message =~ "cannot also define on_success"
+    end
+
+    test "terminal step with on_success fails" do
+      dsl =
+        build_dsl([
+          step(:start, action: :go, on_success: :done),
+          step(:done, terminal: true, on_success: [route(:start, true)])
+        ])
+
+      assert {:error, %Spark.Error.DslError{message: message}} = ValidateWorkflow.verify(dsl)
+      assert message =~ "Terminal step :done must not have on_success"
+    end
+
+    test "every on_success target is included in reachability" do
+      dsl =
+        build_dsl([
+          step(:process,
+            action: :do_work,
+            on_success: [route(:path_a, true), route(:path_b, true)]
+          ),
+          step(:path_a, terminal: true),
+          step(:path_b, terminal: true)
+        ])
+
+      assert :ok = ValidateWorkflow.verify(dsl)
     end
   end
 

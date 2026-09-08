@@ -18,6 +18,7 @@ Define a workflow by declaring steps, transitions, and timeouts.
    * transition
      * route
    * timeout
+   * on_success
  * [transition_log](#workflow-transition_log)
    * belongs_to_actor
  * [undo](#workflow-undo)
@@ -48,6 +49,7 @@ Declares a step in the workflow. Each step becomes a state in the generated stat
  * [transition](#workflow-step-transition)
    * route
  * [timeout](#workflow-step-timeout)
+ * [on_success](#workflow-step-on_success)
 
 
 
@@ -64,7 +66,6 @@ Declares a step in the workflow. Each step becomes a state in the generated stat
 | [`action`](#workflow-step-action){: #workflow-step-action } | `atom` |  | The action to run for automatic steps. Must reference a user-defined update action on the resource. |
 | [`initial`](#workflow-step-initial){: #workflow-step-initial } | `boolean` | `false` | If true, this step is the initial state. At most one step can be marked initial. If none are, the first non-terminal step by declaration order is used. |
 | [`terminal`](#workflow-step-terminal){: #workflow-step-terminal } | `boolean` | `false` | If true, this is an end state with no outgoing transitions. |
-| [`on_success`](#workflow-step-on_success){: #workflow-step-on_success } | `atom` |  | The step to transition to on successful completion of an automatic step. Required for automatic steps (i.e., steps with an `action` and no `transitions`). |
 | [`on_error`](#workflow-step-on_error){: #workflow-step-on_error } | `atom` |  | The step to transition to on failure. Optional, for automatic steps. |
 | [`policy`](#workflow-step-policy){: #workflow-step-policy } | `any` |  | An Ash policy check to apply to all transitions in this step. Accepts any {module, opts} tuple implementing Ash.Policy.Check. |
 
@@ -171,6 +172,37 @@ Declares a time-based action or forced transition if the workflow stays in this 
 ### Introspection
 
 Target: `AshWorkflow.Entities.Timeout`
+
+### workflow.step.on_success
+```elixir
+on_success to
+```
+
+
+Declares a step to transition to when this step's action succeeds, optionally guarded by a `when` condition. Repeatable: declare it more than once to fan out to different states depending on what the action computed. Entries are evaluated in declaration order, first match wins, against the record *after* the step's action has run. An entry with no `when` is unconditional and must be declared last, since it always matches and would otherwise shadow any entries after it.
+
+
+
+
+
+### Arguments
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`to`](#workflow-step-on_success-to){: #workflow-step-on_success-to .spark-required} | `atom` |  | The step to transition to. |
+### Options
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`when`](#workflow-step-on_success-when){: #workflow-step-on_success-when } | `any` |  | An Ash expression evaluated against the record after the action has run. Use `expr(attribute == value)`. Omit for an unconditional route. |
+
+
+
+
+
+### Introspection
+
+Target: `AshWorkflow.Entities.Route`
 
 
 

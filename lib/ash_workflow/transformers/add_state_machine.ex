@@ -8,7 +8,8 @@ defmodule AshWorkflow.Transformers.AddStateMachine do
     non-terminal step by declaration order if none is marked.
   - **`default_initial_state`** — same as above
   - **Transitions** for each step type:
-    - *Automatic steps* — `transition :step_action, from: [:step_name], to: [:on_success]`.
+    - *Automatic steps* — `transition :step_action, from: [:step_name], to: [...]`, where
+      `to` is every target across the step's `on_success` entries.
       If `on_error` is set, a transition named `__on_error_<step>` to the error
       state is added — declared on the error handler action rather than on the
       step's own action, since that is what AshOban invokes when the step fails.
@@ -105,7 +106,7 @@ defmodule AshWorkflow.Transformers.AddStateMachine do
   end
 
   defp automatic_transitions(step) do
-    success = build_transition(step.action, [step.name], [step.on_success])
+    success = build_transition(step.action, [step.name], Step.on_success_targets(step))
 
     error =
       if step.on_error do
