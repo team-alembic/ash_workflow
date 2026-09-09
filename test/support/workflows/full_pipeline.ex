@@ -13,7 +13,7 @@ defmodule AshWorkflowTest.FullPipeline do
     domain: AshWorkflowTest.Domain,
     data_layer: Ash.DataLayer.Ets,
     authorizers: [Ash.Policy.Authorizer],
-    extensions: [AshWorkflow]
+    extensions: [AshWorkflow, AshOban]
 
   workflow do
     step :intake, action: :run_intake, on_success: :review, on_error: :intake_failed

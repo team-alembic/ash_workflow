@@ -16,14 +16,14 @@ config :my_app, Oban,
 
 ## Define the workflow
 
-Create a resource with the `AshWorkflow` extension. You don't need to add `AshStateMachine` or `AshOban` — they're included automatically.
+Create a resource with the `AshWorkflow` and `AshOban` extensions. `AshStateMachine` is added for you; `AshOban` is not, because the scheduler that generates its triggers is one choice among several. See `AshWorkflow.Scheduler`.
 
 ```elixir
 defmodule MyApp.DocumentApproval do
   use Ash.Resource,
     domain: MyApp.Documents,
     data_layer: AshPostgres.DataLayer,
-    extensions: [AshWorkflow]
+    extensions: [AshWorkflow, AshOban]
 
   workflow do
     step :auto_check do
@@ -127,7 +127,7 @@ use Ash.Resource,
   domain: MyApp.Documents,
   data_layer: AshPostgres.DataLayer,
   authorizers: [Ash.Policy.Authorizer],
-  extensions: [AshWorkflow]
+  extensions: [AshWorkflow, AshOban]
 
 workflow do
   step :review do

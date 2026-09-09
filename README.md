@@ -20,7 +20,7 @@ defmodule MyApp.CandidatePipeline do
   use Ash.Resource,
     domain: MyApp.Recruiting,
     data_layer: AshPostgres.DataLayer,
-    extensions: [AshWorkflow]
+    extensions: [AshWorkflow, AshOban]
 
   workflow do
     step :process_application do
@@ -291,9 +291,10 @@ From the workflow DSL, the extension generates:
 
 | Layer | What | How |
 |-------|------|-----|
-| **Extensions** | AshStateMachine, AshOban | Auto-added via `add_extensions` |
+| **Extensions** | AshStateMachine | Auto-added via `add_extensions`. Add `AshOban` yourself — see Scheduling |
 | **State machine** | States, transitions, initial state | Via `ash_state_machine` DSL injection |
-| **Oban triggers** | One trigger per automatic step + timeouts | Via `ash_oban` DSL injection |
+| **Scheduled work** | One `Scheduler.Work` per automatic step and timeout | Handed to the selected `AshWorkflow.Scheduler` |
+| **Oban triggers** | One trigger per unit of work | `AshWorkflow.Scheduler.Oban`, the default |
 | **Actions** | One update per transition, plus a read action | Ash actions with `transition_state` change |
 | **Timeout actions** | Hidden `__timeout_*` update actions | For timeouts with `transition_to` |
 | **Policies** | Step-level `policy` declarations | Ash policies on generated transition actions |

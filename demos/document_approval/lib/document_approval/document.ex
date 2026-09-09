@@ -25,7 +25,7 @@ defmodule DocumentApproval.Document do
     domain: DocumentApproval.Domain,
     data_layer: AshPostgres.DataLayer,
     authorizers: [Ash.Policy.Authorizer],
-    extensions: [AshWorkflow]
+    extensions: [AshWorkflow, AshOban]
 
   postgres do
     table "documents"

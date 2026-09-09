@@ -111,7 +111,7 @@ defmodule ATS.CandidatePipeline do
   use Ash.Resource,
     domain: ATS.Domain,
     data_layer: AshPostgres.DataLayer,
-    extensions: [AshWorkflow]
+    extensions: [AshWorkflow, AshOban]
 
   postgres do
     table "candidate_pipelines"

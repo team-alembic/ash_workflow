@@ -25,7 +25,7 @@ defmodule SupportTicketSla.Ticket do
     domain: SupportTicketSla.Domain,
     data_layer: AshPostgres.DataLayer,
     authorizers: [Ash.Policy.Authorizer],
-    extensions: [AshWorkflow]
+    extensions: [AshWorkflow, AshOban]
 
   postgres do
     table "tickets"

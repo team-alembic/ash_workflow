@@ -69,7 +69,7 @@ use Ash.Resource,
   domain: MyApp.Domain,
   data_layer: AshPostgres.DataLayer,
   authorizers: [Ash.Policy.Authorizer],
-  extensions: [AshWorkflow]
+  extensions: [AshWorkflow, AshOban]
 ```
 
 Without the authorizer, policies are defined but not enforced.

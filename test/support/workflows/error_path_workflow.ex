@@ -9,7 +9,7 @@ defmodule AshWorkflowTest.ErrorPathWorkflow do
   use Ash.Resource,
     domain: AshWorkflowTest.Domain,
     data_layer: Ash.DataLayer.Ets,
-    extensions: [AshWorkflow]
+    extensions: [AshWorkflow, AshOban]
 
   workflow do
     step :process, action: :do_processing, on_success: :done, on_error: :failed

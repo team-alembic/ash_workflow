@@ -24,7 +24,7 @@ defmodule OrderFulfilment.Order do
   use Ash.Resource,
     domain: OrderFulfilment.Domain,
     data_layer: AshPostgres.DataLayer,
-    extensions: [AshWorkflow]
+    extensions: [AshWorkflow, AshOban]
 
   postgres do
     table "orders"

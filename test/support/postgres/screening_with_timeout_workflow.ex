@@ -14,7 +14,7 @@ defmodule AshWorkflowTest.Postgres.ScreeningWithTimeoutWorkflow do
   use Ash.Resource,
     domain: AshWorkflowTest.Postgres.Domain,
     data_layer: AshPostgres.DataLayer,
-    extensions: [AshWorkflow]
+    extensions: [AshWorkflow, AshOban]
 
   postgres do
     table "screening_with_timeout_workflows"

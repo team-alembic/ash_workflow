@@ -21,7 +21,7 @@ defmodule WorkflowTimeline.IncidentResponse.UndoableIncident do
   use Ash.Resource,
     domain: WorkflowTimeline.IncidentResponse,
     data_layer: AshPostgres.DataLayer,
-    extensions: [AshWorkflow]
+    extensions: [AshWorkflow, AshOban]
 
   postgres do
     table "undoable_incidents"

@@ -9,7 +9,7 @@ The simplest approach: the resource *is* the workflow. The state machine lives d
 ```elixir
 defmodule MyApp.SupportTicket do
   use Ash.Resource,
-    extensions: [AshWorkflow]
+    extensions: [AshWorkflow, AshOban]
 
   workflow do
     step :triage do
@@ -61,7 +61,7 @@ end
 defmodule MyApp.OnboardingWorkflow do
   use Ash.Resource,
     domain: MyApp.Workforce,
-    extensions: [AshWorkflow]
+    extensions: [AshWorkflow, AshOban]
 
   workflow do
     step :screening do

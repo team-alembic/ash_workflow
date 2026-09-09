@@ -90,7 +90,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
           use Ash.Resource,
             domain: MyApp.Domain,
             data_layer: AshPostgres.DataLayer,
-            extensions: [AshWorkflow]
+            extensions: [AshWorkflow, AshOban]
 
           workflow do
             step :review do

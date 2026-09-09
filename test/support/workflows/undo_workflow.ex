@@ -15,7 +15,7 @@ defmodule AshWorkflowTest.UndoWorkflow do
   use Ash.Resource,
     domain: AshWorkflowTest.Domain,
     data_layer: Ash.DataLayer.Ets,
-    extensions: [AshWorkflow]
+    extensions: [AshWorkflow, AshOban]
 
   workflow do
     transition_log AshWorkflowTest.UndoLog do
