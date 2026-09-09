@@ -163,11 +163,34 @@ Four steps, each shippable and each leaving the suite green.
    option defaulting to it, and move the `AshOban` extension to the resource
    (step 4). Trigger, worker and scheduler module names are unchanged, so
    nothing already enqueued is orphaned.
-2. **Add a second.** `AshWorkflow.Scheduler.Precise`, registering deadlines and
-   arming absolute timers, with the resource as its durable store — a deadline
-   is `field + after`, derivable from rows that already exist, which is the same
-   property that made `pending_deadlines` a calculation instead of a table. Two
-   implementations is what actually tests the behaviour.
+2. **Add a second.** Done. `AshWorkflow.Scheduler.Precise` registers deadlines
+   and arms timers, with the resource as its durable store — a deadline is
+   `field + after`, derivable from rows that already exist, which is the same
+   property that made `pending_deadlines` a calculation instead of a table.
+   `AshWorkflow.Scheduler.Precise.Timeline` holds the timers, and
+   `AshWorkflow.Scheduler.notify_state_change/1` is the call site that the
+   behaviour was missing: `deadline_changed/2` and `cancel/2` were declared in
+   step 1 with nothing invoking them. Two implementations is what actually
+   tests the behaviour, and three things only showed up once the second one
+   existed.
+
+   `AshWorkflow.Scheduler.execute/3` let a raising change escape past
+   `on_error`. `Ash.Changeset.for_update/4` runs an action's changes while
+   building the changeset, so an exception surfaces before `Ash.update/2` is
+   reached. ash_oban's worker used to catch that, which is exactly the
+   semantics step 3 is about moving into AshWorkflow.
+
+   A timer must never fire before its deadline. `Work.match` re-checks the
+   deadline in the data layer at fire time, so a timer that runs a fraction of
+   a millisecond early reads its own deadline as not yet passed and fires
+   nothing. `DateTime.diff/3` truncates toward zero, which is that error, so
+   the delay rounds up.
+
+   A test cannot wait for a timer. The timeline fires from its own process,
+   which holds no `Ecto.Adapters.SQL.Sandbox` connection, so
+   `AshWorkflow.Scheduler.Precise.run_due/2` runs the same work on the
+   caller's connection. `Work.match` is what makes that possible without
+   duplicating the sweep: it is true exactly when the work is due.
 3. **Own the semantics.** Move `on_error`, actor persistence and retry policy
    from ash_oban trigger options into `execute/3` and AshWorkflow's own options,
    so no implementation depends on ash_oban for meaning. The Oban
@@ -199,18 +222,18 @@ implementation replaces. Even then both adapters ship, and a workflow picks.
 A registering implementation holding timers on two nodes fires each deadline
 twice. Three ways out, and the third is the recommendation.
 
-**Elect a leader of its own.** A `:global` name or a Horde registry, so exactly
+Electing a leader of its own means a `:global` name or a Horde registry, so exactly
 one node arms timers. This is Oban's `Oban.Peer` reimplemented with none of its
 testing, and it still has a failover gap: the deadlines the dead node had armed
 are only recovered when the new leader rescans.
 
-**Accept at-least-once and require idempotent actions.** Every node arms every
-timer and the action absorbs the duplicate. This pushes the hardest part onto
+Accepting at-least-once means every node arms every timer and the action
+absorbs the duplicate. This pushes the hardest part onto
 the person writing `action :send_reminder`, and it is exactly the property the
 stored-pointer review found AshWorkflow cannot currently supply for action
 timeouts — nothing in the row records that a non-repeating timeout fired.
 
-**Borrow Oban's leader, and keep its poll as the floor.** `Oban.Peer.leader?/2`
+Borrowing Oban's leader keeps its poll as the floor. `Oban.Peer.leader?/2`
 already answers "am I the node that runs cluster-singleton work", it is what
 `Oban.Stager` gates on, and any application running the default adapter has it
 configured. `AshWorkflow.Scheduler.Precise` arms timers only while it holds

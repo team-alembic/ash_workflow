@@ -231,22 +231,29 @@ defmodule AshWorkflow.Scheduler do
   @spec execute(Work.t(), Ash.Resource.record(), keyword()) ::
           {:ok, Ash.Resource.record()} | {:error, term()}
   def execute(%Work{} = work, record, opts \\ []) do
-    record
-    |> Ash.Changeset.for_update(work.action, %{}, action_opts(opts))
-    |> Ash.update(action_opts(opts))
-    |> case do
+    case run_action(work.action, record, opts) do
       {:ok, record} -> {:ok, record}
       {:error, error} -> handle_error(work, record, error, opts)
     end
   end
 
+  # A change that raises rather than adding an error to the changeset is still
+  # a failed step, and `on_error` is what a workflow declares for exactly that.
+  # `Ash.Changeset.for_update/4` runs the action's changes while building the
+  # changeset, so an exception surfaces before `Ash.update/2` is ever reached
+  # and would otherwise escape past the error path.
+  defp run_action(action, record, opts) do
+    record
+    |> Ash.Changeset.for_update(action, %{}, action_opts(opts))
+    |> Ash.update(action_opts(opts))
+  rescue
+    error -> {:error, error}
+  end
+
   defp handle_error(%Work{on_error: nil}, _record, error, _opts), do: {:error, error}
 
   defp handle_error(%Work{on_error: on_error}, record, error, opts) do
-    record
-    |> Ash.Changeset.for_update(on_error, %{}, action_opts(opts))
-    |> Ash.update(action_opts(opts))
-    |> case do
+    case run_action(on_error, record, opts) do
       {:ok, record} -> {:ok, record}
       # The on_error action failing is worse than the original failure, because
       # the record is now stuck in a step nothing will retry it out of.

@@ -87,6 +87,43 @@ defmodule AshWorkflow.Scheduler.Precise.Timeline do
     :exit, _reason -> :ok
   end
 
+  @doc """
+  Run every unit of work that is due now for a resource, in the calling process.
+
+  This is the synchronous counterpart to the timers, and it exists for tests.
+  A timer fires from this process, which under `Ecto.Adapters.SQL.Sandbox`
+  cannot see the test's transaction, so a test that waited for a timer would
+  wait for work that could not read its own data. Calling this instead runs the
+  same work through `AshWorkflow.Scheduler.execute/3` on the test's own
+  connection.
+
+  `Work.match` is what "due now" means: for a timeout it is true exactly when
+  the deadline has passed, and for an automatic step it is true as soon as a
+  record occupies it. So this needs no horizon and no timer.
+
+  Returns the number of records it ran work for. An automatic step that
+  transitions into another automatic step needs another call, the same way
+  `AshOban.schedule_and_run_triggers/1` needs another pass, so loop until it
+  returns 0.
+
+      run_due(MyApp.Candidate)
+      #=> 2
+  """
+  @spec run_due(Ash.Resource.t(), keyword()) :: non_neg_integer()
+  def run_due(resource, opts \\ []) do
+    state = %__MODULE__{action_opts: Keyword.take(opts, [:actor, :authorize?, :tenant])}
+
+    resource
+    |> Info.scheduled_work()
+    |> Enum.reduce(0, fn work, count ->
+      records = read(work.resource, work.match, state)
+
+      Enum.each(records, &run(work, &1, state))
+
+      count + length(records)
+    end)
+  end
+
   @impl GenServer
   def init(opts) do
     state = %__MODULE__{
@@ -211,22 +248,50 @@ defmodule AshWorkflow.Scheduler.Precise.Timeline do
   end
 
   defp read(resource, filter, state) do
+    opts =
+      state.action_opts
+      |> Keyword.put_new(:authorize?, false)
+      # AshWorkflow's generated read action paginates by default, so a plain
+      # read returns one page of due records rather than all of them. It sets
+      # `required?: false` precisely so this can opt out.
+      |> Keyword.put(:page, false)
+
     resource
     |> Ash.Query.new()
     |> Ash.Query.do_filter(filter)
-    |> Ash.read(Keyword.put_new(state.action_opts, :authorize?, false))
+    |> Ash.read(opts)
     |> case do
-      {:ok, records} ->
+      {:ok, records} when is_list(records) ->
+        records
+
+      # A resource whose own read action requires pagination hands back a page
+      # instead. Its records are still the due ones; a backlog larger than the
+      # page waits for the next sweep.
+      {:ok, %{results: records}} ->
         records
 
       {:error, error} ->
-        Logger.warning("""
-        #{inspect(__MODULE__)} could not read #{inspect(resource)} while sweeping \
-        for due deadlines: #{Exception.message(error)}
-        """)
+        warn_unreadable(resource, error)
 
         []
     end
+  rescue
+    # This process holds every armed timer, so a read that raises must not take
+    # it down. A data layer with no connection available raises rather than
+    # returning an error tuple, and losing one sweep costs a deadline at most
+    # `:look_ahead_ms` of lateness. Losing the process costs every deadline it
+    # was holding.
+    error ->
+      warn_unreadable(resource, error)
+
+      []
+  end
+
+  defp warn_unreadable(resource, error) do
+    Logger.warning("""
+    #{inspect(__MODULE__)} could not read #{inspect(resource)} while looking for \
+    due deadlines: #{Exception.message(error)}
+    """)
   end
 
   # Arming
@@ -298,26 +363,13 @@ defmodule AshWorkflow.Scheduler.Precise.Timeline do
       |> Ash.Resource.Info.primary_key()
       |> Enum.zip(primary_key)
 
-    work.resource
-    |> Ash.Query.new()
-    |> Ash.Query.do_filter(pk_filter)
-    |> Ash.Query.do_filter(work.match)
-    |> Ash.read(Keyword.put_new(state.action_opts, :authorize?, false))
-    |> case do
+    filter = Ash.Expr.expr(^Ash.Expr.expr(^pk_filter) and ^work.match)
+
+    case read(work.resource, filter, state) do
       # The record left the step, or its deadline moved. Whatever armed this
       # timer is out of date, and doing nothing is the correct outcome.
-      {:ok, []} ->
-        :ok
-
-      {:ok, [record]} ->
-        run(work, record, state)
-
-      {:error, error} ->
-        Logger.warning("""
-        #{inspect(__MODULE__)} could not re-read #{inspect(work.resource)} \
-        #{inspect(primary_key)} before firing #{inspect(work.name)}: \
-        #{Exception.message(error)}
-        """)
+      [] -> :ok
+      [record] -> run(work, record, state)
     end
   end
 

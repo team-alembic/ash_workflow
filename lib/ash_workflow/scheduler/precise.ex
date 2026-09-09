@@ -79,4 +79,17 @@ defmodule AshWorkflow.Scheduler.Precise do
 
   @impl AshWorkflow.Scheduler
   def cancel(record, works), do: Timeline.cancel(record, works)
+
+  @doc """
+  Run every unit of work that is due now, in the calling process.
+
+  For tests. See `AshWorkflow.Scheduler.Precise.Timeline.run_due/2`, which this
+  delegates to.
+
+      # drive the workflow to a standstill
+      Stream.repeatedly(fn -> Precise.run_due(MyApp.Candidate) end)
+      |> Enum.find(&(&1 == 0))
+  """
+  @spec run_due(Ash.Resource.t(), keyword()) :: non_neg_integer()
+  defdelegate run_due(resource, opts \\ []), to: Timeline
 end

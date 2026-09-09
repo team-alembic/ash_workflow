@@ -56,14 +56,6 @@ config :phoenix, :json_library, Jason
 # of this file so it overrides the configuration defined above.
 config :ash_workflow_demo, ash_domains: [AshWorkflowDemo.ATS]
 
-config :ash_workflow_demo, Oban,
-  engine: Oban.Engines.Basic,
-  queues: [default: 10, workflow: 10],
-  repo: AshWorkflowDemo.Repo,
-  plugins: [{Oban.Plugins.Cron, []}]
-
-config :ash_oban, pro?: false
-
 config :ash, include_embedded_source_by_default?: false
 
 config :spark,

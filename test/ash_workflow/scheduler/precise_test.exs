@@ -233,6 +233,28 @@ defmodule AshWorkflow.Scheduler.PreciseTest do
     end
   end
 
+  describe "run_due/2" do
+    test "runs a deadline that has passed, with no timeline process at all" do
+      record = candidate(ago(5_000))
+
+      assert Precise.run_due(@resource) == 1
+      assert reload(record).state == :escalated
+    end
+
+    test "runs nothing when no deadline has passed" do
+      candidate(DateTime.utc_now())
+
+      assert Precise.run_due(@resource) == 0
+    end
+
+    test "returns 0 once the workflow has nothing left to do" do
+      candidate(ago(5_000))
+
+      assert Precise.run_due(@resource) == 1
+      assert Precise.run_due(@resource) == 0
+    end
+  end
+
   describe "the floor it reports" do
     test "Precise is a millisecond, Oban is a minute" do
       assert Scheduler.precision_floor_ms({Precise, []}) == 1
