@@ -13,7 +13,7 @@ defmodule AshWorkflowTest.CustomSchedulerWorkflow do
     extensions: [AshWorkflow]
 
   workflow do
-    scheduler({AshWorkflowTest.TestScheduler, precision: :high})
+    scheduler {AshWorkflowTest.TestScheduler, precision: :high}
 
     step :processing do
       action :process

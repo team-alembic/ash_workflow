@@ -43,6 +43,12 @@ defmodule AshWorkflow.Transformers.AddScheduler do
 
     works = step_works(steps, resource) ++ timeout_works(steps, resource)
 
+    # Persisted for every scheduler, not just the selected one, so that a
+    # runtime implementation can read back what the workflow declared without
+    # re-deriving it from steps and timeouts. `AshWorkflow.Info.scheduled_work/1`
+    # is the reader.
+    dsl = Transformer.persist(dsl, :ash_workflow_scheduled_work, works)
+
     scheduler.transform(dsl, works, opts)
   end
 

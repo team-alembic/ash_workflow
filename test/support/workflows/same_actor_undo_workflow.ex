@@ -14,7 +14,7 @@ defmodule AshWorkflowTest.SameActorUndoWorkflow do
     end
 
     undo do
-      same_actor?(true)
+      same_actor? true
     end
 
     step :review do

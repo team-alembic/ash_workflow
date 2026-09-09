@@ -50,14 +50,14 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutPrecisionTest do
           "SubMinuteSeconds",
           "timeout :nudge, after: {30, :seconds}, action: :send_reminder"
         ),
-        ~r/which is under a minute/
+        ~r/which is shorter than AshWorkflow.Scheduler.Oban can honour/
       )
     end
 
     test "the smallest possible duration" do
       assert_dsl_error(
         workflow("OneSecond", "timeout :nudge, after: {1, :seconds}, action: :send_reminder"),
-        ~r/cron cannot poll more often than once a minute/
+        ~r/checks no more often than every 1m/
       )
     end
 
@@ -67,7 +67,7 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutPrecisionTest do
           "SubMinuteCustomField",
           "timeout :nudge, after: {1, :seconds}, field: :deadline_at, action: :send_reminder"
         ),
-        ~r/which is under a minute/
+        ~r/which is shorter than AshWorkflow.Scheduler.Oban can honour/
       )
     end
 
@@ -77,7 +77,7 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutPrecisionTest do
           "SubMinuteTransition",
           "timeout :nudge, after: {5, :seconds}, transition_to: :escalated"
         ),
-        ~r/which is under a minute/
+        ~r/which is shorter than AshWorkflow.Scheduler.Oban can honour/
       )
     end
 
@@ -97,6 +97,33 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutPrecisionTest do
         ),
         ~r/self_scheduled\?: true/
       )
+    end
+  end
+
+  describe "the floor comes from the selected scheduler" do
+    test "names selecting a precise scheduler as a way out" do
+      assert_dsl_error(
+        workflow(
+          "SubMinuteNamesPrecise",
+          "timeout :nudge, after: {5, :seconds}, action: :send_reminder"
+        ),
+        ~r/scheduler AshWorkflow.Scheduler.Precise/
+      )
+    end
+
+    test "a sub-minute deadline is accepted under Precise, with no self_scheduled? flag" do
+      assert AshWorkflowTest.PreciseTimeoutWorkflow.__info__(:module) ==
+               AshWorkflowTest.PreciseTimeoutWorkflow
+
+      timeout =
+        AshWorkflowTest.PreciseTimeoutWorkflow
+        |> AshWorkflow.Info.steps()
+        |> Enum.find(&(&1.name == :waiting))
+        |> Map.fetch!(:timeouts)
+        |> Enum.find(&(&1.name == :nudge))
+
+      assert timeout.after == {5, :seconds}
+      refute timeout.self_scheduled?
     end
   end
 
