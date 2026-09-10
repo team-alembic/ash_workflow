@@ -365,6 +365,20 @@ Undo is refused, with a reason on `AshWorkflow.Errors.UndoNotPermitted`, when: t
 
 A transition whose target is an *automatic* step is undoable only until that step runs: once its Oban trigger fires, the head of the log is the automatic step's own row, and undo refuses with `:not_undoable`.
 
+## Telemetry
+
+Every state change emits a `[:ash_workflow, :transition]` span, and a conditional transition also emits `[:ash_workflow, :route_evaluation]`. `AshWorkflow.Changes.RecordEvent` emits the span, so one span covers a manual transition, an automatic step, a timeout, an error path, an undo and the initial create.
+
+```elixir
+:telemetry.attach("workflow-transitions", [:ash_workflow, :transition, :stop], &handle/4, nil)
+```
+
+Metadata carries `resource`, `workflow_id` (the primary key), `from_state`, `to_state`, `action`, `transition_name` and `triggered_by` (`:initial`, `:manual`, `:automatic`, `:timeout`, `:error_path`, `:undo`) — the same vocabulary the transition log records.
+
+Two things to know when reading the events. A create's start event carries no `workflow_id`, because the record does not exist yet; its stop event carries it. A conditional transition's start event carries no `to_state`, because the route is chosen at runtime; its stop event carries the state the record landed in.
+
+Nothing stores these. Use the transition log for durable history, and telemetry for a live stream. See `AshWorkflow.Telemetry`.
+
 ## Authorization
 
 ### Step-Level Policies

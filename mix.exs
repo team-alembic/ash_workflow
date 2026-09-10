@@ -133,6 +133,7 @@ defmodule AshWorkflow.MixProject do
         "documentation/topics/workflow-history.md",
         "documentation/topics/undo.md",
         "documentation/topics/authorization.md",
+        "documentation/topics/telemetry.md",
         "documentation/topics/workflows-and-relationships.md",
         "documentation/topics/bpmn-comparison.md",
         "documentation/dsls/DSL-AshWorkflow.md"
@@ -152,6 +153,7 @@ defmodule AshWorkflow.MixProject do
           AshWorkflow.Entities.Undo
         ],
         Checks: [AshWorkflow.Checks],
+        Telemetry: [AshWorkflow.Telemetry],
         Internals: ~r/.*/
       ]
     ]
