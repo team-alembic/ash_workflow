@@ -4,6 +4,7 @@ defmodule AshWorkflowDemoWeb.DashboardLive do
   require Ash.Query
 
   alias AshWorkflowDemo.ATS
+  alias AshWorkflowDemo.ATS.Candidate.Deadlines
   alias AshWorkflowDemo.TunnelUrl
 
   @columns [
@@ -49,7 +50,7 @@ defmodule AshWorkflowDemoWeb.DashboardLive do
           socket
 
         %{id: id} ->
-          case AshWorkflowDemo.ATS.get_candidate(id) do
+          case AshWorkflowDemo.ATS.get_candidate(id, load: [:pending_deadlines]) do
             {:ok, c} -> assign(socket, selected: c)
             _ -> assign(socket, selected: nil)
           end
@@ -120,7 +121,9 @@ defmodule AshWorkflowDemoWeb.DashboardLive do
   def handle_event("close_card", _, socket), do: {:noreply, assign(socket, selected: nil)}
 
   defp load_candidates(socket) do
-    %{results: candidates} = ATS.list_candidates!(authorize?: false)
+    %{results: candidates} =
+      ATS.list_candidates!(load: [:pending_deadlines], authorize?: false)
+
     by_state = Enum.group_by(candidates, &column_for(&1.state))
     assign(socket, by_state: by_state)
   end
@@ -137,9 +140,6 @@ defmodule AshWorkflowDemoWeb.DashboardLive do
     |> EQRCode.svg(color: "#7f1d1d", width: 200)
     |> Phoenix.HTML.raw()
   end
-
-  defp seconds_since(%DateTime{} = t, now), do: DateTime.diff(now, t, :second)
-  defp seconds_since(_, _), do: 0
 
   defp state_label(:submitted), do: {"Verifying", "bg-amber-500"}
   defp state_label(:verifying), do: {"Verifying", "bg-amber-500"}
@@ -226,7 +226,7 @@ defmodule AshWorkflowDemoWeb.DashboardLive do
 
                   <%= if state == :review do %>
                     <div class="text-xs text-red-700 font-bold mt-2">
-                      {max(0, 30 - seconds_since(c.state_entered_at, @now))}s left
+                      {Deadlines.seconds_until(Deadlines.due_at(c, :auto_reject), @now)}s left
                     </div>
                     <div class="flex gap-1 mt-2">
                       <button
@@ -321,7 +321,7 @@ defmodule AshWorkflowDemoWeb.DashboardLive do
                   </button>
                 </div>
                 <div class="text-center text-xs text-red-700 font-bold">
-                  {max(0, 30 - seconds_since(@selected.state_entered_at, @now))}s until auto-reject
+                  {Deadlines.seconds_until(Deadlines.due_at(@selected, :auto_reject), @now)}s until auto-reject
                 </div>
               <% end %>
             </div>

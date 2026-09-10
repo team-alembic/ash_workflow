@@ -1,6 +1,8 @@
 defmodule AshWorkflowDemoWeb.CandidateLive do
   use AshWorkflowDemoWeb, :live_view
 
+  alias AshWorkflowDemo.ATS.Candidate.Deadlines
+
   @impl true
   def mount(%{"id" => id}, _session, socket) do
     if connected?(socket) do
@@ -26,7 +28,9 @@ defmodule AshWorkflowDemoWeb.CandidateLive do
     do: {"Verifying…", "El Jefe's people are checking you out.", "bg-amber-500"}
 
   defp state_copy(:review),
-    do: {"Under review", "El Jefe has 30 seconds to decide.", "bg-blue-600"}
+    do:
+      {"Under review", "El Jefe has #{Deadlines.seconds(:auto_reject)} seconds to decide.",
+       "bg-blue-600"}
 
   defp state_copy(:hired),
     do: {"¡HIRED!", "You are El Jefe's new hire. Felicidades.", "bg-emerald-600"}

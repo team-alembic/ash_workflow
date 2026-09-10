@@ -1,6 +1,8 @@
 defmodule AshWorkflowDemoWeb.ApplyLive do
   use AshWorkflowDemoWeb, :live_view
 
+  alias AshWorkflowDemo.ATS.Candidate.Deadlines
+
   @avatar_styles ~w(avataaars adventurer big-smile bottts fun-emoji micah)
 
   @impl true
@@ -92,7 +94,9 @@ defmodule AshWorkflowDemoWeb.ApplyLive do
           </button>
         </form>
 
-        <p class="text-xs text-stone-500 text-center">Warning: El Jefe has 30 seconds to decide.</p>
+        <p class="text-xs text-stone-500 text-center">
+          Warning: El Jefe has {Deadlines.seconds(:auto_reject)} seconds to decide.
+        </p>
       </div>
     </div>
     """
