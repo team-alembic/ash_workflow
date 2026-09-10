@@ -17,7 +17,10 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutPrecision do
   scheduler drives the trigger at the resolution the deadline needs.
 
   `AshWorkflow.Scheduler.Precise` arms a timer per deadline, so its floor is a
-  millisecond and a sub-minute timeout needs no flag.
+  millisecond and a sub-minute timeout needs no flag. That is what the
+  `:milliseconds` unit on `after` is for, and `{250, :milliseconds}` is a
+  compile error under `AshWorkflow.Scheduler.Oban` for the same reason
+  `{30, :seconds}` is.
   """
   use Spark.Dsl.Verifier
 
@@ -95,8 +98,9 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutPrecision do
 
   defp floor_value(ms) when rem(ms, 60_000) == 0, do: "#{div(ms, 60_000)}, :minutes"
   defp floor_value(ms) when rem(ms, 1_000) == 0, do: "#{div(ms, 1_000)}, :seconds"
-  defp floor_value(_ms), do: "1, :seconds"
+  defp floor_value(ms), do: "#{ms}, :milliseconds"
 
+  defp in_milliseconds({value, :milliseconds}), do: value
   defp in_milliseconds({value, :seconds}), do: value * 1_000
   defp in_milliseconds({value, :minutes}), do: value * 60_000
   defp in_milliseconds({value, :hours}), do: value * 3_600_000

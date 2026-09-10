@@ -150,12 +150,18 @@ Supported units for the `after` tuple:
 
 | Unit | Example |
 |---|---|
+| `:milliseconds` | `{250, :milliseconds}` |
 | `:seconds` | `{90, :seconds}` |
 | `:minutes` | `{15, :minutes}` |
 | `:hours` | `{4, :hours}` |
 | `:days` | `{7, :days}` |
 
 The value must be a positive integer.
+
+`:milliseconds` only compiles under a scheduler whose floor is that fine, which
+today means `AshWorkflow.Scheduler.Precise`. Under the default
+`AshWorkflow.Scheduler.Oban` it is rejected for the same reason `{30, :seconds}`
+is.
 
 ## Common Mistakes
 

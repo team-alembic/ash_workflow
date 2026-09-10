@@ -30,7 +30,11 @@ defmodule AshWorkflow.Entities.Undo do
 
   @schema [
     within: [
-      type: {:custom, AshWorkflow.Entities.Timeout, :validate_duration, []},
+      # `window_seconds/1` counts the window in whole seconds, so the
+      # millisecond unit `timeout` accepts has no meaning here.
+      type:
+        {:custom, AshWorkflow.Entities.Timeout, :validate_duration,
+         [[:seconds, :minutes, :hours, :days]]},
       doc: """
       How long after a transition it may still be undone, e.g. `{30, :minutes}`.
 

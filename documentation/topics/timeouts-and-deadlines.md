@@ -103,12 +103,18 @@ Use cases include:
 
 ## Duration units
 
-Supported units: `:seconds`, `:minutes`, `:hours`, `:days`.
+Supported units: `:milliseconds`, `:seconds`, `:minutes`, `:hours`, `:days`.
 
 ```elixir
 timeout :hourly_ping, after: {1, :hours}, action: :send_ping
 timeout :weekly_expire, after: {7, :days}, transition_to: :expired
+timeout :next_bar, after: {500, :milliseconds}, transition_to: :chorus
 ```
+
+`:milliseconds` exists for deadlines a cron interval cannot express at all, and
+only `AshWorkflow.Scheduler.Precise` can honour one. The rule below applies to
+it unchanged: the floor comes from the scheduler, so `{500, :milliseconds}` is a
+compile error under `AshWorkflow.Scheduler.Oban`.
 
 The shortest deadline you can declare comes from the scheduler you selected.
 `AshWorkflow.Scheduler.Oban` is the default and polls on a cron interval, and

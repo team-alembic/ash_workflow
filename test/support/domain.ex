@@ -24,6 +24,7 @@ defmodule AshWorkflowTest.Domain do
     resource AshWorkflowTest.OneMinuteWorkflow
     resource AshWorkflowTest.PreciseTimeoutWorkflow
     resource AshWorkflowTest.PreciseDeadlineWorkflow
+    resource AshWorkflowTest.MillisecondTimeoutWorkflow
     resource AshWorkflowTest.RaisingStepWorkflow
     resource AshWorkflowTest.SixtySecondsWorkflow
     resource AshWorkflowTest.WaitStateWorkflow
