@@ -194,6 +194,50 @@ defmodule AshWorkflow.ConditionalTransitionTest do
       assert Exception.message(error) =~ "No matching condition for transition :decide"
     end
 
+    test "a route reads the input the same call accepted" do
+      {:ok, workflow} =
+        AshWorkflowTest.AcceptedRouteWorkflow.create(%{title: "test"})
+
+      assert workflow.state == :review
+      assert is_nil(workflow.decision)
+
+      {:ok, workflow} =
+        Ash.update(workflow, %{decision: :approve}, action: :decide)
+
+      assert workflow.state == :approved
+      assert workflow.decision == :approve
+    end
+
+    test "the same transition routes elsewhere on a different accepted value" do
+      {:ok, workflow} =
+        AshWorkflowTest.AcceptedRouteWorkflow.create(%{title: "test"})
+
+      {:ok, workflow} =
+        Ash.update(workflow, %{decision: :reject}, action: :decide)
+
+      assert workflow.state == :rejected
+    end
+
+    test "an accepted value overrides the one already on the record" do
+      {:ok, workflow} =
+        AshWorkflowTest.AcceptedRouteWorkflow.create(%{title: "test", decision: :reject})
+
+      {:ok, workflow} =
+        Ash.update(workflow, %{decision: :approve}, action: :decide)
+
+      assert workflow.state == :approved
+    end
+
+    test "a route reading an untouched attribute still sees the loaded record" do
+      {:ok, workflow} =
+        AshWorkflowTest.AcceptedRouteWorkflow.create(%{title: "test", priority: :urgent})
+
+      {:ok, workflow} =
+        Ash.update(workflow, %{decision: :reject}, action: :escalate)
+
+      assert workflow.state == :approved
+    end
+
     test "static transition still works alongside conditional" do
       {:ok, workflow} =
         AshWorkflowTest.ConditionalWorkflow.create(%{title: "test", path_type: :full})

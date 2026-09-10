@@ -4,7 +4,21 @@ defmodule AshWorkflow.Changes.ConditionalTransition do
   transition target.
 
   Routes are evaluated in order. The first route whose `when` expression matches
-  the current record wins. If no route matches, the changeset gets an error.
+  wins. If no route matches, the changeset gets an error.
+
+  Conditions are evaluated against the record with the action's changes folded
+  in, so a route can branch on a value the same call accepted:
+
+      transition :decide do
+        accept [:decision]
+        route :approved, when: expr(decision == :approve)
+        route :rejected, when: expr(decision == :reject)
+      end
+
+  This change is appended after the action's own changes, so by the time it
+  runs the accepted input and any change the action declared are both on the
+  changeset. Values not touched by the action come from the record as it was
+  loaded.
 
   Used internally by the AddActions transformer for transitions with conditional
   routes. Not intended for direct use.
@@ -20,7 +34,7 @@ defmodule AshWorkflow.Changes.ConditionalTransition do
     resource = changeset.resource
 
     Ash.Changeset.before_action(changeset, fn changeset ->
-      result = find_matching_target(routes, changeset.data, resource)
+      result = find_matching_target(routes, record_with_changes(changeset), resource)
 
       emit_route_evaluation(result, changeset, routes, transition_name)
 
@@ -61,6 +75,17 @@ defmodule AshWorkflow.Changes.ConditionalTransition do
 
   defp matched_route({:ok, target}), do: target
   defp matched_route(_no_match), do: nil
+
+  # Folds the changeset's pending attribute changes into its data, so a route
+  # condition sees the input the transition accepted rather than the record as
+  # it was before the call. `AshWorkflow.Changes.ConditionalOnSuccess` reads
+  # the record the same way.
+  defp record_with_changes(changeset) do
+    case Ash.Changeset.apply_attributes(changeset, force?: true) do
+      {:ok, record} -> record
+      {:error, _changeset} -> changeset.data
+    end
+  end
 
   defp find_matching_target(routes, record, resource) do
     Enum.reduce_while(routes, nil, fn route, _acc ->

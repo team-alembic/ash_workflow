@@ -13,7 +13,8 @@ defmodule AshWorkflow.Entities.Route do
     when: [
       type: :any,
       required: true,
-      doc: "An Ash expression evaluated against the record. Use `expr(attribute == value)`."
+      doc:
+        "An Ash expression evaluated against the record with the action's changes applied, so it can read an attribute the same call accepted. Use `expr(attribute == value)`."
     ]
   ]
 
