@@ -1,12 +1,16 @@
 # Error Handling
 
-AshWorkflow provides error handling through the `on_error` option on automatic steps and relies on AshStateMachine for transition safety. This guide covers how errors behave and how to design workflows that handle failures gracefully.
+AshWorkflow handles errors through the `on_error` option on automatic steps, and relies on AshStateMachine to reject transitions the workflow never declared. This guide covers what happens when a step fails and how to design workflows around failure.
 
 ## Automatic step failures
 
-When an automatic step's action fails (raises an error or adds a changeset error), the state does **not** change. The record stays in its current step.
+When an automatic step's action fails — it raises, or a change adds a changeset error — Ash rolls the action back. The `on_success` transition never happens, so the record is still in the step when the job ends.
 
-If you've configured `on_error`, the state machine permits a transition to the error state — but AshWorkflow does not automatically perform this transition on failure. The transition to the error state happens through Oban's error handling or your own custom logic.
+What happens next depends on whether the step declares `on_error`.
+
+### With `on_error`
+
+`AshWorkflow.Transformers.AddActions` generates a hidden update action named `__on_error_<step>` and `AshWorkflow.Transformers.AddScheduler` wires it to the generated trigger's `on_error`. That action transitions the record to the error state and records the event.
 
 ```elixir
 workflow do
@@ -16,20 +20,28 @@ workflow do
 end
 ```
 
-In this example, if `:do_processing` fails:
-1. The Oban job fails and may retry (depending on `max_attempts` configuration)
-2. If all retries are exhausted, the record remains in `:process`
-3. The `on_error` configuration tells the state machine that a transition from `:process` to `:failed` via the `:do_processing` action is valid
+When `:do_processing` fails:
+
+1. Oban records the failed attempt. AshWorkflow does not set `max_attempts` on the triggers it generates, so AshOban's default of `1` applies and the first failure is also the last attempt.
+2. AshOban calls `__on_error_process`, which transitions the record from `:process` to `:failed`.
+3. `AshWorkflow.Changes.RecordEvent` writes a transition log row for that transition with `triggered_by: :error_path`, and `AshWorkflow.Telemetry` emits the state change.
+4. Oban marks the job completed rather than discarded, because AshOban's `on_error_fails_job?` defaults to `false`.
+
+The record does not stay in `:process` waiting for an operator. It moves to `:failed`, and the trigger's filter stops matching it. Read the failure back off the transition log rather than off the job table.
+
+### Without `on_error`
+
+A step with no `on_error` has no error action for the trigger to call. The job fails, the record stays in the step, and the trigger matches it again on the next scheduler cycle. The action runs again, and keeps running on every cycle until it succeeds or someone moves the record by hand. Declare `on_error` on every automatic step whose action can fail.
 
 ## Designing for failure
 
 ### Make step actions idempotent
 
-Because Oban may retry failed jobs, your step actions should be safe to run multiple times. If a step sends an email, use a flag to track whether it was already sent rather than re-sending on retry.
+A step's action can run more than once: on a repeat cycle when the step has no `on_error`, and on a retry if you raise `max_attempts` on the generated trigger. Actions should be safe to run twice. If a step sends an email, record a flag on the record and check it, rather than sending again.
 
 ### Use error states for investigation
 
-Rather than making error states terminal, consider making them manual steps with a transition back to the previous step:
+Rather than making an error state terminal, make it a manual step with a transition back into the workflow:
 
 ```elixir
 workflow do
@@ -45,7 +57,7 @@ workflow do
 end
 ```
 
-This lets operators investigate failures and either retry or abandon the workflow.
+A record that fails `:do_processing` lands in `:needs_review` on the first failure, with an `:error_path` row naming the transition. An operator lists records in that state, reads the row, and either retries or abandons.
 
 ## Manual transition failures
 
