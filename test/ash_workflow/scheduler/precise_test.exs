@@ -21,11 +21,33 @@ defmodule AshWorkflow.Scheduler.PreciseTest do
   alias Spark.Dsl.Extension
 
   @resource PreciseDeadlineWorkflow
+  @table_manager Module.concat(PreciseDeadlineWorkflow, Ash.DataLayer.Ets.TableManager)
 
   setup do
-    on_exit(fn -> Ets.stop(@resource) end)
+    on_exit(&reset_storage/0)
 
     :ok
+  end
+
+  # `Ash.DataLayer.Ets.stop/1` sends the table's manager
+  # `Process.exit(pid, :shutdown)` and returns without waiting, so the manager
+  # is still registered when it returns. The next test then inserts into a
+  # table whose manager is already dying, the manager takes the table down with
+  # the row still in it, and every read for the rest of that test finds
+  # nothing. Waiting for the manager to go is what makes each test start
+  # against a table nothing is about to kill.
+  defp reset_storage do
+    Ets.stop(@resource)
+
+    await_stopped(@table_manager)
+  end
+
+  defp await_stopped(name, tries \\ 200) do
+    cond do
+      is_nil(Process.whereis(name)) -> :ok
+      tries == 0 -> raise "#{inspect(name)} did not stop"
+      true -> Process.sleep(5) && await_stopped(name, tries - 1)
+    end
   end
 
   defp candidate(deadline_from) do
@@ -40,12 +62,12 @@ defmodule AshWorkflow.Scheduler.PreciseTest do
     Ash.get!(@resource, record.id)
   end
 
-  # The timeline updates the record from its own process while this poll reads
-  # it, and `Ash.DataLayer.Ets` replaces a row rather than editing it in place,
-  # so a read landing between the delete and the insert finds nothing. Report
-  # that as "not the state yet" rather than raising: the loop still times out
-  # if the record never arrives at the state, and `:missing` names the case in
-  # the failure message.
+  # Reads through `Ash.get/2` rather than `Ash.get!/2` so a read that finds
+  # nothing counts as "not the state yet" and the loop keeps going. It still
+  # times out when the record never arrives at the state, and `:missing` names
+  # that case in the failure message instead of raising from inside a helper.
+  # `reset_storage/0` above is what stops the table disappearing under a test;
+  # this is what makes the next such fault legible rather than opaque.
   defp current_state(record) do
     case Ash.get(@resource, record.id) do
       {:ok, reloaded} -> reloaded.state
@@ -168,30 +190,44 @@ defmodule AshWorkflow.Scheduler.PreciseTest do
   end
 
   describe "firing re-checks the work" do
+    # Each of these creates the record with no deadline, so nothing is armed
+    # and the state change below cannot race a timer. Arming afterwards, from a
+    # record whose deadline has passed, is what a stale timer amounts to: a
+    # deadline the timeline still believes in and the record no longer matches.
+    # Creating with a live deadline and then updating raced the timer, and the
+    # update lost with `Attempted to update stale record`.
     test "a record that left the step fires nothing" do
       start_timeline([])
 
-      record = candidate(ago(800))
-      Timeline.deadline_changed(record, work_for(:waiting))
+      record = candidate(nil)
 
-      record
-      |> Ash.Changeset.for_update(:resolve, %{})
-      |> Ash.update!()
+      resolved =
+        record
+        |> Ash.Changeset.for_update(:resolve, %{})
+        |> Ash.update!()
 
-      assert {:timeout, :done} = await_state(record, :escalated, 600)
+      Timeline.deadline_changed(%{resolved | deadline_from: ago(5_000)}, work_for(:waiting))
+
+      assert {:timeout, :done} = await_state(record, :escalated, 400)
     end
 
     test "a deadline pushed out after the timer was armed fires nothing" do
       start_timeline([])
 
-      record = candidate(ago(800))
-      Timeline.deadline_changed(record, work_for(:waiting))
+      record = candidate(nil)
 
-      record
-      |> Ash.Changeset.for_update(:set_deadline_from, %{deadline_from: DateTime.utc_now()})
-      |> Ash.update!()
+      pushed_out =
+        record
+        |> Ash.Changeset.for_update(:set_deadline_from, %{
+          deadline_from: DateTime.add(DateTime.utc_now(), 60, :second)
+        })
+        |> Ash.update!()
 
-      assert {:timeout, :waiting} = await_state(record, :escalated, 600)
+      # The timeline is told a deadline that has passed while the record's own
+      # field says a minute from now, so the re-check at fire time rejects it.
+      Timeline.deadline_changed(%{pushed_out | deadline_from: ago(5_000)}, work_for(:waiting))
+
+      assert {:timeout, :waiting} = await_state(record, :escalated, 400)
     end
   end
 

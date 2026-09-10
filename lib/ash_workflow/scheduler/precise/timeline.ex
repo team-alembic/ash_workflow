@@ -304,7 +304,13 @@ defmodule AshWorkflow.Scheduler.Precise.Timeline do
         state
 
       delay when delay <= 0 ->
-        run(work, record, state)
+        # Through `fire/3` rather than straight to `run/3`, so this path
+        # re-checks `Work.match` exactly as an expired timer does. A record
+        # handed to `deadline_changed/2` is whatever the caller held, and a
+        # deadline already in the past would otherwise run its action without
+        # anything confirming the record still occupies the step.
+        fire(work, primary_key(record), state)
+
         state
 
       delay ->
