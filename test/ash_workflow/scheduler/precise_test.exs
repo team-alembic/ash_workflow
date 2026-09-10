@@ -40,6 +40,19 @@ defmodule AshWorkflow.Scheduler.PreciseTest do
     Ash.get!(@resource, record.id)
   end
 
+  # The timeline updates the record from its own process while this poll reads
+  # it, and `Ash.DataLayer.Ets` replaces a row rather than editing it in place,
+  # so a read landing between the delete and the insert finds nothing. Report
+  # that as "not the state yet" rather than raising: the loop still times out
+  # if the record never arrives at the state, and `:missing` names the case in
+  # the failure message.
+  defp current_state(record) do
+    case Ash.get(@resource, record.id) do
+      {:ok, reloaded} -> reloaded.state
+      {:error, _not_found} -> :missing
+    end
+  end
+
   defp start_timeline(opts) do
     opts = Keyword.merge([resources: [@resource], look_ahead_ms: 60_000], opts)
 
@@ -53,14 +66,14 @@ defmodule AshWorkflow.Scheduler.PreciseTest do
   end
 
   defp await_state(record, state, deadline, last) do
-    current = reload(record).state
+    current = current_state(record)
 
     cond do
       current == state ->
         {:ok, current}
 
       System.monotonic_time(:millisecond) > deadline ->
-        {:timeout, last || current}
+        {:timeout, if(current == :missing, do: last || current, else: current)}
 
       true ->
         # Polling with a pause rather than spinning: a tight reload loop
