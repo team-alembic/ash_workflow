@@ -58,7 +58,7 @@ defmodule AshWorkflow.Info do
   @spec terminal?(Ash.Resource.t(), atom()) :: boolean()
   def terminal?(resource, step_name) do
     case step(resource, step_name) do
-      %{terminal: true} -> true
+      %Step{} = step -> Step.terminal?(step)
       _ -> false
     end
   end
@@ -164,7 +164,7 @@ defmodule AshWorkflow.Info do
   """
   @spec recommended_indexes(Ash.Resource.t() | map()) :: [[atom()]]
   def recommended_indexes(resource) do
-    steps = steps(resource) |> Enum.reject(& &1.terminal)
+    steps = steps(resource) |> Enum.reject(&Step.terminal?/1)
 
     timeout_fields =
       steps
@@ -279,7 +279,7 @@ defmodule AshWorkflow.Info do
        on_success_targets: Step.on_success_targets(step),
        on_error: step.on_error,
        timeouts: timeout_targets,
-       terminal: step.terminal,
+       terminal: Step.terminal?(step),
        manual: Step.manual?(step)
      }}
   end

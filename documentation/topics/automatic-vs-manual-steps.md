@@ -9,7 +9,7 @@ You never declare which kind a step is. The kind is inferred from its shape:
 | an `action` | automatic |
 | one or more `transition` entries | manual |
 | neither, plus a `timeout` with `transition_to` | a wait state |
-| `terminal: true` | terminal |
+| nothing at all | terminal |
 
 ## Automatic steps
 
@@ -237,12 +237,20 @@ Conditions use `expr()` — the same Ash expression syntax used in filters and p
 
 ## Terminal steps
 
-Terminal steps are end states with no outgoing transitions, actions, or timeouts:
+Terminal steps are end states. A step that declares no action, no transitions, no timeouts, no `on_success` and no `on_error` has no way out, so `AshWorkflow.Entities.Step.terminal?/1` reports it as terminal whether or not it says so:
+
+```elixir
+step :approved
+step :rejected
+```
+
+`terminal: true` states the intent, and `AshWorkflow.Verifiers.ValidateWorkflow` then rejects the step if it grows an outgoing declaration:
 
 ```elixir
 step :approved, terminal: true
-step :rejected, terminal: true
 ```
+
+Either way, a step nothing transitions to is rejected as unreachable, so a name typo'd in one place and not the other does not become a silent end state.
 
 ## Initial state
 

@@ -54,6 +54,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`terminal: true` is derived.** A step that declares no action, no transitions, no timeouts, no `on_success` and no `on_error` has no way out, so `AshWorkflow.Entities.Step.terminal?/1` reports it as terminal whether or not the option is set. `step :approved` is now enough. The option stays as an assertion: `AshWorkflow.Verifiers.ValidateWorkflow` still rejects a step that sets it and then declares something outgoing, and everything that reads the flag — the scheduler's work list, the generated policies, the state machine, `AshWorkflow.Info.workflow_graph/1` — now reads the predicate.
+
+  A step that becomes terminal by accident is caught by the reachability check rather than by a missing-action error: an end state nothing transitions to is unreachable. The error for a stranded step therefore changes. `step :stranded` in an otherwise working workflow now reports "not reachable from the first step", and a workflow of nothing but terminal steps reports "must have at least one non-terminal step".
+
 - Triggers now stream with `:keyset` rather than `:full_read`. ash_oban suggests `:full_read` when a `where` clause changes between batches, which ours do, but keyset orders by primary key: unlike `:offset`, a row leaving the filter mid-stream cannot shift another row past the cursor. A record becoming eligible at a key the stream has already passed waits for the next poll, bounded by `check_interval`. In exchange, a backlog after downtime is no longer read into memory in one unpaginated read.
 
 ### Fixed

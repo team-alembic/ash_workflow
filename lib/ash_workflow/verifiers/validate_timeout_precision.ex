@@ -35,7 +35,7 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutPrecision do
     dsl
     |> Verifier.get_entities([:workflow])
     |> Enum.filter(&match?(%Step{}, &1))
-    |> Enum.reject(& &1.terminal)
+    |> Enum.reject(&Step.terminal?/1)
     |> Enum.flat_map(fn step -> Enum.map(step.timeouts, &{step, &1}) end)
     |> Enum.reduce_while(:ok, fn {step, timeout}, :ok ->
       case validate(step, timeout, scheduler, floor_ms) do

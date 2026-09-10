@@ -33,7 +33,7 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
   end
 
   defp validate_has_steps(steps) do
-    if Enum.all?(steps, & &1.terminal) do
+    if Enum.all?(steps, &Step.terminal?/1) do
       {:error,
        DslError.exception(
          path: [:workflow],
@@ -57,12 +57,16 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
            message: "Only one step can have initial: true, but found: #{inspect(names)}"
          )}
 
-      [%{terminal: true, name: name}] ->
-        {:error,
-         DslError.exception(
-           path: [:workflow, :step, name],
-           message: "Terminal step :#{name} cannot have initial: true."
-         )}
+      [step] ->
+        if Step.terminal?(step) do
+          {:error,
+           DslError.exception(
+             path: [:workflow, :step, step.name],
+             message: "Terminal step :#{step.name} cannot have initial: true."
+           )}
+        else
+          :ok
+        end
 
       _ ->
         :ok
@@ -102,6 +106,7 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
 
   defp validate_step(step) do
     cond do
+      Step.terminal?(step) -> :ok
       Step.wait_state?(step) -> validate_wait_state(step)
       step.transitions == [] -> validate_automatic_step(step)
       true -> validate_manual_step(step)

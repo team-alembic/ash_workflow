@@ -46,7 +46,8 @@ defmodule AshWorkflow.Entities.Step do
     terminal: [
       type: :boolean,
       default: false,
-      doc: "If true, this is an end state with no outgoing transitions."
+      doc:
+        "Asserts that this is an end state. A step that declares no action, no transitions, no timeouts, no on_success and no on_error is terminal whether or not this is set, so it is only needed to state the intent — the verifier then rejects the step if it grows an outgoing declaration."
     ],
     on_error: [
       type: :atom,
@@ -62,12 +63,39 @@ defmodule AshWorkflow.Entities.Step do
   def attribute_schema, do: @schema
 
   @doc """
+  Returns `true` if the step is an end state: nothing runs on entry and nothing
+  leaves it.
+
+  Derived from the shape of the step. A step with no action, no transitions, no
+  timeouts, no `on_success` and no `on_error` has no way out, so it is terminal
+  whether or not it says so. `terminal: true` is an assertion on top of that:
+  `AshWorkflow.Verifiers.ValidateWorkflow` rejects a step that declares it and
+  then declares something outgoing.
+
+  A step that is terminal by mistake — a name typo'd in one place and not the
+  other — is caught by the reachability check rather than here, since an end
+  state nothing transitions to is unreachable.
+  """
+  def terminal?(%__MODULE__{terminal: true}), do: true
+
+  def terminal?(%__MODULE__{
+        action: nil,
+        transitions: [],
+        timeouts: [],
+        on_success: [],
+        on_error: nil
+      }),
+      do: true
+
+  def terminal?(%__MODULE__{}), do: false
+
+  @doc """
   Returns `true` if the step is a manual step — i.e., it has declared
   transitions and is not a terminal state.
 
   Manual-ness is derived from the shape of the step: a step with
   `transitions` is manual; a step with an `action` is automatic; a step
-  with `terminal: true` is an end state.
+  with nothing at all is an end state.
 
   A step with neither transitions nor an action, whose only exit is a
   timeout, is a *wait state* — it is manual in the sense that nothing runs
@@ -112,6 +140,6 @@ defmodule AshWorkflow.Entities.Step do
   non-terminal step by declaration order.
   """
   def find_initial(steps) do
-    Enum.find(steps, & &1.initial) || steps |> Enum.reject(& &1.terminal) |> List.first()
+    Enum.find(steps, & &1.initial) || steps |> Enum.reject(&terminal?/1) |> List.first()
   end
 end

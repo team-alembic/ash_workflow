@@ -57,7 +57,7 @@ defmodule AshWorkflow.Transformers.AddScheduler do
 
   defp step_works(steps, resource, state_attribute) do
     steps
-    |> Enum.reject(&(Step.manual?(&1) || &1.terminal))
+    |> Enum.reject(&(Step.manual?(&1) || Step.terminal?(&1)))
     |> Enum.map(fn step ->
       step_name = step.name
 
@@ -79,7 +79,7 @@ defmodule AshWorkflow.Transformers.AddScheduler do
 
   defp timeout_works(steps, resource, state_attribute) do
     steps
-    |> Enum.reject(& &1.terminal)
+    |> Enum.reject(&Step.terminal?/1)
     |> Enum.flat_map(fn step ->
       Enum.map(step.timeouts, &timeout_work(step, &1, resource, state_attribute))
     end)
