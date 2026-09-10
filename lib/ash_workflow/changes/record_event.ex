@@ -30,6 +30,14 @@ defmodule AshWorkflow.Changes.RecordEvent do
   reversed row is left exactly as written, and both readings of history stay
   derivable from the same rows — see `AshWorkflow.TransitionLog.effective/1`.
 
+  ## Telemetry
+
+  This change is also where the `[:ash_workflow, :transition]` span is emitted,
+  for the same reason it is where the log row is written: it runs on every
+  action AshWorkflow generates, so one place covers a manual transition, an
+  automatic step, a timeout, an error path, an undo and the initial create. See
+  `AshWorkflow.Telemetry` for the events and their metadata.
+
   ## Atomicity
 
   This change implements `atomic/3` rather than falling back to
@@ -47,6 +55,7 @@ defmodule AshWorkflow.Changes.RecordEvent do
 
   alias AshWorkflow.Entities.TransitionLog
   alias AshWorkflow.Info
+  alias AshWorkflow.Telemetry
   alias AshWorkflow.TransitionLog, as: TransitionLogHelpers
 
   @triggered_by_values [:initial, :manual, :automatic, :timeout, :error_path, :undo]
@@ -66,19 +75,122 @@ defmodule AshWorkflow.Changes.RecordEvent do
   def change(changeset, opts, context) do
     changeset
     |> Ash.Changeset.force_change_attribute(:state_entered_at, DateTime.utc_now())
+    |> emit_start(opts)
     |> Ash.Changeset.after_action(fn changeset, record ->
-      {:ok, append_log(changeset, record, opts, context)}
+      {:ok, finish(changeset, record, opts, context)}
     end)
   end
 
   @impl true
   def atomic(changeset, opts, context) do
     changeset =
-      Ash.Changeset.after_action(changeset, fn changeset, record ->
-        {:ok, append_log(changeset, record, opts, context)}
+      changeset
+      |> emit_start(opts)
+      |> Ash.Changeset.after_action(fn changeset, record ->
+        {:ok, finish(changeset, record, opts, context)}
       end)
 
     {:atomic, changeset, %{state_entered_at: expr(now())}}
+  end
+
+  defp finish(changeset, record, opts, context) do
+    record = append_log(changeset, record, opts, context)
+
+    emit_stop(changeset, record)
+
+    record
+  end
+
+  # The span opens here rather than in the after_action hook because this is
+  # where the action begins: `change/3` and `atomic/3` both run while the
+  # changeset is being built, before the data layer is touched.
+  defp emit_start(changeset, opts) do
+    metadata = %{
+      resource: changeset.resource,
+      workflow_id: workflow_id(changeset),
+      from_state: telemetry_from_state(changeset),
+      to_state: declared_to_state(changeset),
+      action: changeset.action.name,
+      transition_name: opts[:transition_name] || changeset.action.name,
+      triggered_by: opts[:triggered_by]
+    }
+
+    Ash.Changeset.put_context(changeset, :ash_workflow_telemetry, %{
+      metadata: metadata,
+      started_at: Telemetry.transition_start(metadata)
+    })
+  end
+
+  defp emit_stop(changeset, record) do
+    case changeset.context[:ash_workflow_telemetry] do
+      %{metadata: metadata, started_at: started_at} ->
+        state_attribute = AshStateMachine.Info.state_machine_state_attribute!(changeset.resource)
+
+        metadata = %{
+          metadata
+          | to_state: Map.get(record, state_attribute, metadata.to_state),
+            workflow_id: metadata.workflow_id || record_workflow_id(record)
+        }
+
+        Telemetry.transition_stop(metadata, started_at)
+
+      _no_span ->
+        :ok
+    end
+  end
+
+  # The declared target, which a conditional transition does not have: its
+  # route is chosen at runtime by `AshWorkflow.Changes.ConditionalTransition`.
+  # The `:stop` event carries the state the record actually landed in.
+  defp declared_to_state(changeset) do
+    changeset.resource
+    |> AshStateMachine.Info.state_machine_transitions()
+    |> Enum.filter(&(&1.action == changeset.action.name))
+    |> case do
+      [%{to: [to]}] -> to
+      _many_or_none -> nil
+    end
+  end
+
+  # Unlike the log's `from_state/5`, this does not fall back to reading the last
+  # logged row. A span must not add a query, and telemetry is available whether
+  # or not a transition log is configured.
+  defp telemetry_from_state(%{action_type: :create}), do: nil
+
+  defp telemetry_from_state(changeset) do
+    state_attribute = AshStateMachine.Info.state_machine_state_attribute!(changeset.resource)
+
+    case Map.get(changeset.data, state_attribute) do
+      %Ash.NotLoaded{} -> nil
+      state -> state
+    end
+  end
+
+  # Read straight off `changeset.data` rather than through
+  # `Ash.Changeset.get_attribute/2`, which raises "Original data is not
+  # available" on an atomic changeset. A create has no data yet, so the id is
+  # nil on `:start` and present on `:stop`, which reads from the record.
+  defp workflow_id(changeset) do
+    case Ash.Resource.Info.primary_key(changeset.resource) do
+      [key] -> data_attribute(changeset, key)
+      keys -> Map.new(keys, &{&1, data_attribute(changeset, &1)})
+    end
+  end
+
+  defp data_attribute(%{data: data}, key) when is_struct(data) do
+    case Map.get(data, key) do
+      %Ash.NotLoaded{} -> nil
+      value -> value
+    end
+  end
+
+  defp data_attribute(_changeset, _key), do: nil
+
+  defp record_workflow_id(record) do
+    case Ash.Resource.Info.primary_key(record.__struct__) do
+      [key] -> Map.get(record, key)
+      keys -> Map.new(keys, &{&1, Map.get(record, &1)})
+    end
   end
 
   defp append_log(changeset, record, opts, context) do
