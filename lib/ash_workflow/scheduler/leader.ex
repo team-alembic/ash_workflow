@@ -15,6 +15,10 @@ defmodule AshWorkflow.Scheduler.Leader do
   * `AshWorkflow.Scheduler.Leader.Oban` — delegates to `Oban.Peer.leader?/2`,
     which is the same election `Oban.Stager` gates on. Correct across a
     cluster, and needs an Oban instance running.
+  * `AshWorkflow.Scheduler.Leader.Global` — takes a `:global` lock, so it needs
+    distributed Erlang and nothing else. For a cluster that runs no Oban. Both
+    halves of a network partition believe they lead, which `Leader.Oban` avoids
+    by keeping the lease in the database.
 
   ## Choosing one
 
@@ -27,7 +31,8 @@ defmodule AshWorkflow.Scheduler.Leader do
       scheduler {AshWorkflow.Scheduler.Precise, leader: {AshWorkflow.Scheduler.Leader.Oban, name: MyApp.Oban}}
 
   `Single` is the default because a workflow running on one node should not have
-  to configure an election to get a timer. `Precise` logs a warning at boot when
+  to configure an election to get a timer. Prefer `Leader.Oban` on a cluster
+  that already runs Oban, and `Leader.Global` on one that does not. `Precise` logs a warning at boot when
   it is running on `Single` and more than one node is connected, since that is
   the configuration where deadlines fire twice.
   """

@@ -151,6 +151,20 @@ memory, so a deadline held only by a timer is lost when the node dies and is
 recovered by the look-ahead sweep on whichever node leads next. A workflow
 measured in days wants Oban's durability more than an exact instant.
 
+On more than one node, say who arms the timers. The default,
+`AshWorkflow.Scheduler.Leader.Single`, makes every node a leader, so every node
+arms the same deadline and every deadline fires once per node:
+
+```elixir
+# where Oban runs, borrow its election
+scheduler {AshWorkflow.Scheduler.Precise,
+           leader: {AshWorkflow.Scheduler.Leader.Oban, name: Oban}}
+
+# where it does not, a :global lock needs only distributed Erlang
+scheduler {AshWorkflow.Scheduler.Precise,
+           leader: AshWorkflow.Scheduler.Leader.Global}
+```
+
 If you would rather keep the polling scheduler and drive one timeout yourself,
 `self_scheduled?: true` asserts that something else invokes it at the
 resolution the deadline needs:
