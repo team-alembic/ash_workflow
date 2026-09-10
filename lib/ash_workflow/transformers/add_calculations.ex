@@ -31,13 +31,15 @@ defmodule AshWorkflow.Transformers.AddCalculations do
       end)
 
     step_names = Enum.map(steps, & &1.name)
+    state_attribute = AshWorkflow.Info.state_attribute(dsl)
 
     with {:ok, dsl} <-
            Builder.add_new_calculation(
              dsl,
              :available_actions,
              {:array, :atom},
-             {AshWorkflow.Calculations.AvailableActions, steps_map: steps_map},
+             {AshWorkflow.Calculations.AvailableActions,
+              steps_map: steps_map, state_attribute: state_attribute},
              public?: true
            ),
          {:ok, dsl} <-
@@ -53,7 +55,7 @@ defmodule AshWorkflow.Transformers.AddCalculations do
              dsl,
              :current_step,
              :atom,
-             AshWorkflow.Calculations.CurrentStep,
+             {AshWorkflow.Calculations.CurrentStep, state_attribute: state_attribute},
              public?: true
            ),
          {:ok, dsl} <-
@@ -61,7 +63,8 @@ defmodule AshWorkflow.Transformers.AddCalculations do
              dsl,
              :pending_deadlines,
              {:array, :map},
-             {AshWorkflow.Calculations.PendingDeadlines, timeouts: timeouts_map(steps)},
+             {AshWorkflow.Calculations.PendingDeadlines,
+              timeouts: timeouts_map(steps), state_attribute: state_attribute},
              public?: true
            ) do
       add_entered_current_state_at(dsl)

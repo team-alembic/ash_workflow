@@ -118,6 +118,17 @@ defmodule AshWorkflow do
     name: :workflow,
     describe: "Define a workflow by declaring steps, transitions, and timeouts.",
     schema: [
+      state_attribute: [
+        type: :atom,
+        doc: """
+        The attribute the workflow's current step is stored in. Defaults to
+        `state`.
+
+        AshWorkflow passes this down to `ash_state_machine`, so set it here
+        rather than in the `state_machine` section. Use it when the resource
+        already has a lifecycle column of its own, such as `status`.
+        """
+      ],
       scheduler: [
         type: {:custom, AshWorkflow.Scheduler, :validate, []},
         doc: """
@@ -166,9 +177,9 @@ defmodule AshWorkflow do
         Only applies to resources using `AshPostgres.DataLayer`; other data
         layers ignore it.
 
-        Every trigger filters on `state`, and every timeout also filters on its
-        `field`, so without `(state, field)` indexes each poll is a sequential
-        scan. Set to `false` if you manage these indexes yourself — a
+        Every trigger filters on the state attribute, and every timeout also
+        filters on its `field`, so without `(state, field)` indexes each poll
+        is a sequential scan. Set to `false` if you manage these indexes yourself — a
         `custom_indexes` entry on the same fields already takes precedence.
 
         See `AshWorkflow.Info.recommended_indexes/1`.

@@ -38,15 +38,17 @@ defmodule AshWorkflow.Calculations.PendingDeadlines do
       |> Enum.map(& &1.field)
       |> Enum.uniq()
 
-    [:state | fields]
+    [Keyword.fetch!(opts, :state_attribute) | fields]
   end
 
   @impl true
   @spec calculate([Ash.Resource.record()], Keyword.t(), map()) :: [[map()]]
   def calculate(records, opts, _context) do
+    state_attribute = Keyword.fetch!(opts, :state_attribute)
+
     Enum.map(records, fn record ->
       opts[:timeouts]
-      |> Map.get(record.state, [])
+      |> Map.get(Map.get(record, state_attribute), [])
       |> Enum.flat_map(&deadline(&1, record))
       |> Enum.sort_by(& &1.due_at, DateTime)
     end)

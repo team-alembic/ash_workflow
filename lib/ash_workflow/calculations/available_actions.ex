@@ -10,16 +10,17 @@ defmodule AshWorkflow.Calculations.AvailableActions do
 
   @impl true
   @spec load(Ash.Query.t(), Keyword.t(), map()) :: [atom()]
-  def load(_query, _opts, _context), do: [:state]
+  def load(_query, opts, _context), do: [Keyword.fetch!(opts, :state_attribute)]
 
   @impl true
   @spec calculate([Ash.Resource.record()], Keyword.t(), map()) :: [[atom()]]
   def calculate(records, opts, context) do
     steps_map = Keyword.fetch!(opts, :steps_map)
+    state_attribute = Keyword.fetch!(opts, :state_attribute)
 
     Enum.map(records, fn record ->
       steps_map
-      |> Map.get(record.state, [])
+      |> Map.get(Map.get(record, state_attribute), [])
       |> maybe_filter_by_auth(record, context)
     end)
   end
