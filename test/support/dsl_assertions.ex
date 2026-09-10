@@ -41,4 +41,39 @@ defmodule AshWorkflowTest.DslAssertions do
     #{Enum.map_join(messages, "\n", &"  - #{String.slice(&1, 0, 400)}")}
     """
   end
+
+  @doc """
+  Compiles `code` and asserts nothing rejected it.
+
+  The counterpart to `assert_dsl_error/2`, for the configuration a new verifier
+  has to keep accepting.
+  """
+  def assert_dsl_compiles(code) do
+    {result, diagnostics} =
+      Code.with_diagnostics(fn ->
+        try do
+          Code.compile_string(code)
+          :compiled
+        rescue
+          error -> {:raised, Exception.message(error)}
+        end
+      end)
+
+    errors =
+      case result do
+        {:raised, message} ->
+          [message]
+
+        :compiled ->
+          diagnostics
+          |> Enum.filter(&(&1.severity == :error))
+          |> Enum.map(&to_string(&1.message))
+      end
+
+    assert errors == [], """
+    Expected the workflow to compile, but it was rejected:
+
+    #{Enum.map_join(errors, "\n", &"  - #{String.slice(&1, 0, 400)}")}
+    """
+  end
 end

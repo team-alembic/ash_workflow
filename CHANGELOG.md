@@ -58,6 +58,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A policy with no authorizer to enforce it is a compile error.** `AshWorkflow.Transformers.AddPolicies` generates nothing when `Ash.Policy.Authorizer` is absent from the resource, so a `policy` on a step or on the `undo` block was accepted and then silently unenforced: every caller was authorized, including the ones the policy named. `AshWorkflow.Verifiers.ValidateStepPolicies` now names each step that declared one and says how to add the authorizer.
+- A timeout naming an action the resource does not define is rejected by `AshWorkflow.Verifiers.ValidateWorkflow`. Under the default scheduler AshOban's own verifier caught it on the trigger it generated, but a workflow scheduled by `AshWorkflow.Scheduler.Precise` generates no trigger, so the name went unchecked until the deadline passed.
 - A timeout `field` referencing a module calculation is now rejected at compile time. Only expression calculations inline into a data-layer filter, so a module calculation passed the verifier and then raised when the scheduler built its query. Use an expression calculation or a plain attribute.
 
 ### Changed
