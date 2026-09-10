@@ -271,6 +271,7 @@ Set on the `workflow` block, applying to every generated trigger on the resource
 
 ```elixir
 workflow do
+  state_attribute :status
   queue :fulfilment
   check_interval "0 * * * *"
 
@@ -279,6 +280,7 @@ workflow do
 end
 ```
 
+- `state_attribute` (optional): the attribute the current step is stored in. Defaults to `:state`. AshWorkflow passes it down to `ash_state_machine`, so set it here rather than in a `state_machine` block. Everything generated follows it: the `match` expression on each unit of scheduled work, the `current_step`, `available_actions` and `pending_deadlines` calculations, and the recommended indexes. `state_entered_at` keeps its name either way.
 - `queue` (optional): the Oban queue for all generated triggers. Defaults to `:workflow`. The queue MUST exist in your Oban config or Oban raises at boot.
 - `check_interval` (optional): Oban cron expression controlling how often every trigger on the resource polls — automatic steps and timeouts alike. Defaults to `"* * * * *"` (every minute). Individual timeouts can override it.
 
@@ -423,7 +425,7 @@ AshWorkflow generates these automatically — do NOT define them yourself:
 
 | Artifact | Details |
 |---|---|
-| `:state` attribute | Added by `ash_state_machine` |
+| `:state` attribute | Added by `ash_state_machine`. Rename it with `state_attribute` |
 | `:state_entered_at` attribute | `utc_datetime_usec`, tracks when current state was entered |
 | Primary `:read` action | Added if automatic steps exist (needed for Oban triggers) |
 | Transition update actions | One per manual transition |

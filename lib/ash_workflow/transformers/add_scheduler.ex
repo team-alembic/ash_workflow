@@ -40,13 +40,16 @@ defmodule AshWorkflow.Transformers.AddScheduler do
       |> Enum.filter(&match?(%Step{}, &1))
 
     resource = Transformer.get_persisted(dsl, :module)
+    state_attribute = AshWorkflow.Info.state_attribute(dsl)
 
-    works = step_works(steps, resource) ++ timeout_works(steps, resource)
+    works =
+      step_works(steps, resource, state_attribute) ++
+        timeout_works(steps, resource, state_attribute)
 
     scheduler.transform(dsl, works, opts)
   end
 
-  defp step_works(steps, resource) do
+  defp step_works(steps, resource, state_attribute) do
     steps
     |> Enum.reject(&(Step.manual?(&1) || &1.terminal))
     |> Enum.map(fn step ->
@@ -59,7 +62,7 @@ defmodule AshWorkflow.Transformers.AddScheduler do
         step: step_name,
         action: step.action,
         on_error: on_error(step),
-        match: Ash.Expr.expr(state == ^step_name),
+        match: in_step(state_attribute, step_name),
         deadline: nil
       }
     end)
@@ -68,13 +71,19 @@ defmodule AshWorkflow.Transformers.AddScheduler do
   defp on_error(%{on_error: nil}), do: nil
   defp on_error(step), do: AddActions.on_error_action_name(step)
 
-  defp timeout_works(steps, resource) do
+  defp timeout_works(steps, resource, state_attribute) do
     steps
     |> Enum.reject(& &1.terminal)
-    |> Enum.flat_map(fn step -> Enum.map(step.timeouts, &timeout_work(step, &1, resource)) end)
+    |> Enum.flat_map(fn step ->
+      Enum.map(step.timeouts, &timeout_work(step, &1, resource, state_attribute))
+    end)
   end
 
-  defp timeout_work(step, timeout, resource) do
+  defp in_step(state_attribute, step_name) do
+    Ash.Expr.expr(^ref(state_attribute) == ^step_name)
+  end
+
+  defp timeout_work(step, timeout, resource, state_attribute) do
     step_name = step.name
     {duration_value, duration_unit} = timeout.after
     ago_unit = singular_unit(duration_unit)
@@ -96,7 +105,10 @@ defmodule AshWorkflow.Transformers.AddScheduler do
       timeout: timeout.name,
       action: action,
       match:
-        Ash.Expr.expr(state == ^step_name and ^ref(field) <= ago(^duration_value, ^ago_unit)),
+        Ash.Expr.expr(
+          ^in_step(state_attribute, step_name) and
+            ^ref(field) <= ago(^duration_value, ^ago_unit)
+        ),
       deadline: %{field: field, after: timeout.after},
       repeat?: timeout.repeat,
       # An action timeout does not change state, so nothing stops it matching

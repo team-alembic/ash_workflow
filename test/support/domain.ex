@@ -47,5 +47,7 @@ defmodule AshWorkflowTest.Domain do
     resource AshWorkflowTest.OnSuccessSelfLoopWorkflow
     resource AshWorkflowTest.OnSuccessBackwardLoopWorkflow
     resource AshWorkflowTest.OnSuccessCalculationWorkflow
+    resource AshWorkflowTest.StatusWorkflow
+    resource AshWorkflowTest.StatusLog
   end
 end

@@ -304,6 +304,22 @@ From the workflow DSL, the extension generates:
 
 The initial state is the step with `initial true`, or the first non-terminal step by declaration order if none is marked.
 
+The current step lives in the `state` attribute. A resource that already has a lifecycle column of its own renames it with `state_attribute` on the `workflow` section, and everything generated follows the new name:
+
+```elixir
+workflow do
+  state_attribute :status
+
+  step :review do
+    transition :approve, to: :approved
+  end
+
+  step :approved, terminal: true
+end
+```
+
+`state_entered_at` keeps its name.
+
 All generation follows a **generate-if-missing** pattern: if you've already defined a read action, policies targeting specific actions, or code interface definitions, the transformers won't overwrite them. The generated read is called `:read`, or `:__workflow_read` if your resource already has an action by that name.
 
 Workflows are started through your own create action — AshWorkflow does not generate one. A newly created record enters the initial step implicitly, because `state_entered_at` defaults on create.

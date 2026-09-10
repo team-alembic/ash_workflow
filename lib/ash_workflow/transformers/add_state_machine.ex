@@ -4,6 +4,7 @@ defmodule AshWorkflow.Transformers.AddStateMachine do
 
   Injects the following into the resource's `state_machine` DSL:
 
+  - **`state_attribute`** — the workflow's `state_attribute`, when it declares one.
   - **`initial_states`** — set to the step with `initial: true`, or the first
     non-terminal step by declaration order if none is marked.
   - **`default_initial_state`** — same as above
@@ -62,6 +63,7 @@ defmodule AshWorkflow.Transformers.AddStateMachine do
   defp add_state_machine(dsl, steps, first_step) do
     dsl =
       dsl
+      |> put_state_attribute()
       |> Transformer.set_option([:state_machine], :initial_states, [first_step.name])
       |> Transformer.set_option([:state_machine], :default_initial_state, first_step.name)
 
@@ -73,6 +75,15 @@ defmodule AshWorkflow.Transformers.AddStateMachine do
       end)
 
     {:ok, dsl}
+  end
+
+  # Only set when the workflow declared one, so a resource configuring
+  # ash_state_machine directly keeps whatever it set there.
+  defp put_state_attribute(dsl) do
+    case Transformer.get_option(dsl, [:workflow], :state_attribute) do
+      nil -> dsl
+      attribute -> Transformer.set_option(dsl, [:state_machine], :state_attribute, attribute)
+    end
   end
 
   defp build_transitions(steps) do

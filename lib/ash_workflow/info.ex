@@ -66,11 +66,26 @@ defmodule AshWorkflow.Info do
   @doc """
   Returns `true` if the given record is in a terminal state.
 
-  The record must have its `:state` attribute loaded.
+  The record must have its state attribute loaded.
   """
   @spec in_terminal_state?(Ash.Resource.record()) :: boolean()
-  def in_terminal_state?(%{__struct__: resource, state: state}) when is_atom(state) do
-    terminal?(resource, state)
+  def in_terminal_state?(%{__struct__: resource} = record) do
+    case Map.get(record, state_attribute(resource)) do
+      state when is_atom(state) and not is_nil(state) -> terminal?(resource, state)
+      _ -> false
+    end
+  end
+
+  @doc """
+  Returns the attribute the workflow stores its current step in.
+
+  Defaults to `:state`. A workflow overrides it with `state_attribute` on the
+  `workflow` section, which is passed down to `ash_state_machine`.
+  """
+  @spec state_attribute(Ash.Resource.t() | map()) :: atom()
+  def state_attribute(resource) do
+    Extension.get_opt(resource, [:workflow], :state_attribute, nil) ||
+      AshStateMachine.Info.state_machine_state_attribute!(resource)
   end
 
   @doc """
@@ -110,15 +125,17 @@ defmodule AshWorkflow.Info do
   Returns the composite indexes that make the generated Oban triggers cheap,
   as a list of attribute-name lists, most useful first.
 
-  Every trigger's `where` clause filters on `state`, and every timeout also
-  filters on its `field`. Because `ago/2` compiles to a bind parameter rather
-  than a per-row function call, a timeout's filter reaches the data layer as
-  `state = $1 AND state_entered_at <= $2` — an ordinary composite range scan.
-  Without these indexes each poll is a sequential scan.
+  Every trigger's `where` clause filters on the state attribute, and every
+  timeout also filters on its `field`. Because `ago/2` compiles to a bind
+  parameter rather than a per-row function call, a timeout's filter reaches the
+  data layer as `state = $1 AND state_entered_at <= $2` — an ordinary composite
+  range scan. Without these indexes each poll is a sequential scan.
 
-  A `[:state, field]` index also serves the automatic-step triggers, which
-  filter on `state` alone, since `state` is the leading column. `[:state]` is
-  only returned on its own when a workflow declares no timeouts at all.
+  A `[state, field]` index also serves the automatic-step triggers, which
+  filter on the state attribute alone, since it is the leading column. The
+  state attribute is returned on its own when a workflow declares no timeouts
+  at all. A workflow that renames the attribute with `state_attribute` gets
+  indexes on that name instead.
 
   Calculation-backed timeout fields are omitted: they are not columns, so they
   cannot be indexed directly.
@@ -144,9 +161,11 @@ defmodule AshWorkflow.Info do
       |> Enum.uniq()
       |> Enum.sort_by(&(&1 != :state_entered_at))
 
+    state = state_attribute(resource)
+
     case timeout_fields do
-      [] -> if Enum.any?(steps, &(not Step.manual?(&1))), do: [[:state]], else: []
-      fields -> Enum.map(fields, &[:state, &1])
+      [] -> if Enum.any?(steps, &(not Step.manual?(&1))), do: [[state]], else: []
+      fields -> Enum.map(fields, &[state, &1])
     end
   end
 
