@@ -4,8 +4,11 @@ on:
   push:
     branches: [main]
     tags: ["v*"]
+  # A pull request stacked on another feature branch gets no CI when this only
+  # lists main, because the base branch is what is matched. Two such PRs sat
+  # with no checks at all.
   pull_request:
-    branches: [main]
+    branches: [main, "feat/**"]
 
 concurrency:
   group: ci-${{ github.ref }}
