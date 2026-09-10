@@ -1,70 +1,82 @@
 defmodule AshWorkflow.Verifiers.ValidateTimeoutPrecision do
   @moduledoc """
-  Rejects timeouts whose deadline is shorter than the scheduler can poll for.
+  Rejects timeouts whose deadline is shorter than the selected scheduler can honour.
 
-  Timeouts fire when an Oban cron scheduler next runs and finds the deadline
-  has passed. Cron's finest granularity is one minute — `Oban.Cron` zeroes the
-  seconds field and its scheduler only wakes on minute boundaries — so a
-  deadline shorter than a minute cannot be honoured. `after: {30, :seconds}`
-  compiles happily and then fires anywhere up to 60 seconds late, an error
-  larger than the deadline itself.
+  The floor comes from the scheduler, through
+  `AshWorkflow.Scheduler.precision_floor_ms/1`.
+  `AshWorkflow.Scheduler.Oban` polls on a cron interval, and cron's finest
+  granularity is one minute — `Oban.Cron` zeroes the seconds field and its
+  scheduler only wakes on minute boundaries — so a deadline shorter than a
+  minute cannot be honoured there. `after: {30, :seconds}` compiles happily and
+  then fires anywhere up to 60 seconds late, an error larger than the deadline
+  itself.
 
-  Rather than let the DSL make a promise the scheduler cannot keep, a
-  sub-minute `after` is a compile error unless the timeout sets
-  `self_scheduled?: true`, which asserts that something other than cron drives
-  the trigger at the resolution the deadline needs.
+  Rather than let the DSL make a promise the scheduler cannot keep, a deadline
+  under the floor is a compile error unless the timeout sets
+  `self_scheduled?: true`, which asserts that something other than the
+  scheduler drives the trigger at the resolution the deadline needs.
+
+  `AshWorkflow.Scheduler.Precise` arms a timer per deadline, so its floor is a
+  millisecond and a sub-minute timeout needs no flag.
   """
   use Spark.Dsl.Verifier
 
   alias AshWorkflow.Entities.Step
+  alias AshWorkflow.Info
+  alias AshWorkflow.Scheduler
   alias Spark.Dsl.Verifier
   alias Spark.Error.DslError
 
-  @poll_floor_seconds 60
-
   @impl true
   def verify(dsl) do
+    scheduler = Info.scheduler(dsl)
+    floor_ms = Scheduler.precision_floor_ms(scheduler)
+
     dsl
     |> Verifier.get_entities([:workflow])
     |> Enum.filter(&match?(%Step{}, &1))
     |> Enum.reject(& &1.terminal)
     |> Enum.flat_map(fn step -> Enum.map(step.timeouts, &{step, &1}) end)
     |> Enum.reduce_while(:ok, fn {step, timeout}, :ok ->
-      case validate(step, timeout) do
+      case validate(step, timeout, scheduler, floor_ms) do
         :ok -> {:cont, :ok}
         {:error, error} -> {:halt, {:error, error}}
       end
     end)
   end
 
-  defp validate(_step, %{self_scheduled?: true}), do: :ok
+  defp validate(_step, %{self_scheduled?: true}, _scheduler, _floor_ms), do: :ok
 
-  defp validate(step, timeout) do
-    seconds = in_seconds(timeout.after)
-
-    if seconds < @poll_floor_seconds do
+  defp validate(step, timeout, {module, _opts}, floor_ms) do
+    if in_milliseconds(timeout.after) < floor_ms do
       {:error,
        DslError.exception(
          path: [:workflow, :step, step.name, :timeout, timeout.name],
-         message: message(step, timeout, seconds)
+         message: message(step, timeout, module, floor_ms)
        )}
     else
       :ok
     end
   end
 
-  defp message(step, timeout, _seconds) do
+  defp message(step, timeout, module, floor_ms) do
     {value, unit} = timeout.after
 
     """
     Timeout :#{timeout.name} on step :#{step.name} has after: {#{value}, :#{unit}}, \
-    which is under a minute. Timeouts are polled by an Oban cron scheduler, and cron \
-    cannot poll more often than once a minute, so this deadline would fire up to 60 \
-    seconds late — later than the deadline itself.
+    which is shorter than #{inspect(module)} can honour. That scheduler checks no more \
+    often than every #{humanize(floor_ms)}, so this deadline would fire up to \
+    #{humanize(floor_ms)} late, which is later than the deadline itself.
 
-    Either lengthen the deadline to at least one minute:
+    Either lengthen the deadline past that floor:
 
-        timeout :#{timeout.name}, after: {1, :minutes}, ...
+        timeout :#{timeout.name}, after: {#{floor_value(floor_ms)}}, ...
+
+    or select a scheduler that fires precisely:
+
+        workflow do
+          scheduler AshWorkflow.Scheduler.Precise
+        end
 
     or declare that you drive this trigger yourself, at whatever resolution the \
     deadline needs:
@@ -77,8 +89,16 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutPrecision do
     """
   end
 
-  defp in_seconds({value, :seconds}), do: value
-  defp in_seconds({value, :minutes}), do: value * 60
-  defp in_seconds({value, :hours}), do: value * 3_600
-  defp in_seconds({value, :days}), do: value * 86_400
+  defp humanize(ms) when rem(ms, 60_000) == 0, do: "#{div(ms, 60_000)}m"
+  defp humanize(ms) when rem(ms, 1_000) == 0, do: "#{div(ms, 1_000)}s"
+  defp humanize(ms), do: "#{ms}ms"
+
+  defp floor_value(ms) when rem(ms, 60_000) == 0, do: "#{div(ms, 60_000)}, :minutes"
+  defp floor_value(ms) when rem(ms, 1_000) == 0, do: "#{div(ms, 1_000)}, :seconds"
+  defp floor_value(_ms), do: "1, :seconds"
+
+  defp in_milliseconds({value, :seconds}), do: value * 1_000
+  defp in_milliseconds({value, :minutes}), do: value * 60_000
+  defp in_milliseconds({value, :hours}), do: value * 3_600_000
+  defp in_milliseconds({value, :days}), do: value * 86_400_000
 end

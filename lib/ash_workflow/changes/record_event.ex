@@ -38,6 +38,18 @@ defmodule AshWorkflow.Changes.RecordEvent do
   automatic step, a timeout, an error path, an undo and the initial create. See
   `AshWorkflow.Telemetry` for the events and their metadata.
 
+  ## Telling the scheduler
+
+  Entering a step is when the deadlines ahead of a record become known, so this
+  change also calls `AshWorkflow.Scheduler.notify_state_change/1`. A scheduler
+  that arms timers needs that call to be precise; a scheduler that polls
+  implements neither runtime callback, so the call does nothing for it.
+
+  It runs in the same `after_action` hook as the log append and the span's stop
+  event, which means it runs after the data layer has committed the new state.
+  A timer armed before the commit could fire against a record still holding the
+  old state.
+
   ## Atomicity
 
   This change implements `atomic/3` rather than falling back to
@@ -55,6 +67,7 @@ defmodule AshWorkflow.Changes.RecordEvent do
 
   alias AshWorkflow.Entities.TransitionLog
   alias AshWorkflow.Info
+  alias AshWorkflow.Scheduler
   alias AshWorkflow.Telemetry
   alias AshWorkflow.TransitionLog, as: TransitionLogHelpers
 
@@ -97,6 +110,7 @@ defmodule AshWorkflow.Changes.RecordEvent do
     record = append_log(changeset, record, opts, context)
 
     emit_stop(changeset, record)
+    Scheduler.notify_state_change(record)
 
     record
   end

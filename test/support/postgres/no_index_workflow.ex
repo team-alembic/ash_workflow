@@ -15,7 +15,7 @@ defmodule AshWorkflowTest.Postgres.NoIndexWorkflow do
   end
 
   workflow do
-    generate_indexes?(false)
+    generate_indexes? false
 
     step :review do
       transition :approve, to: :approved

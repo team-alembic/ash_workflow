@@ -14,6 +14,11 @@ config :ash_workflow_demo, AshWorkflowDemo.Repo,
   pool: Ecto.Adapters.SQL.Sandbox,
   pool_size: System.schedulers_online() * 2
 
+# The precise scheduler's timeline fires work from its own process, which holds
+# no sandbox connection. Tests drive the same work synchronously instead, with
+# AshWorkflowDemo.DataCase.run_workflow_triggers/2.
+config :ash_workflow_demo, start_scheduler?: false
+
 # We don't run a server during test. If one is required,
 # you can enable the server option below.
 config :ash_workflow_demo, AshWorkflowDemoWeb.Endpoint,

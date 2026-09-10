@@ -44,6 +44,19 @@ config :ash_workflow, scheduler: {AshWorkflow.Scheduler.Oban, queue: :workflow}
 
 `AshWorkflow.Scheduler.Oban` polls: it turns each automatic step and each timeout into an AshOban trigger whose `where` clause finds eligible records. Polling is what puts a floor under accuracy — cron cannot ask for less than a minute, which is why a sub-minute `after` is rejected.
 
+`AshWorkflow.Scheduler.Precise` arms a timer per deadline instead, so its floor is a millisecond and a sub-minute `after` compiles. Select it in the `workflow` block and start `AshWorkflow.Scheduler.Precise.Timeline` with the resources it recovers deadlines for:
+
+```elixir
+workflow do
+  scheduler AshWorkflow.Scheduler.Precise
+end
+
+# in your supervision tree
+{AshWorkflow.Scheduler.Precise.Timeline, resources: [MyApp.Order]}
+```
+
+A timer lives in memory, so it gives up Oban's durability: a deadline is recovered by the look-ahead sweep after a node dies, late by at most `:look_ahead_ms`. Across more than one node, pass `leader: {AshWorkflow.Scheduler.Leader.Oban, name: Oban}`, or every node arms the same timers. In tests call `AshWorkflow.Scheduler.Precise.run_due/2` rather than waiting for a timer, since the timeline holds no sandbox connection.
+
 To write your own, implement `AshWorkflow.Scheduler`. It has one required callback:
 
 ```elixir
@@ -352,7 +365,7 @@ end
 - `same_actor?` (optional, default `false`): restrict undo to the actor recorded on the transition. Requires `belongs_to_actor` on the log.
 - `policy` (optional): an `Ash.Policy.Check` tuple applied to the generated `undo` action. Step policies do not apply — an undo spans two states, and which step it rewinds into is only known at runtime.
 
-**An undo appends a row; it never mutates or deletes one.** The new row carries `triggered_by: :undo` and an `undoes_id` pointing at the row it reverses, so the log stays append-only and two readings of history stay derivable from the same rows:
+An undo appends a row and never mutates or deletes one. The new row carries `triggered_by: :undo` and an `undoes_id` pointing at the row it reverses, so the log stays append-only and two readings of history stay derivable from the same rows:
 
 - `history(record)` / `state_at(record, at)` — what actually happened, including states the record briefly occupied and rewound out of.
 - `history(record, effective: true)` / `state_at(record, at, effective: true)` — what stands after corrections, with reversed rows omitted.
@@ -361,7 +374,7 @@ Prefer the literal reading for audit and for explaining side effects; prefer the
 
 The resource gains a generated `undo` update action, plus `undoable?/2` (can this be undone) and `undo_target/2` (where it would land). Note that Ash's code interface separately generates `can_undo?/2`, which asks whether the *actor is authorized* to call `undo` — a different question.
 
-**Undo restores state, not attributes.** A transition with `accept` does not have its accepted values rolled back, and side effects an action performed — an email sent, a payment taken — are not compensated. Mark a transition `undoable?: true` only when rewinding it is safe on its own.
+Undo restores state, not attributes. A transition with `accept` does not have its accepted values rolled back, and side effects an action performed — an email sent, a payment taken — are not compensated. Mark a transition `undoable?: true` only when rewinding it is safe on its own.
 
 Undo is refused, with a reason on `AshWorkflow.Errors.UndoNotPermitted`, when: the last state change was not an undoable transition (`:not_undoable` — this is what keeps automatic steps, timeouts and error paths out of reach), there is no state change to undo (`:no_history`), the `within` window has passed (`:window_expired`), or `same_actor?` does not match (`:different_actor` / `:no_actor`).
 

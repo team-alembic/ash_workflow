@@ -33,22 +33,25 @@ defmodule AshWorkflowDemo.DataCase do
   end
 
   @doc """
-  Runs the workflow's Oban triggers to completion, the way the DemoScheduler
-  does on stage. Tests that call an action directly prove the action works;
-  this proves the workflow actually drives it.
+  Runs every deadline and automatic step that is due, until nothing is left.
+
+  On stage `AshWorkflow.Scheduler.Precise.Timeline` fires these from its own
+  process, on a timer. A test cannot wait for that: the timeline holds no
+  sandbox connection, so work it ran could not see the test's data.
+  `AshWorkflow.Scheduler.Precise.run_due/2` runs the same work through
+  `AshWorkflow.Scheduler.execute/3` on the test's own connection instead.
+
+  Tests that call an action directly prove the action works; this proves the
+  workflow actually drives it.
   """
   def run_workflow_triggers(resource, passes \\ 5) do
-    # Each pass schedules from the state the last pass left behind. The demo
-    # chains :submitted -> :verifying -> :review, and a scheduler only sees the
-    # state a record is in when it runs, so one pass is not enough.
-    Enum.reduce_while(1..passes, nil, fn _, _ ->
-      AshOban.schedule_and_run_triggers(resource)
-      result = Oban.drain_queue(queue: :workflow, with_recursion: true, with_scheduled: true)
-
-      if result.success + result.failure + result.discard == 0 do
-        {:halt, result}
-      else
-        {:cont, result}
+    # Each pass runs from the state the last pass left behind. The demo chains
+    # :submitted -> :verifying -> :review, and work is only due for the state a
+    # record is in when it runs, so one pass is not enough.
+    Enum.reduce_while(1..passes, 0, fn _, _ ->
+      case AshWorkflow.Scheduler.Precise.run_due(resource) do
+        0 -> {:halt, 0}
+        count -> {:cont, count}
       end
     end)
   end

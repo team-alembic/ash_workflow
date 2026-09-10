@@ -110,15 +110,44 @@ timeout :hourly_ping, after: {1, :hours}, action: :send_ping
 timeout :weekly_expire, after: {7, :days}, transition_to: :expired
 ```
 
-One minute is the shortest deadline the scheduler can honour. Timeouts fire
-when an Oban cron scheduler next notices the deadline has passed, and cron
-cannot poll more often than once a minute, so `after: {30, :seconds}` would
-fire up to 60 seconds late — an error larger than the deadline. The extension
-rejects a sub-minute `after` at compile time rather than making a promise it
-cannot keep.
+The shortest deadline you can declare comes from the scheduler you selected.
+`AshWorkflow.Scheduler.Oban` is the default and polls on a cron interval, and
+cron cannot poll more often than once a minute, so `after: {30, :seconds}`
+would fire up to 60 seconds late — an error larger than the deadline itself.
+`AshWorkflow.Verifiers.ValidateTimeoutPrecision` rejects it at compile time
+rather than making a promise the scheduler cannot keep.
 
-If you need one anyway, set `check_interval: false` to generate no cron and run
-the trigger yourself:
+For a deadline shorter than a minute, select the scheduler that arms a timer
+per deadline instead of polling:
+
+```elixir
+workflow do
+  scheduler AshWorkflow.Scheduler.Precise
+
+  step :awaiting_confirmation do
+    # Fires 30 seconds later, not up to 60 seconds after that
+    timeout :quick_check, after: {30, :seconds}, action: :check_status
+  end
+end
+```
+
+Then start the process that holds the timers, listing the resources it
+recovers deadlines for:
+
+```elixir
+children = [
+  {AshWorkflow.Scheduler.Precise.Timeline, resources: [MyApp.Order]}
+]
+```
+
+See `AshWorkflow.Scheduler.Precise` for what that trades away. A timer lives in
+memory, so a deadline held only by a timer is lost when the node dies and is
+recovered by the look-ahead sweep on whichever node leads next. A workflow
+measured in days wants Oban's durability more than an exact instant.
+
+If you would rather keep the polling scheduler and drive one timeout yourself,
+`self_scheduled?: true` asserts that something else invokes it at the
+resolution the deadline needs:
 
 ```elixir
 # Nothing polls for this one. Call AshOban.schedule/2, or drive it from your
@@ -126,7 +155,7 @@ the trigger yourself:
 timeout :quick_check,
   after: {30, :seconds},
   action: :check_status,
-  check_interval: false
+  self_scheduled?: true
 ```
 
 ## Polling interval and precision

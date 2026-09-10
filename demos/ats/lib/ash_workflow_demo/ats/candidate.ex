@@ -7,7 +7,7 @@ defmodule AshWorkflowDemo.ATS.Candidate do
   use Ash.Resource,
     domain: AshWorkflowDemo.ATS,
     data_layer: AshPostgres.DataLayer,
-    extensions: [AshWorkflow, AshOban],
+    extensions: [AshWorkflow],
     notifiers: [AshWorkflowDemo.ATS.Candidate.Notifier]
 
   postgres do
@@ -53,17 +53,18 @@ defmodule AshWorkflowDemo.ATS.Candidate do
   end
 
   workflow do
+    # Both deadlines here are shorter than a minute, which is more than cron
+    # can poll for. Precise arms a timer per deadline instead of polling, so
+    # they need no self_scheduled? flag and no hand-rolled ticker.
+    scheduler AshWorkflow.Scheduler.Precise
+
     # The dwell the audience sees. :verify_after is a per-candidate timestamp,
     # so the delay is data on the record rather than a sleep inside the scorer.
     step :submitted do
       timeout :begin_verification,
         after: {1, :seconds},
         field: :verify_after,
-        transition_to: :verifying,
-        # AshWorkflowDemo.DemoScheduler invokes this trigger every second,
-        # which is what makes a sub-minute deadline honourable here. Cron alone
-        # could not, so without this the duration is a compile error.
-        self_scheduled?: true
+        transition_to: :verifying
     end
 
     step :verifying do
@@ -77,12 +78,9 @@ defmodule AshWorkflowDemo.ATS.Candidate do
       transition :reject, to: :rejected
       transition :position_filled, to: :position_filled
 
-      # Also driven by DemoScheduler — a 30-second deadline is exactly what cron
-      # cannot express, which is why the demo schedules it itself.
-      timeout :auto_reject,
-        after: {30, :seconds},
-        transition_to: :auto_rejected,
-        self_scheduled?: true
+      # 30 seconds is exactly what cron cannot express. The timer fires on the
+      # instant, so the countdown on the projector and the transition agree.
+      timeout :auto_reject, after: {30, :seconds}, transition_to: :auto_rejected
     end
 
     step :hired, terminal: true

@@ -122,6 +122,19 @@ defmodule AshWorkflow.Info do
   end
 
   @doc """
+  Returns every `AshWorkflow.Scheduler.Work` the workflow declares.
+
+  One per automatic step and one per timeout, as
+  `AshWorkflow.Transformers.AddScheduler` built them and handed them to the
+  selected scheduler. A runtime scheduler reads this rather than re-deriving
+  the list from steps and timeouts, so both see exactly the same work.
+  """
+  @spec scheduled_work(Ash.Resource.t() | map()) :: [AshWorkflow.Scheduler.Work.t()]
+  def scheduled_work(resource) do
+    Extension.get_persisted(resource, :ash_workflow_scheduled_work, [])
+  end
+
+  @doc """
   Returns the composite indexes that make the generated Oban triggers cheap,
   as a list of attribute-name lists, most useful first.
 

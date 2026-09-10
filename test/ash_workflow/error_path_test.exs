@@ -55,4 +55,26 @@ defmodule AshWorkflow.ErrorPathTest do
       assert :failed in states
     end
   end
+
+  describe "AshWorkflow.Scheduler.execute/3" do
+    alias AshWorkflow.Scheduler
+    alias AshWorkflowTest.RaisingStepWorkflow
+
+    test "routes a change that raises to on_error" do
+      # The change raises from change/3, so the exception escapes while
+      # Ash.Changeset.for_update/4 is still building the changeset and never
+      # reaches Ash.update/2. Before execute/3 rescued it, a raising step
+      # bypassed on_error entirely: the caller saw the exception and the record
+      # stayed in :process with nothing to retry it out of.
+      {:ok, record} = RaisingStepWorkflow.create(%{title: "test"})
+
+      work =
+        RaisingStepWorkflow
+        |> AshWorkflow.Info.scheduled_work()
+        |> Enum.find(&(&1.step == :process))
+
+      assert {:ok, failed} = Scheduler.execute(work, record)
+      assert failed.state == :failed
+    end
+  end
 end

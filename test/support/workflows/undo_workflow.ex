@@ -23,7 +23,7 @@ defmodule AshWorkflowTest.UndoWorkflow do
     end
 
     undo do
-      within({1, :hours})
+      within {1, :hours}
     end
 
     step :review do
@@ -36,7 +36,7 @@ defmodule AshWorkflowTest.UndoWorkflow do
 
     step :deferred do
       transition :resume do
-        undoable?(true)
+        undoable? true
         route :review, when: expr(priority == :normal)
         route :publish, when: expr(priority == :high)
       end
