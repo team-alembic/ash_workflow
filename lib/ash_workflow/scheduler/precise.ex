@@ -30,7 +30,7 @@ defmodule AshWorkflow.Scheduler.Precise do
   A timer lives in memory, so a node restart forgets every deadline it held.
   Precision therefore comes from one path and correctness from another.
 
-  `AshWorkflow.Scheduler.deadline_changed/2` fires the moment a record enters a
+  `c:AshWorkflow.Scheduler.deadline_changed/2` fires the moment a record enters a
   step, and arms a timer for the exact instant. That is the precise path.
 
   A look-ahead sweep runs every `:look_ahead_ms` and arms timers for every
@@ -47,7 +47,10 @@ defmodule AshWorkflow.Scheduler.Precise do
   ## Options
 
     * `:leader` — who decides whether this node arms timers. Defaults to
-      `AshWorkflow.Scheduler.Leader.Single`. See
+      `AshWorkflow.Scheduler.Leader.Single`, which is correct on one node and
+      makes every node a leader on more than one. Across a cluster, pass
+      `AshWorkflow.Scheduler.Leader.Oban` where Oban runs, or
+      `AshWorkflow.Scheduler.Leader.Global` where it does not. See
       `AshWorkflow.Scheduler.Leader`.
     * `:look_ahead_ms` — how often the recovery sweep runs. Defaults to 5000.
     * `:horizon_ms` — how far ahead the sweep arms timers. Defaults to 30000.

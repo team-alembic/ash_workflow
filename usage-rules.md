@@ -55,7 +55,7 @@ end
 {AshWorkflow.Scheduler.Precise.Timeline, resources: [MyApp.Order]}
 ```
 
-A timer lives in memory, so it gives up Oban's durability: a deadline is recovered by the look-ahead sweep after a node dies, late by at most `:look_ahead_ms`. Across more than one node, pass `leader: {AshWorkflow.Scheduler.Leader.Oban, name: Oban}`, or every node arms the same timers. In tests call `AshWorkflow.Scheduler.Precise.run_due/2` rather than waiting for a timer, since the timeline holds no sandbox connection.
+A timer lives in memory, so it gives up Oban's durability: a deadline is recovered by the look-ahead sweep after a node dies, late by at most `:look_ahead_ms`. Across more than one node, pass `leader: {AshWorkflow.Scheduler.Leader.Oban, name: Oban}` where Oban runs, or `leader: AshWorkflow.Scheduler.Leader.Global` where it does not; the default makes every node a leader, so every node arms the same timers. In tests call `AshWorkflow.Scheduler.Precise.run_due/2` rather than waiting for a timer, since the timeline holds no sandbox connection.
 
 To write your own, implement `AshWorkflow.Scheduler`. It has one required callback:
 

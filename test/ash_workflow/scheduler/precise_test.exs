@@ -282,6 +282,77 @@ defmodule AshWorkflow.Scheduler.PreciseTest do
     end
   end
 
+  describe "AshWorkflow.Scheduler.Leader.Global" do
+    test "grants the lock to one process and refuses a second" do
+      # A `:global` lock is re-entrant for one requester and exclusive across
+      # requesters, so the same process may ask repeatedly while another is
+      # refused. That is what lets the timeline check leadership on every sweep
+      # without releasing and retaking the lock.
+      assert Leader.leader?({Leader.Global, id: :leader_global_test})
+      assert Leader.leader?({Leader.Global, id: :leader_global_test})
+
+      task = Task.async(fn -> Leader.leader?({Leader.Global, id: :leader_global_test}) end)
+
+      refute Task.await(task)
+    end
+
+    test "a different id is a different election" do
+      assert Leader.leader?({Leader.Global, id: :election_a})
+
+      task = Task.async(fn -> Leader.leader?({Leader.Global, id: :election_b}) end)
+
+      assert Task.await(task)
+    end
+
+    test "the lock goes with the process that held it" do
+      parent = self()
+
+      # The holder reports back rather than the test polling for it. Polling
+      # means competing for the same lock, and a probe that wins it before the
+      # holder asks leaves the holder refused for the rest of the test.
+      holder =
+        spawn(fn ->
+          send(parent, {:holder, Leader.leader?({Leader.Global, id: :handover_test})})
+
+          receive do
+            :stop -> :ok
+          end
+        end)
+
+      assert_receive {:holder, true}, 1_000
+
+      task = Task.async(fn -> Leader.leader?({Leader.Global, id: :handover_test}) end)
+      refute Task.await(task)
+
+      send(holder, :stop)
+      await_exit(holder)
+
+      task = Task.async(fn -> Leader.leader?({Leader.Global, id: :handover_test}) end)
+      assert Task.await(task)
+    end
+  end
+
+  describe "surviving a restart" do
+    test "a replacement timeline recovers a deadline the dead one was holding" do
+      # Timers live in the process, so killing it forgets every one. The sweep
+      # on the replacement's first tick is the only thing that brings them
+      # back, and it is the whole recovery story for a node that restarts.
+      record = candidate(ago(500))
+
+      timeline = start_supervised!({Timeline, resources: [@resource], look_ahead_ms: 60_000})
+
+      assert map_size(:sys.get_state(timeline).timers) == 1
+
+      stop_supervised!(Timeline)
+
+      assert {:timeout, :waiting} = await_state(record, :escalated, 400)
+
+      start_timeline(look_ahead_ms: 60_000)
+
+      assert {:ok, :escalated} = await_state(record, :escalated, 2_000)
+    end
+  end
+
   describe "run_due/2" do
     test "runs a deadline that has passed, with no timeline process at all" do
       record = candidate(ago(5_000))
@@ -316,6 +387,14 @@ defmodule AshWorkflow.Scheduler.PreciseTest do
       assert PreciseTimeoutWorkflow
              |> Extension.get_persisted(:extensions, [])
              |> Enum.member?(AshOban) == false
+    end
+  end
+
+  defp await_exit(pid, tries \\ 50) do
+    cond do
+      not Process.alive?(pid) -> :ok
+      tries == 0 -> flunk("#{inspect(pid)} did not exit")
+      true -> Process.sleep(10) && await_exit(pid, tries - 1)
     end
   end
 
