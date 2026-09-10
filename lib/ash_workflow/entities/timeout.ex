@@ -11,6 +11,14 @@ defmodule AshWorkflow.Entities.Timeout do
   This enables data-driven deadlines: "3 months since their last session" rather than
   "3 months since they entered the active state."
 
+  ## Sub-second durations
+
+  `after` accepts `:milliseconds`, which exists for deadlines a cron interval
+  cannot express at all. `AshWorkflow.Verifiers.ValidateTimeoutPrecision` still
+  rejects any duration under the selected scheduler's floor, so
+  `{250, :milliseconds}` compiles under `AshWorkflow.Scheduler.Precise` and is a
+  compile error under `AshWorkflow.Scheduler.Oban`, whose floor is a minute.
+
   ## `repeat: true` is not supported with custom fields
 
   Repeating timeouts work by resetting `state_entered_at` to the current time after
@@ -38,7 +46,9 @@ defmodule AshWorkflow.Entities.Timeout do
     repeat: false
   ]
 
-  @type duration_unit :: :seconds | :minutes | :hours | :days
+  @duration_units [:milliseconds, :seconds, :minutes, :hours, :days]
+
+  @type duration_unit :: :milliseconds | :seconds | :minutes | :hours | :days
   @type t :: %__MODULE__{
           name: atom(),
           after: {pos_integer(), duration_unit()},
@@ -57,9 +67,10 @@ defmodule AshWorkflow.Entities.Timeout do
       doc: "A unique name for this timeout."
     ],
     after: [
-      type: {:custom, __MODULE__, :validate_duration, []},
+      type: {:custom, __MODULE__, :validate_duration, [@duration_units]},
       required: true,
-      doc: "Duration tuple, e.g. `{3, :days}` or `{2, :hours}`."
+      doc:
+        "Duration tuple, e.g. `{3, :days}`, `{2, :hours}` or `{250, :milliseconds}`. A duration under a minute needs a scheduler that can honour it."
     ],
     field: [
       type: :atom,
@@ -110,12 +121,26 @@ defmodule AshWorkflow.Entities.Timeout do
 
   def attribute_schema, do: @schema
 
-  def validate_duration({value, unit})
-      when is_integer(value) and value > 0 and unit in [:seconds, :minutes, :hours, :days] do
-    {:ok, {value, unit}}
+  @doc """
+  Validates a duration tuple against the units the caller permits.
+
+  `after` takes every unit in `#{inspect(@duration_units)}`. `AshWorkflow.Entities.Undo`
+  passes a narrower list, because `AshWorkflow.Entities.Undo.window_seconds/1`
+  counts an undo window in whole seconds.
+  """
+  @spec validate_duration(term(), [duration_unit()]) ::
+          {:ok, {pos_integer(), duration_unit()}} | {:error, String.t()}
+  def validate_duration({value, unit}, units)
+      when is_integer(value) and value > 0 and is_list(units) do
+    if unit in units do
+      {:ok, {value, unit}}
+    else
+      {:error, "Expected one of #{inspect(units)} as the unit, got: #{inspect(unit)}"}
+    end
   end
 
-  def validate_duration(other) do
-    {:error, "Expected a duration tuple like {3, :days}, got: #{inspect(other)}"}
+  def validate_duration(other, units) do
+    {:error,
+     "Expected a duration tuple like {3, :days}, with one of #{inspect(units)} as the unit, got: #{inspect(other)}"}
   end
 end

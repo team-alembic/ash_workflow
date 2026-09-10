@@ -114,11 +114,13 @@ defmodule AshWorkflow.Transformers.AddScheduler do
     }
   end
 
-  # ago/2 expects singular duration names (:day, :hour, :minute, :second)
+  # ago/2 expects singular duration names (:day, :hour, :minute, :second,
+  # :millisecond)
   defp singular_unit(:days), do: :day
   defp singular_unit(:hours), do: :hour
   defp singular_unit(:minutes), do: :minute
   defp singular_unit(:seconds), do: :second
+  defp singular_unit(:milliseconds), do: :millisecond
 
   def before?(AshOban.Transformers.SetDefaults), do: true
   def before?(AshOban.Transformers.DefineSchedulers), do: true

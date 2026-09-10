@@ -81,4 +81,5 @@ defmodule AshWorkflow.Calculations.PendingDeadlines do
   defp singular_unit(:hours), do: :hour
   defp singular_unit(:minutes), do: :minute
   defp singular_unit(:seconds), do: :second
+  defp singular_unit(:milliseconds), do: :millisecond
 end

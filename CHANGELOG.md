@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `AshWorkflow.Scheduler.Work` describes one unit of scheduled work in AshWorkflow's own terms. It carries `match`, an expression selecting records eligible now, and `deadline`, the rule for computing the exact instant — the same fact in the two shapes that opposite scheduling strategies need. A scheduler that polls reads one; a scheduler that arms timers reads the other.
 - `AshWorkflow.Scheduler.execute/3` runs a unit of work and routes failure to the step's `on_error`. It belongs to AshWorkflow rather than to each implementation, so changing the scheduler changes when work happens and never what it does.
 - `AshWorkflow.Info.scheduler/1`.
+- **`:milliseconds` as a duration unit on a timeout's `after`.** `{250, :milliseconds}` was previously unspellable, so the finest deadline the DSL could express was `{1, :seconds}` even under a scheduler whose floor is a millisecond. `AshWorkflow.Verifiers.ValidateTimeoutPrecision` treats the new unit like every other one: the floor still comes from the selected scheduler, so `{250, :milliseconds}` compiles under `AshWorkflow.Scheduler.Precise` and is a compile error under `AshWorkflow.Scheduler.Oban`. `AshWorkflow.Entities.Undo`'s `within` does not take the unit, because `AshWorkflow.Entities.Undo.window_seconds/1` counts an undo window in whole seconds.
 
 ### Changed
 

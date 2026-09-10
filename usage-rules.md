@@ -44,7 +44,7 @@ config :ash_workflow, scheduler: {AshWorkflow.Scheduler.Oban, queue: :workflow}
 
 `AshWorkflow.Scheduler.Oban` polls: it turns each automatic step and each timeout into an AshOban trigger whose `where` clause finds eligible records. Polling is what puts a floor under accuracy — cron cannot ask for less than a minute, which is why a sub-minute `after` is rejected.
 
-`AshWorkflow.Scheduler.Precise` arms a timer per deadline instead, so its floor is a millisecond and a sub-minute `after` compiles. Select it in the `workflow` block and start `AshWorkflow.Scheduler.Precise.Timeline` with the resources it recovers deadlines for:
+`AshWorkflow.Scheduler.Precise` arms a timer per deadline instead, so its floor is a millisecond, and both a sub-minute `after` and the `:milliseconds` unit compile. Select it in the `workflow` block and start `AshWorkflow.Scheduler.Precise.Timeline` with the resources it recovers deadlines for:
 
 ```elixir
 workflow do
@@ -300,7 +300,7 @@ Prefer raising `check_interval` over leaving the default when deadlines are meas
 ### Timeout Rules
 
 - Each timeout must have EITHER `action` OR `transition_to` — not both, not neither.
-- Supported duration units: `:seconds`, `:minutes`, `:hours`, `:days`.
+- Supported duration units: `:milliseconds`, `:seconds`, `:minutes`, `:hours`, `:days`. `:milliseconds` only compiles under a scheduler whose floor is that fine, which today means `AshWorkflow.Scheduler.Precise`.
 - `check_interval` (optional): Oban cron expression for how often to poll. Defaults to the workflow-level `check_interval`, which itself defaults to `"* * * * *"` (every minute).
 
 ## Transition Log (Workflow History)

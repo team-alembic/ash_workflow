@@ -286,4 +286,5 @@ defmodule AshWorkflow.Scheduler do
   defp singular(:hours), do: :hour
   defp singular(:minutes), do: :minute
   defp singular(:seconds), do: :second
+  defp singular(:milliseconds), do: :millisecond
 end

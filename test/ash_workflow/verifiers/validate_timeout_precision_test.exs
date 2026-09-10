@@ -9,6 +9,20 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutPrecisionTest do
 
   import AshWorkflowTest.DslAssertions
 
+  defmodule HalfSecondScheduler do
+    @moduledoc """
+    A scheduler whose floor is half a second, so the verifier has to name a
+    floor that is neither a whole minute nor a whole second.
+    """
+    use AshWorkflow.Scheduler
+
+    @impl AshWorkflow.Scheduler
+    def transform(dsl, _works, _opts), do: {:ok, dsl}
+
+    @impl AshWorkflow.Scheduler
+    def precision_floor_ms(_opts), do: 500
+  end
+
   defp workflow(name, timeout_body) do
     """
     defmodule #{name} do
@@ -61,6 +75,16 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutPrecisionTest do
       )
     end
 
+    test "a duration in milliseconds" do
+      assert_dsl_error(
+        workflow(
+          "SubMinuteMilliseconds",
+          "timeout :nudge, after: {250, :milliseconds}, action: :send_reminder"
+        ),
+        ~r/after: \{250, :milliseconds\}, which is shorter than AshWorkflow.Scheduler.Oban can honour/
+      )
+    end
+
     test "a sub-minute duration measured against a custom field" do
       assert_dsl_error(
         workflow(
@@ -108,6 +132,42 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutPrecisionTest do
           "timeout :nudge, after: {5, :seconds}, action: :send_reminder"
         ),
         ~r/scheduler AshWorkflow.Scheduler.Precise/
+      )
+    end
+
+    test "names the floor in milliseconds when it is not a whole second" do
+      # `floor_value/1` used to fall back to "1, :seconds" for any floor that
+      # was not a whole number of seconds, which named a duration longer than
+      # the scheduler's actual floor. With `:milliseconds` available it can name
+      # the floor itself.
+      assert_dsl_error(
+        """
+        defmodule SubSecondFloor do
+          use Ash.Resource,
+            domain: AshWorkflowTest.Domain,
+            data_layer: Ash.DataLayer.Ets,
+            extensions: [AshWorkflow]
+
+          workflow do
+            scheduler AshWorkflow.Verifiers.ValidateTimeoutPrecisionTest.HalfSecondScheduler
+
+            step :waiting do
+              transition :resolve, to: :done
+
+              timeout :nudge, after: {100, :milliseconds}, transition_to: :escalated
+            end
+
+            step :done, terminal: true
+            step :escalated, terminal: true
+          end
+
+          attributes do
+            uuid_v7_primary_key :id
+            attribute :title, :string, allow_nil?: false, public?: true
+          end
+        end
+        """,
+        ~r/after: \{500, :milliseconds\}/
       )
     end
 
