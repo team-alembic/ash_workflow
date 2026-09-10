@@ -133,4 +133,52 @@ defmodule AshWorkflowDemoWeb.DashboardLiveTest do
     assert w.state == :hired
     assert l.state == :position_filled
   end
+
+  describe "the auto-reject countdown" do
+    alias AshWorkflow.Scheduler.Precise
+    alias AshWorkflowDemo.ATS.Candidate
+    alias AshWorkflowDemo.ATS.Candidate.Deadlines
+
+    test "counts down from the duration the DSL declares", %{conn: conn} do
+      seed_reviewable("Counting")
+
+      {:ok, _view, html} = live(conn, "/")
+
+      assert html =~ "#{Deadlines.seconds(:auto_reject)}s left"
+    end
+
+    test "reaches zero exactly when the deadline is due", %{conn: conn} do
+      # The countdown and the scheduler must agree on one instant. This is the
+      # assertion that the UI reads the same deadline the timer was armed for,
+      # rather than a duration typed into the template beside it.
+      candidate = seed_reviewable("Zero")
+      aged = age_by(candidate, Deadlines.seconds(:auto_reject), :second)
+
+      {:ok, _view, html} = live(conn, "/")
+      assert html =~ "0s left"
+
+      assert Precise.run_due(Candidate) > 0
+      assert reload(aged).state == :auto_rejected
+    end
+
+    test "still counting a second before, and the scheduler agrees", %{conn: conn} do
+      candidate = seed_reviewable("OneLeft")
+      aged = age_by(candidate, Deadlines.seconds(:auto_reject) - 1, :second)
+
+      {:ok, _view, html} = live(conn, "/")
+      assert html =~ "1s left"
+
+      assert Precise.run_due(Candidate) == 0
+      assert reload(aged).state == :review
+    end
+
+    test "the due instant comes from pending_deadlines, not from the template" do
+      candidate = seed_reviewable("Derived")
+
+      loaded = Ash.load!(candidate, [:pending_deadlines], authorize?: false)
+
+      assert Deadlines.due_at(loaded, :auto_reject) ==
+               DateTime.add(loaded.state_entered_at, Deadlines.seconds(:auto_reject), :second)
+    end
+  end
 end
