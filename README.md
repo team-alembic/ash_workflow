@@ -306,13 +306,14 @@ The initial state is the step with `initial true`, or the first non-terminal ste
 
 ```elixir
 workflow do
-  # Starts in :intake. Without `initial: true` it would start in :review,
+  # Starts in :intake. Without `initial true` it would start in :review,
   # the first non-terminal step by declaration order.
   step :review do
     transition :approve, to: :approved
   end
 
-  step :intake, initial: true do
+  step :intake do
+    initial true
     transition :submit, to: :review
   end
 

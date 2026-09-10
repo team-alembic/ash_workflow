@@ -112,7 +112,8 @@ workflow do
     transition :approve, to: :approved
   end
 
-  step :intake, initial: true do
+  step :intake do
+    initial true
     transition :submit, to: :review
   end
 
@@ -120,7 +121,7 @@ workflow do
 end
 ```
 
-Without `initial: true` that workflow would start in `:review`, because `:review` is declared first.
+Without `initial true` that workflow would start in `:review`, because `:review` is declared first. A step that declares transitions has to set `initial` inside its block: `step :intake, initial: true do ... end` does not compile, because the DSL macro takes either options or a block.
 
 ## Use the workflow
 

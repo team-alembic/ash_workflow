@@ -147,6 +147,34 @@ defmodule AshWorkflow.DocumentationDriftTest do
     end
   end
 
+  # `step :approved, terminal: true` and `step :review do ... end` both
+  # compile; the two together do not, because the block becomes a third
+  # argument. Matched on the entities that take a block.
+  @options_and_block ~r/^\s*(?:step|transition|timeout|transition_log)\s+:[a-z_]+,\s*[a-z_]+[?]?:.*\bdo\s*$/m
+
+  describe "documented DSL calls compile" do
+    for file <- @doc_files do
+      test "#{file} passes no options and a block to the same entity" do
+        file = unquote(file)
+
+        offenders =
+          file
+          |> File.read!()
+          |> then(&Regex.scan(@options_and_block, &1))
+          |> Enum.map(&List.first/1)
+          |> Enum.uniq()
+
+        assert offenders == [], """
+        #{file} passes both options and a `do` block to a DSL entity:
+
+        #{Enum.map_join(offenders, "\n", &"  #{&1}")}
+
+        Elixir parses that as a three-argument call, and Spark defines each         entity macro with two, so the example does not compile. Set the option         inside the block instead — `step :intake do initial true ... end`.
+        """
+      end
+    end
+  end
+
   describe "every AshWorkflow function the docs reference exists" do
     for file <- @doc_files ++ Path.wildcard("lib/**/*.ex") do
       test "#{file} references only functions that are defined" do
