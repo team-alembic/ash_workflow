@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `AshWorkflow.Info.scheduler/1`.
 - **`state_attribute` on the `workflow` section.** Names the attribute the current step is stored in, and is passed down to `ash_state_machine`. It defaults to `:state`, so nothing changes for workflows that do not set it. A resource that already has a lifecycle column of its own — `status`, say — can now use AshWorkflow without renaming that column. Everything generated follows the name: the state machine, the transition and timeout actions, the `match` expression on every `AshWorkflow.Scheduler.Work`, the `current_step`, `available_actions` and `pending_deadlines` calculations, and `AshWorkflow.Info.recommended_indexes/1`. `AshWorkflow.Info.state_attribute/1` reports it. The `state_entered_at` attribute keeps its name.
 
+### Fixed
+
+- **A non-repeating action timeout now writes a transition log row.** `AshWorkflow.Transformers.AddActions` injected `AshWorkflow.Changes.RecordEvent` only onto actions named by a timeout with `repeat: true`, so a one-shot reminder fired and left no trace in the log. Every timeout that names an action now gets the change, and the row has `from_state == to_state` with `triggered_by: :timeout`, the same shape a repeating timeout's row already had. Two timeouts naming the same action share one row per firing. Only a repeating timeout's action resets `state_entered_at`, through the new `:touch_state_entered_at` option on `AshWorkflow.Changes.RecordEvent`: the reset is how a repeat re-arms its trigger, and a one-shot timeout doing it would push every other deadline on the step back.
+
 ### Changed
 
 - **Breaking:** Resources must add the `AshOban` extension themselves:

@@ -8,7 +8,7 @@ defmodule AshWorkflowTest.LoggedWorkflow do
 
   start → intake ──(success)──→ review ──(approve)──→ done
                   └──(error)───→ failed          └─(reject)───→ rejected
-                                (2d reminder, repeat; 7d escalation)
+                            (2d reminder, repeat; 3d nudge; 7d escalation)
   """
 
   use Ash.Resource,
@@ -28,6 +28,7 @@ defmodule AshWorkflowTest.LoggedWorkflow do
       transition :reject, to: :rejected
 
       timeout :reminder, after: {2, :days}, action: :send_reminder, repeat: true
+      timeout :nudge, after: {3, :days}, action: :send_nudge
       timeout :escalation, after: {7, :days}, transition_to: :escalated
     end
 
@@ -52,6 +53,10 @@ defmodule AshWorkflowTest.LoggedWorkflow do
     end
 
     update :send_reminder do
+      accept []
+    end
+
+    update :send_nudge do
       accept []
     end
   end

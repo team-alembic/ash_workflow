@@ -14,6 +14,12 @@ defmodule AshWorkflow.Changes.RecordEvent do
 
     * `:triggered_by` (required) — one of `:initial`, `:manual`, `:automatic`,
       `:timeout`, `:error_path`, `:undo`.
+    * `:touch_state_entered_at` (optional, defaults to `true`) — whether the
+      change writes `state_entered_at`. A repeating timeout relies on that
+      write: resetting the anchor is how its trigger re-arms. A non-repeating
+      action timeout must not reset it, because every other deadline on the
+      step measures `after` from the same attribute, so moving it would push a
+      pending `transition_to` timeout out of reach.
     * `:transition_name` (optional) — the name recorded on the log row.
       Defaults to `changeset.action.name`, which is enough for most sites, but
       several of the actions `AddActions` generates use an internal hidden
@@ -87,7 +93,7 @@ defmodule AshWorkflow.Changes.RecordEvent do
   @impl true
   def change(changeset, opts, context) do
     changeset
-    |> Ash.Changeset.force_change_attribute(:state_entered_at, DateTime.utc_now())
+    |> touch_state_entered_at(opts)
     |> emit_start(opts)
     |> Ash.Changeset.after_action(fn changeset, record ->
       {:ok, finish(changeset, record, opts, context)}
@@ -103,8 +109,22 @@ defmodule AshWorkflow.Changes.RecordEvent do
         {:ok, finish(changeset, record, opts, context)}
       end)
 
-    {:atomic, changeset, %{state_entered_at: expr(now())}}
+    if touch_state_entered_at?(opts) do
+      {:atomic, changeset, %{state_entered_at: expr(now())}}
+    else
+      {:atomic, changeset, %{}}
+    end
   end
+
+  defp touch_state_entered_at(changeset, opts) do
+    if touch_state_entered_at?(opts) do
+      Ash.Changeset.force_change_attribute(changeset, :state_entered_at, DateTime.utc_now())
+    else
+      changeset
+    end
+  end
+
+  defp touch_state_entered_at?(opts), do: Keyword.get(opts, :touch_state_entered_at, true)
 
   defp finish(changeset, record, opts, context) do
     record = append_log(changeset, record, opts, context)

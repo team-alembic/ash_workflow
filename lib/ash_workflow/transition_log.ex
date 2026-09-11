@@ -69,9 +69,9 @@ defmodule AshWorkflow.TransitionLog do
   Returns the most recent row representing an actual state change, or `nil` if
   there is none.
 
-  Rows where `from_state == to_state` are skipped: a repeating timeout writes
-  one to re-arm its own trigger, and it did not move the workflow anywhere, so
-  it is not what an undo should reverse.
+  Rows where `from_state == to_state` are skipped: an action timeout writes one
+  to record that it fired, and it did not move the workflow anywhere, so it is
+  not what an undo should reverse.
   """
   @spec head_state_change(Ash.Resource.record()) :: Ash.Resource.record() | nil
   def head_state_change(record) do
