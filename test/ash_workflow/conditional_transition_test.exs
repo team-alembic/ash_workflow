@@ -194,6 +194,72 @@ defmodule AshWorkflow.ConditionalTransitionTest do
       assert Exception.message(error) =~ "No matching condition for transition :decide"
     end
 
+    test "a route reads the input the same call accepted" do
+      {:ok, workflow} =
+        AshWorkflowTest.AcceptedRouteWorkflow.create(%{title: "test"})
+
+      assert workflow.state == :review
+      assert is_nil(workflow.decision)
+
+      {:ok, workflow} =
+        Ash.update(workflow, %{decision: :approve}, action: :decide)
+
+      assert workflow.state == :approved
+      assert workflow.decision == :approve
+    end
+
+    test "the same transition routes elsewhere on a different accepted value" do
+      {:ok, workflow} =
+        AshWorkflowTest.AcceptedRouteWorkflow.create(%{title: "test"})
+
+      {:ok, workflow} =
+        Ash.update(workflow, %{decision: :reject}, action: :decide)
+
+      assert workflow.state == :rejected
+    end
+
+    test "an accepted value overrides the one already on the record" do
+      {:ok, workflow} =
+        AshWorkflowTest.AcceptedRouteWorkflow.create(%{title: "test", decision: :reject})
+
+      {:ok, workflow} =
+        Ash.update(workflow, %{decision: :approve}, action: :decide)
+
+      assert workflow.state == :approved
+    end
+
+    test "a route reading an untouched attribute still sees the loaded record" do
+      {:ok, workflow} =
+        AshWorkflowTest.AcceptedRouteWorkflow.create(%{title: "test", priority: :urgent})
+
+      {:ok, workflow} =
+        Ash.update(workflow, %{decision: :reject}, action: :escalate)
+
+      assert workflow.state == :approved
+    end
+
+    test "a route does not see an attribute the action's own change writes" do
+      {:ok, workflow} =
+        AshWorkflowTest.AcceptedRouteWorkflow.create(%{title: "test"})
+
+      assert is_nil(workflow.signed_by)
+
+      {:ok, workflow} = Ash.update(workflow, action: :sign_off)
+
+      assert workflow.signed_by == "signer"
+      assert workflow.state == :review
+    end
+
+    test "the second call routes on what the first call wrote" do
+      {:ok, workflow} =
+        AshWorkflowTest.AcceptedRouteWorkflow.create(%{title: "test"})
+
+      {:ok, workflow} = Ash.update(workflow, action: :sign_off)
+      {:ok, workflow} = Ash.update(workflow, action: :sign_off)
+
+      assert workflow.state == :approved
+    end
+
     test "static transition still works alongside conditional" do
       {:ok, workflow} =
         AshWorkflowTest.ConditionalWorkflow.create(%{title: "test", path_type: :full})

@@ -14,6 +14,17 @@ defmodule AshWorkflow.Entities.Transition do
       end
 
   A transition must have either `to` or at least one route, not both.
+
+  Routes are evaluated in declaration order and the first match wins.
+  Conditions see the record as it was loaded with the transition's `accept`
+  list applied, so a route can branch on an attribute the same call accepted,
+  while an attribute written by the action's own changes stays invisible:
+
+      transition :decide do
+        accept [:decision]
+        route :approved, when: expr(decision == :approve)
+        route :rejected, when: expr(decision == :reject)
+      end
   """
   defstruct [:name, :to, __spark_metadata__: nil, accept: [], routes: [], undoable?: false]
 

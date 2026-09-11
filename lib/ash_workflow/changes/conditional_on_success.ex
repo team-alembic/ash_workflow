@@ -3,11 +3,10 @@ defmodule AshWorkflow.Changes.ConditionalOnSuccess do
   An Ash change that evaluates an automatic step's `on_success` routes to
   determine the transition target.
 
-  Unlike `AshWorkflow.Changes.ConditionalTransition` (which evaluates a manual
-  transition's routes against the record *before* the update is applied),
-  this evaluates routes against the record *after* the step's own action has
-  run — including any attributes that action computed — since the whole point
-  of routing on `on_success` is to branch on what the action produced.
+  Like `AshWorkflow.Changes.ConditionalTransition`, this evaluates routes
+  against the record with the action's changes folded in — including any
+  attributes the action computed — since the whole point of routing on
+  `on_success` is to branch on what the action produced.
 
   In practice this means evaluating against the changeset with its changes
   applied (but not yet persisted): this change is appended after the action's

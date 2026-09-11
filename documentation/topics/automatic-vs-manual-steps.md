@@ -96,13 +96,13 @@ The inline shorthand still works for the common single-target case:
 step :process_application, action: :process_application, on_success: :review, on_error: :processing_failed
 ```
 
-**Timing matters here, and it's the opposite of manual `route`s.** A manual
-transition's `route` conditions run against the record *before* the update
-they guard — there's no "after" for something that hasn't happened yet.
-`on_success` conditions run *after* the step's own action, against whatever
-that action computed (`screen_score`, in the example above). That's
-deliberate: the entire reason to route on `on_success` is to branch on what
-the action produced, which doesn't exist until the action has run.
+`on_success` conditions run after the step's own action, against whatever
+that action computed (`screen_score`, in the example above). The entire reason
+to route on `on_success` is to branch on what the action produced, which does
+not exist until the action has run. A manual transition's `route` conditions
+see less: the record as it was loaded, plus the attributes the transition
+accepts. An attribute the action's own changes write is not visible to them,
+so a route can ask what the record looked like when the call arrived.
 
 ### User-defined actions
 

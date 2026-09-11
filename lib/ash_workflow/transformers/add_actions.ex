@@ -141,11 +141,17 @@ defmodule AshWorkflow.Transformers.AddActions do
     routes = build_routes_for_transition(step_transitions, state_attribute)
     is_conditional = length(routes) > 1 or has_explicit_routes?(step_transitions)
 
+    accepted =
+      step_transitions
+      |> Enum.flat_map(fn {_step, t} -> t.accept end)
+      |> Enum.uniq()
+
     transition_changes =
       if is_conditional do
         [
           Transformer.build_entity!(ResourceDsl, [:actions, :update], :change,
-            change: {ConditionalTransition, routes: routes, transition_name: name}
+            change:
+              {ConditionalTransition, routes: routes, transition_name: name, accept: accepted}
           )
         ]
       else
@@ -164,11 +170,6 @@ defmodule AshWorkflow.Transformers.AddActions do
       )
 
     changes = transition_changes ++ [record_event_change]
-
-    accepted =
-      step_transitions
-      |> Enum.flat_map(fn {_step, t} -> t.accept end)
-      |> Enum.uniq()
 
     actions = Transformer.get_entities(dsl, [:actions])
 
