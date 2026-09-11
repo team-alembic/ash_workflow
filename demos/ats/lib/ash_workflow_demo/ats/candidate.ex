@@ -61,10 +61,11 @@ defmodule AshWorkflowDemo.ATS.Candidate do
     # The dwell the audience sees. :verify_after is a per-candidate timestamp,
     # so the delay is data on the record rather than a sleep inside the scorer.
     step :submitted do
-      timeout :begin_verification,
-        after: {1, :seconds},
-        field: :verify_after,
-        transition_to: :verifying
+      timeout :begin_verification do
+        fire_after {1, :seconds}
+        field :verify_after
+        transition_to :verifying
+      end
     end
 
     step :verifying do
@@ -80,7 +81,7 @@ defmodule AshWorkflowDemo.ATS.Candidate do
 
       # 30 seconds is exactly what cron cannot express. The timer fires on the
       # instant, so the countdown on the projector and the transition agree.
-      timeout :auto_reject, after: {30, :seconds}, transition_to: :auto_rejected
+      timeout :auto_reject, fire_after: {30, :seconds}, transition_to: :auto_rejected
     end
 
     step :hired, terminal: true

@@ -9,7 +9,11 @@ that look alike in the DSL and behave quite differently.
 ## Repeating: measured from when the state was entered
 
 ```elixir
-timeout :dunning_email, after: {3, :days}, action: :send_dunning_email, repeat: true
+timeout :dunning_email do
+  fire_after {3, :days}
+  action :send_dunning_email
+  repeat true
+end
 ```
 
 Fires every three days for as long as the subscription stays in
@@ -20,10 +24,11 @@ directly in the tests.
 ## One-shot: measured against a date on the record
 
 ```elixir
-timeout :grace_expired,
-  after: {1, :minutes},
-  field: :grace_period_ends_at,
-  transition_to: :suspended
+timeout :grace_expired do
+  fire_after {1, :minutes}
+  field :grace_period_ends_at
+  transition_to :suspended
+end
 ```
 
 The deadline is a column, set by whatever marked the payment as failed. Two

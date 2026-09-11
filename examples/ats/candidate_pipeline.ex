@@ -135,8 +135,8 @@ defmodule ATS.CandidatePipeline do
       transition :reject_application, to: :rejected
       transition :hold, to: :on_hold
 
-      timeout :reminder, after: {2, :days}, action: :send_recruiter_reminder
-      timeout :escalation, after: {7, :days}, transition_to: :escalated
+      timeout :reminder, fire_after: {2, :days}, action: :send_recruiter_reminder
+      timeout :escalation, fire_after: {7, :days}, transition_to: :escalated
     end
 
     # ── Manual: on_hold — recruiter can revisit later ──
@@ -146,7 +146,7 @@ defmodule ATS.CandidatePipeline do
       transition :reactivate, to: :recruiter_screen
       transition :reject_held, to: :rejected
 
-      timeout :stale_check, after: {30, :days}, action: :notify_stale_candidate
+      timeout :stale_check, fire_after: {30, :days}, action: :notify_stale_candidate
     end
 
     # ── Automatic: send scheduling link for phone screen ──
@@ -164,7 +164,7 @@ defmodule ATS.CandidatePipeline do
       transition :fail, to: :rejected
       transition :reschedule, to: :phone_screen
 
-      timeout :nudge, after: {5, :days}, action: :remind_phone_screen_result
+      timeout :nudge, fire_after: {5, :days}, action: :remind_phone_screen_result
     end
 
     # ── Automatic: send onsite interview scheduling email ──
@@ -194,8 +194,13 @@ defmodule ATS.CandidatePipeline do
       transition :decline, to: :offer_declined
       transition :negotiate, to: :generate_offer
 
-      timeout :follow_up, after: {3, :days}, action: :send_offer_follow_up, repeat: true
-      timeout :expire, after: {14, :days}, transition_to: :offer_expired
+      timeout :follow_up do
+        fire_after {3, :days}
+        action :send_offer_follow_up
+        repeat true
+      end
+
+      timeout :expire, fire_after: {14, :days}, transition_to: :offer_expired
     end
 
     # ── Terminal states ──

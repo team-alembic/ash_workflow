@@ -18,7 +18,7 @@ defmodule AshWorkflowTest.CustomQueueWorkflow do
     step :review do
       transition :approve, to: :done
 
-      timeout :reminder, after: {2, :days}, action: :send_reminder
+      timeout :reminder, fire_after: {2, :days}, action: :send_reminder
     end
 
     step :done, terminal: true

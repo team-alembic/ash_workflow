@@ -7,7 +7,7 @@ defmodule AshWorkflowDemo.ATS.Candidate.Deadlines do
 
   `seconds/1` answers "how long is this timeout", from the DSL. Static copy
   wants it: "El Jefe has 30 seconds to decide" should say 30 because the DSL
-  says `after: {30, :seconds}`, not because someone typed 30 into a heredoc.
+  says `fire_after: {30, :seconds}`, not because someone typed 30 into a heredoc.
 
   `due_at/2` answers "when does this record's deadline fall", from the record's
   `pending_deadlines` calculation. A live countdown wants that, because the
@@ -21,7 +21,7 @@ defmodule AshWorkflowDemo.ATS.Candidate.Deadlines do
   The declared duration of a timeout, in seconds.
 
   Resolved at compile time from the workflow DSL, so changing
-  `after: {30, :seconds}` changes every place that quotes it.
+  `fire_after: {30, :seconds}` changes every place that quotes it.
   """
   @spec seconds(atom()) :: pos_integer()
   def seconds(timeout_name) do
@@ -31,7 +31,7 @@ defmodule AshWorkflowDemo.ATS.Candidate.Deadlines do
     |> Enum.find(&(&1.name == timeout_name))
     |> case do
       nil -> raise ArgumentError, "no timeout named #{inspect(timeout_name)} on #{Candidate}"
-      timeout -> in_seconds(timeout.after)
+      timeout -> in_seconds(timeout.fire_after)
     end
   end
 

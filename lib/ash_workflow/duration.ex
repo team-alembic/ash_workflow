@@ -1,6 +1,6 @@
 defmodule AshWorkflow.Duration do
   @moduledoc """
-  The duration tuple a `timeout` measures with `after` and a `retry` block
+  The duration tuple a `timeout` measures with `fire_after` and a `retry` block
   waits with `backoff`.
 
   It exists so both read the same tuple: `{3, :days}`, `{10, :seconds}`.

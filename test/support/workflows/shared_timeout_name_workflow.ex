@@ -21,15 +21,15 @@ defmodule AshWorkflowTest.SharedTimeoutNameWorkflow do
     step :urgent do
       transition :resolve, to: :resolved
 
-      timeout :sla_breach, after: {1, :hours}, transition_to: :breached
-      timeout :warn, after: {30, :minutes}, action: :send_warning
+      timeout :sla_breach, fire_after: {1, :hours}, transition_to: :breached
+      timeout :warn, fire_after: {30, :minutes}, action: :send_warning
     end
 
     step :standard do
       transition :resolve, to: :resolved
 
-      timeout :sla_breach, after: {2, :days}, transition_to: :breached
-      timeout :warn, after: {1, :days}, action: :send_warning
+      timeout :sla_breach, fire_after: {2, :days}, transition_to: :breached
+      timeout :warn, fire_after: {1, :days}, action: :send_warning
     end
 
     step :resolved, terminal: true

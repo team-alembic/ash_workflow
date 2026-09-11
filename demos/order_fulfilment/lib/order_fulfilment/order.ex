@@ -66,7 +66,7 @@ defmodule OrderFulfilment.Order do
       transition :retry_payment, to: :charging_card
       transition :cancel, to: :cancelled, accept: [:cancellation_reason]
 
-      timeout :abandon, after: {3, :days}, transition_to: :cancelled
+      timeout :abandon, fire_after: {3, :days}, transition_to: :cancelled
     end
 
     # Recoverable failure: stock arrives and we re-enter the chain.
@@ -74,7 +74,11 @@ defmodule OrderFulfilment.Order do
       transition :restocked, to: :reserving_stock
       transition :cancel, to: :cancelled, accept: [:cancellation_reason]
 
-      timeout :chase_supplier, after: {2, :days}, action: :chase_supplier, repeat: true
+      timeout :chase_supplier do
+        fire_after {2, :days}
+        action :chase_supplier
+        repeat true
+      end
     end
 
     # Unrecoverable without a human: warehouse staff have to look at it.

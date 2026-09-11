@@ -45,7 +45,7 @@ defmodule AshWorkflowTest.RetryWorkflow do
       transition :resolve, to: :done
 
       timeout :nudge,
-        after: {2, :days},
+        fire_after: {2, :days},
         action: :send_nudge,
         do:
           (retry do

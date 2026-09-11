@@ -24,8 +24,8 @@ defmodule AshWorkflowTest.CustomSchedulerWorkflow do
     step :review do
       transition :approve, to: :approved
 
-      timeout :nudge, after: {2, :days}, action: :send_nudge
-      timeout :escalate, after: {7, :days}, transition_to: :escalated
+      timeout :nudge, fire_after: {2, :days}, action: :send_nudge
+      timeout :escalate, fire_after: {7, :days}, transition_to: :escalated
     end
 
     step :approved, terminal: true

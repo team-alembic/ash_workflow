@@ -20,17 +20,17 @@ defmodule AshWorkflowTest.CheckIntervalWorkflow do
     step :waiting do
       transition :resolve, to: :done
 
-      timeout :inherits, after: {3, :days}, action: :send_reminder
+      timeout :inherits, fire_after: {3, :days}, action: :send_reminder
 
       # Sub-minute deadlines are only legal when something other than cron
       # drives the trigger.
       timeout :self_scheduled,
-        after: {5, :seconds},
+        fire_after: {5, :seconds},
         action: :send_reminder,
         self_scheduled?: true
 
       timeout :overrides,
-        after: {7, :days},
+        fire_after: {7, :days},
         transition_to: :escalated,
         check_interval: "0 9 * * *"
     end

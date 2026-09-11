@@ -42,7 +42,8 @@ defmodule AshWorkflow.DocumentationDriftTest do
      "workflows are started through your own create action"},
     {~S"\bstart/1", "workflows are started through your own create action"},
     {~S"check_interval:?\s+false",
-     "check_interval is a cron string; `self_scheduled?: true` is what opts a timeout out of polling"}
+     "check_interval is a cron string; `self_scheduled?: true` is what opts a timeout out of polling"},
+    {~S"(?<!fire_)\bafter:", "a timeout's duration option is `fire_after`, not `after`"}
   ]
 
   # Claims about behaviour that were documented after the behaviour changed.

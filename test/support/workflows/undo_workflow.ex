@@ -41,7 +41,7 @@ defmodule AshWorkflowTest.UndoWorkflow do
         route :publish, when: expr(priority == :high)
       end
 
-      timeout :nudge, after: {2, :days}, action: :send_nudge, repeat: true
+      timeout :nudge, fire_after: {2, :days}, action: :send_nudge, repeat: true
     end
 
     step :done, terminal: true

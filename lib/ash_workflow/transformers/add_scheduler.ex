@@ -93,7 +93,7 @@ defmodule AshWorkflow.Transformers.AddScheduler do
 
   defp timeout_work(step, timeout, resource, state_attribute) do
     step_name = step.name
-    {duration_value, duration_unit} = timeout.after
+    {duration_value, duration_unit} = timeout.fire_after
     ago_unit = singular_unit(duration_unit)
     field = timeout.field
 
@@ -117,7 +117,7 @@ defmodule AshWorkflow.Transformers.AddScheduler do
           ^in_step(state_attribute, step_name) and
             ^ref(field) <= ago(^duration_value, ^ago_unit)
         ),
-      deadline: %{field: field, after: timeout.after},
+      deadline: %{field: field, fire_after: timeout.fire_after},
       repeat?: timeout.repeat,
       # An action timeout does not change state, so nothing stops it matching
       # again on the next poll. A transition timeout leaves the step it matched

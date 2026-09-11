@@ -46,7 +46,7 @@ defmodule AshWorkflow.Scheduler.Work do
 
   @type deadline :: %{
           field: atom(),
-          after: {pos_integer(), AshWorkflow.Entities.Timeout.duration_unit()}
+          fire_after: {pos_integer(), AshWorkflow.Entities.Timeout.duration_unit()}
         }
 
   @type t :: %__MODULE__{

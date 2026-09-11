@@ -18,7 +18,7 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutFieldsTest do
               transition :resolve, to: :done
 
               timeout :bad_timeout,
-                after: {3, :days},
+                fire_after: {3, :days},
                 field: :nonexistent_field,
                 transition_to: :escalated
             end
@@ -51,7 +51,7 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutFieldsTest do
               transition :deactivate, to: :inactive
 
               timeout :bad_repeat,
-                after: {3, :days},
+                fire_after: {3, :days},
                 field: :last_session_date,
                 action: :send_reminder,
                 repeat: true
@@ -91,7 +91,7 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutFieldsTest do
               transition :resolve, to: :done
 
               timeout :bad_type,
-                after: {3, :days},
+                fire_after: {3, :days},
                 field: :priority,
                 transition_to: :escalated
             end
@@ -125,7 +125,7 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutFieldsTest do
               transition :resolve, to: :done
 
               timeout :bad_calc,
-                after: {3, :days},
+                fire_after: {3, :days},
                 field: :entered_current_state_at,
                 transition_to: :escalated
             end

@@ -20,7 +20,7 @@ defmodule AshWorkflowTest.PreciseTimeoutWorkflow do
     step :waiting do
       transition :resolve, to: :done
 
-      timeout :nudge, after: {5, :seconds}, transition_to: :escalated
+      timeout :nudge, fire_after: {5, :seconds}, transition_to: :escalated
     end
 
     step :done, terminal: true

@@ -49,25 +49,30 @@ defmodule SubscriptionDunning.Subscription do
       transition :cancel, to: :cancelled, accept: [:cancellation_reason]
 
       # Fires repeatedly while the customer remains in arrears.
-      timeout :dunning_email, after: {3, :days}, action: :send_dunning_email, repeat: true
+      timeout :dunning_email do
+        fire_after {3, :days}
+        action :send_dunning_email
+        repeat true
+      end
 
       # Fires once, against a date the billing system put on the record. The
       # duration is relative to that field, so {1, :minutes} means "as soon as
       # grace_period_ends_at has passed" — durations must be positive, and must
       # be at least a minute because cron cannot poll faster than that. With an
       # hourly check_interval the exact duration makes no observable difference.
-      timeout :grace_expired,
-        after: {1, :minutes},
-        field: :grace_period_ends_at,
-        transition_to: :suspended
+      timeout :grace_expired do
+        fire_after {1, :minutes}
+        field :grace_period_ends_at
+        transition_to :suspended
+      end
     end
 
     step :suspended do
       transition :payment_received, to: :active
       transition :cancel, to: :cancelled, accept: [:cancellation_reason]
 
-      timeout :final_notice, after: {7, :days}, action: :send_final_notice
-      timeout :give_up, after: {30, :days}, transition_to: :cancelled
+      timeout :final_notice, fire_after: {7, :days}, action: :send_final_notice
+      timeout :give_up, fire_after: {30, :days}, transition_to: :cancelled
     end
 
     step :cancelled, terminal: true

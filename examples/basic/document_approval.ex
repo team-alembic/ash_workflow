@@ -45,7 +45,7 @@ defmodule BasicWorkflow.DocumentApproval do
       transition :approve, to: :approved
       transition :reject, to: :rejected
 
-      timeout :reminder, after: {3, :days}, action: :send_review_reminder
+      timeout :reminder, fire_after: {3, :days}, action: :send_review_reminder
     end
 
     step :approved, terminal: true

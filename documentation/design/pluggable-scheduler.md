@@ -121,7 +121,7 @@ timer. Its floor is the timer, which measures in microseconds.
 ```elixir
 %Work{
   match: expr(state == :review and state_entered_at <= ago(30, :second)),
-  deadline: %{field: :state_entered_at, after: {30, :seconds}}
+  deadline: %{field: :state_entered_at, fire_after: {30, :seconds}}
 }
 ```
 
@@ -165,7 +165,7 @@ Four steps, each shippable and each leaving the suite green.
    nothing already enqueued is orphaned.
 2. **Add a second.** Done. `AshWorkflow.Scheduler.Precise` registers deadlines
    and arms timers, with the resource as its durable store — a deadline is
-   `field + after`, derivable from rows that already exist, which is the same
+   `field + fire_after`, derivable from rows that already exist, which is the same
    property that made `pending_deadlines` a calculation instead of a table.
    `AshWorkflow.Scheduler.Precise.Timeline` holds the timers, and
    `AshWorkflow.Scheduler.notify_state_change/1` is the call site that the

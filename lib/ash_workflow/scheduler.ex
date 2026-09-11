@@ -292,7 +292,7 @@ defmodule AshWorkflow.Scheduler do
   @spec due_at(Work.t(), Ash.Resource.record()) :: DateTime.t() | nil
   def due_at(%Work{deadline: nil}, _record), do: nil
 
-  def due_at(%Work{deadline: %{field: field, after: {value, unit}}}, record) do
+  def due_at(%Work{deadline: %{field: field, fire_after: {value, unit}}}, record) do
     case Map.get(record, field) do
       nil -> nil
       from -> DateTime.add(as_datetime(from), value, singular(unit))

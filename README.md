@@ -35,8 +35,8 @@ defmodule MyApp.CandidatePipeline do
       transition :approve, to: :phone_screen
       transition :reject_application, to: :rejected
 
-      timeout :reminder, after: {2, :days}, action: :send_review_reminder
-      timeout :escalation, after: {7, :days}, transition_to: :escalated_review
+      timeout :reminder, fire_after: {2, :days}, action: :send_review_reminder
+      timeout :escalation, fire_after: {7, :days}, transition_to: :escalated_review
     end
 
     step :phone_screen do
@@ -51,7 +51,7 @@ defmodule MyApp.CandidatePipeline do
       transition :fail, to: :rejected
       transition :reschedule, to: :phone_screen
 
-      timeout :nudge, after: {5, :days}, action: :remind_interviewer
+      timeout :nudge, fire_after: {5, :days}, action: :remind_interviewer
     end
 
     step :onsite_interview do
@@ -76,7 +76,7 @@ defmodule MyApp.CandidatePipeline do
       transition :decline, to: :offer_declined
       transition :negotiate, to: :send_offer
 
-      timeout :expire, after: {14, :days}, transition_to: :offer_expired
+      timeout :expire, fire_after: {14, :days}, transition_to: :offer_expired
     end
 
     step :onboarding do
@@ -259,10 +259,10 @@ step :recruiter_review do
   transition :reject_application, to: :rejected
 
   # Send a reminder after 2 days, but stay in the same state
-  timeout :reminder, after: {2, :days}, action: :send_review_reminder
+  timeout :reminder, fire_after: {2, :days}, action: :send_review_reminder
 
   # Force a transition after 7 days
-  timeout :escalation, after: {7, :days}, transition_to: :escalated_review
+  timeout :escalation, fire_after: {7, :days}, transition_to: :escalated_review
 end
 ```
 
@@ -282,8 +282,13 @@ workflow do
   step :awaiting_review do
     transition :approve, to: :approved
 
-    timeout :nudge, after: {2, :days}, action: :send_nudge
-    timeout :daily_check, after: {3, :days}, action: :check_status, check_interval: "0 9 * * *"
+    timeout :nudge, fire_after: {2, :days}, action: :send_nudge
+
+    timeout :daily_check do
+      fire_after {3, :days}
+      action :check_status
+      check_interval "0 9 * * *"
+    end
   end
 end
 ```

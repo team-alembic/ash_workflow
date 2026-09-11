@@ -29,7 +29,7 @@ defmodule AshWorkflow.Transformers.AddTimeoutTriggersTest do
 
   describe "action timeout triggers" do
     test "matches records past the deadline" do
-      # Reminder timeout is after: {2, :days} — backdate to 3 days ago
+      # Reminder timeout is fire_after: {2, :days} — backdate to 3 days ago
       workflow = create_with_backdated_state_entered_at(TimeoutWorkflow, %{title: "overdue"}, 3)
 
       trigger = trigger(TimeoutWorkflow, :__timeout_trigger_waiting_reminder)
@@ -50,7 +50,7 @@ defmodule AshWorkflow.Transformers.AddTimeoutTriggersTest do
 
   describe "transition timeout triggers" do
     test "matches records past the deadline" do
-      # Escalation timeout is after: {7, :days} — backdate to 8 days ago
+      # Escalation timeout is fire_after: {7, :days} — backdate to 8 days ago
       workflow = create_with_backdated_state_entered_at(TimeoutWorkflow, %{title: "stale"}, 8)
 
       trigger = trigger(TimeoutWorkflow, :__timeout_trigger_waiting_escalation)

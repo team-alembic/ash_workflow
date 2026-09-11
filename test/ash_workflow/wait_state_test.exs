@@ -87,7 +87,7 @@ defmodule AshWorkflow.WaitStateTest do
 
           workflow do
             step :queued do
-              timeout :nudge, after: {1, :days}, action: :remind
+              timeout :nudge, fire_after: {1, :days}, action: :remind
             end
 
             step :done, terminal: true
@@ -121,7 +121,7 @@ defmodule AshWorkflow.WaitStateTest do
           workflow do
             step :queued do
               on_success :running
-              timeout :release, after: {1, :days}, transition_to: :running
+              timeout :release, fire_after: {1, :days}, transition_to: :running
             end
 
             step :running, terminal: true

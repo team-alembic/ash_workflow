@@ -63,7 +63,7 @@ defmodule AshWorkflow.Verifiers.ValidateRetryTest do
           "RetryOnWaitState",
           """
           step :queued do
-            timeout :release, after: {1, :minutes}, transition_to: :done
+            timeout :release, fire_after: {1, :minutes}, transition_to: :done
 
             retry do
               max_attempts 2

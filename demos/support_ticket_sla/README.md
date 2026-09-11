@@ -30,11 +30,11 @@ never need to know which step a ticket is in.
 
 ```elixir
 step :urgent_queue do
-  timeout :sla_breach, after: {1, :hours}, transition_to: :escalated
+  timeout :sla_breach, fire_after: {1, :hours}, transition_to: :escalated
 end
 
 step :standard_queue do
-  timeout :sla_breach, after: {2, :days}, transition_to: :escalated
+  timeout :sla_breach, fire_after: {2, :days}, transition_to: :escalated
 end
 ```
 

@@ -32,7 +32,7 @@ defmodule AshWorkflowTest.StatusWorkflow do
         route :rejected, when: expr(priority == :normal)
       end
 
-      timeout :escalation, after: {7, :days}, transition_to: :escalated
+      timeout :escalation, fire_after: {7, :days}, transition_to: :escalated
     end
 
     step :published, terminal: true
