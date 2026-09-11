@@ -1,8 +1,8 @@
 import Config
 
 config :ash,
-  include_embedded_source_by_default?: false,
   default_string_length_count: :codepoints,
+  include_embedded_source_by_default?: false,
   default_page_type: :keyset,
   policies: [no_filter_static_forbidden_reads?: false]
 
