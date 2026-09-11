@@ -6,6 +6,11 @@ defmodule AshWorkflowTest.AcceptedRouteWorkflow do
   the shape most decision steps take: submit the outcome, and route on the
   outcome. It also covers the case where a route reads an attribute the call
   did not touch, which still comes from the record as it was loaded.
+
+  `:sign_off` covers the opposite: an attribute written by the action's own
+  change is not visible to the routes, so a route can ask what the record
+  looked like before this call while the same action records the caller. This
+  is what the document_approval demo's two-signature sign-off relies on.
   """
 
   use Ash.Resource,
@@ -26,6 +31,11 @@ defmodule AshWorkflowTest.AcceptedRouteWorkflow do
         route :approved, when: expr(priority == :urgent)
         route :rejected, when: expr(priority == :normal)
       end
+
+      transition :sign_off do
+        route :approved, when: expr(not is_nil(signed_by))
+        route :review, when: expr(is_nil(signed_by))
+      end
     end
 
     step :approved, terminal: true
@@ -39,6 +49,13 @@ defmodule AshWorkflowTest.AcceptedRouteWorkflow do
   actions do
     create :create do
       accept [:title, :decision, :priority]
+    end
+
+    update :sign_off do
+      accept []
+      require_atomic? false
+
+      change AshWorkflowTest.Changes.RecordSignature
     end
   end
 
@@ -55,5 +72,7 @@ defmodule AshWorkflowTest.AcceptedRouteWorkflow do
       allow_nil?: true,
       constraints: [one_of: [:urgent, :normal]],
       public?: true
+
+    attribute :signed_by, :string, allow_nil?: true, public?: true
   end
 end

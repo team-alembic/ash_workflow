@@ -100,8 +100,9 @@ step :process_application, action: :process_application, on_success: :review, on
 that action computed (`screen_score`, in the example above). The entire reason
 to route on `on_success` is to branch on what the action produced, which does
 not exist until the action has run. A manual transition's `route` conditions
-read the record the same way, so both kinds of route see the changes the
-action made rather than the record as it was on entry to the step.
+see less: the record as it was loaded, plus the attributes the transition
+accepts. An attribute the action's own changes write is not visible to them,
+so a route can ask what the record looked like when the call arrived.
 
 ### User-defined actions
 

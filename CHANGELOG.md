@@ -58,7 +58,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- A manual transition's `route` conditions now see the input the same call accepted. `AshWorkflow.Changes.ConditionalTransition` evaluated them against `changeset.data`, so `route :approved, when: expr(decision == :approve)` on a transition that accepts `:decision` could only match a value already persisted, and "submit the outcome, then route on the outcome" needed a separate transition name per outcome or a custom change. It now reads the record with the changeset's attributes applied, the same way `AshWorkflow.Changes.ConditionalOnSuccess` already did. Attributes the call does not touch still come from the record as it was loaded.
+- A manual transition's `route` conditions now see the input the same call accepted. `AshWorkflow.Changes.ConditionalTransition` evaluated them against `changeset.data`, so `route :approved, when: expr(decision == :approve)` on a transition that accepts `:decision` could only match a value already persisted, and "submit the outcome, then route on the outcome" needed a separate transition name per outcome or a custom change. Routes now read the record as it was loaded with the transition's `accept` list applied on top.
+
+  Only the accepted attributes are applied. An attribute written by one of the action's own changes stays invisible to the routes, so a route can still ask what the record looked like when the call arrived — which is what a two-signature sign-off needs, where one action records the current approver and the routes ask whether anyone approved before. `AshWorkflow.Changes.ConditionalOnSuccess` continues to apply every pending attribute, since an automatic step has no caller input to distinguish from what its action computed.
 - A timeout `field` referencing a module calculation is now rejected at compile time. Only expression calculations inline into a data-layer filter, so a module calculation passed the verifier and then raised when the scheduler built its query. Use an expression calculation or a plain attribute.
 
 ### Changed

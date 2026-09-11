@@ -192,7 +192,7 @@ end
 
 The user calls `:complete_review` — the workflow evaluates conditions at runtime using `Ash.Expr` and routes to the first match. If no condition matches, the action fails with a clear error.
 
-Conditions read the record with the action's changes applied, so a transition can accept the value it routes on:
+Conditions read the record as it was loaded, plus the attributes the transition accepts, so a transition can accept the value it routes on:
 
 ```elixir
 step :review do
@@ -204,7 +204,7 @@ step :review do
 end
 ```
 
-`CandidatePipeline.decide(workflow, %{decision: :approve})` lands in `:approved`. Attributes the call does not touch come from the record as it was loaded.
+`CandidatePipeline.decide(workflow, %{decision: :approve})` lands in `:approved`. An attribute written by one of the action's own changes is not visible to the routes, so a route can still ask what the record looked like before the call.
 
 ## Authorization
 

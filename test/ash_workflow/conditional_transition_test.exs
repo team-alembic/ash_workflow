@@ -238,6 +238,28 @@ defmodule AshWorkflow.ConditionalTransitionTest do
       assert workflow.state == :approved
     end
 
+    test "a route does not see an attribute the action's own change writes" do
+      {:ok, workflow} =
+        AshWorkflowTest.AcceptedRouteWorkflow.create(%{title: "test"})
+
+      assert is_nil(workflow.signed_by)
+
+      {:ok, workflow} = Ash.update(workflow, action: :sign_off)
+
+      assert workflow.signed_by == "signer"
+      assert workflow.state == :review
+    end
+
+    test "the second call routes on what the first call wrote" do
+      {:ok, workflow} =
+        AshWorkflowTest.AcceptedRouteWorkflow.create(%{title: "test"})
+
+      {:ok, workflow} = Ash.update(workflow, action: :sign_off)
+      {:ok, workflow} = Ash.update(workflow, action: :sign_off)
+
+      assert workflow.state == :approved
+    end
+
     test "static transition still works alongside conditional" do
       {:ok, workflow} =
         AshWorkflowTest.ConditionalWorkflow.create(%{title: "test", path_type: :full})
