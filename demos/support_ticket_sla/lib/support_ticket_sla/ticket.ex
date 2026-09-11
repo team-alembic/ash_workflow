@@ -44,7 +44,7 @@ defmodule SupportTicketSla.Ticket do
       end
 
       # An unattended ticket is a support failure regardless of priority.
-      timeout :untriaged, after: {4, :hours}, transition_to: :escalated
+      timeout :untriaged, fire_after: {4, :hours}, transition_to: :escalated
     end
 
     step :urgent_queue do
@@ -53,8 +53,8 @@ defmodule SupportTicketSla.Ticket do
       transition :resolve, to: :resolved, accept: [:resolution]
       transition :escalate, to: :escalated
 
-      timeout :sla_breach, after: {1, :hours}, transition_to: :escalated
-      timeout :warn, after: {30, :minutes}, action: :warn_sla_approaching
+      timeout :sla_breach, fire_after: {1, :hours}, transition_to: :escalated
+      timeout :warn, fire_after: {30, :minutes}, action: :warn_sla_approaching
     end
 
     step :standard_queue do
@@ -63,7 +63,7 @@ defmodule SupportTicketSla.Ticket do
       transition :resolve, to: :resolved, accept: [:resolution]
       transition :escalate, to: :escalated
 
-      timeout :sla_breach, after: {2, :days}, transition_to: :escalated
+      timeout :sla_breach, fire_after: {2, :days}, transition_to: :escalated
     end
 
     step :backlog do
@@ -74,7 +74,11 @@ defmodule SupportTicketSla.Ticket do
       # rather than going to a manager — the same verb, a different meaning.
       transition :escalate, to: :standard_queue
 
-      timeout :stale, after: {30, :days}, action: :flag_stale, repeat: true
+      timeout :stale do
+        fire_after {30, :days}
+        action :flag_stale
+        repeat true
+      end
     end
 
     step :escalated do

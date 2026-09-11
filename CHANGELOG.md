@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Breaking:** The `timeout` entity's `after` option is renamed to `fire_after`, with no alias. `after` is a reserved block clause in Elixir, so `timeout :x do after {3, :days} ... end` never parsed — it swallowed every following line into an `after:` clause — and a timeout that also wanted a `retry` block had no inline spelling left to reach for. `fire_after` is not reserved, so both the inline form and the block form work, and a timeout can now combine a duration with a `retry` block without contorting the call into `do: (retry do ... end)`. A workflow still declaring `after: {3, :days}` fails to compile with `unknown options [:after], valid options are: [..., :fire_after, ...]`; rename the option to fix it. The `deadline` map `AshWorkflow.Scheduler.Work` builds for a timeout renames its `after` key to `fire_after` the same way.
 - **Breaking:** Resources must add the `AshOban` extension themselves:
 
       use Ash.Resource,
@@ -38,9 +39,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Breaking:** A timeout whose `after` is shorter than one minute is now a compile error unless it sets `self_scheduled?: true`. Timeouts fire when an Oban cron scheduler next notices the deadline has passed, and cron cannot poll below one minute — `Oban.Cron` zeroes the seconds field and only wakes on minute boundaries. So `after: {30, :seconds}` compiled happily and then fired up to 60 seconds late, an error larger than the deadline itself. The DSL accepted `:seconds` durations and the docs advertised them, which made this a documented promise the scheduler could not keep.
+- **Breaking:** A timeout whose `fire_after` is shorter than one minute is now a compile error unless it sets `self_scheduled?: true`. Timeouts fire when an Oban cron scheduler next notices the deadline has passed, and cron cannot poll below one minute — `Oban.Cron` zeroes the seconds field and only wakes on minute boundaries. So `fire_after: {30, :seconds}` compiled happily and then fired up to 60 seconds late, an error larger than the deadline itself. The DSL accepted `:seconds` durations and the docs advertised them, which made this a documented promise the scheduler could not keep.
 
-  Sub-minute durations paired with a custom `field` were an idiom for "as soon as that instant has passed", since `after` must be positive. Spell that `{1, :minutes}` — under any polling interval it means the same thing.
+  Sub-minute durations paired with a custom `field` were an idiom for "as soon as that instant has passed", since `fire_after` must be positive. Spell that `{1, :minutes}` — under any polling interval it means the same thing.
 
 - **Indexes for the generated triggers.** Resources using `AshPostgres.DataLayer` now get a `(state, <timeout field>)` composite index per distinct timeout field, or `(state)` alone for workflows with no timeouts. Every trigger filters on `state`, and `ago/2` compiles to a bind parameter rather than a per-row function call, so a timeout's query reaches Postgres as `state = $1 AND state_entered_at <= $2` — indexable all along, but unindexed by default, which made every poll a sequential scan. Indexes are created `concurrently`, so adding them to an existing table does not lock it. An existing `custom_indexes` entry on the same fields takes precedence.
 - `generate_indexes?` on the `workflow` block, to turn that off.

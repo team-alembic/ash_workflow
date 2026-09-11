@@ -23,7 +23,7 @@ defmodule AshWorkflowTest.Postgres.OwnIndexWorkflow do
     step :review do
       transition :approve, to: :approved
 
-      timeout :escalation, after: {2, :days}, transition_to: :escalated
+      timeout :escalation, fire_after: {2, :days}, transition_to: :escalated
     end
 
     step :approved, terminal: true

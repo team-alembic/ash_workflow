@@ -88,8 +88,13 @@ defmodule WorkflowTimeline.IncidentResponse.UndoableIncident do
       transition :escalate, to: :escalated, undoable?: true
       transition :resolve, to: :resolved, undoable?: true
 
-      timeout :status_reminder, after: {90, :seconds}, action: :send_status_update, repeat: true
-      timeout :auto_escalate, after: {8, :minutes}, transition_to: :escalated
+      timeout :status_reminder do
+        fire_after {90, :seconds}
+        action :send_status_update
+        repeat true
+      end
+
+      timeout :auto_escalate, fire_after: {8, :minutes}, transition_to: :escalated
     end
 
     step :escalated do

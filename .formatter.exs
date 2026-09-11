@@ -1,12 +1,12 @@
 spark_locals_without_parens = [
   accept: 1,
   action: 1,
-  after: 1,
   backoff: 1,
   belongs_to_actor: 2,
   belongs_to_actor: 3,
   check_interval: 1,
   field: 1,
+  fire_after: 1,
   generate_indexes?: 1,
   initial: 1,
   max_attempts: 1,

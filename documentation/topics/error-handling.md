@@ -53,16 +53,17 @@ end
 - `max_attempts` defaults to `1`. A step with no `retry` block gets that default, so its `on_error` moves it to the error state on the very first failure. The example above raises that to three attempts before `:process` moves to `:failed`.
 - `backoff` is a duration tuple, such as `{10, :seconds}`, for a fixed delay between attempts, or `:exponential` to grow the delay with the attempt number. It has no effect while `max_attempts` is `1`.
 
-A timeout can declare its own `retry` block, with the same options and the same defaults. `after` is a reserved block clause in Elixir, so it stays an inline option and the `retry` block is passed as `do:`:
+A timeout can declare its own `retry` block, with the same options and the same defaults:
 
 ```elixir
-timeout :reminder,
-  after: {3, :days},
-  action: :send_reminder,
-  do:
-    (retry do
-       max_attempts 3
-     end)
+timeout :reminder do
+  fire_after {3, :days}
+  action :send_reminder
+
+  retry do
+    max_attempts 3
+  end
+end
 ```
 
 `AshWorkflow.Scheduler.Oban` and `AshWorkflow.Scheduler.Precise` honour `retry` through different mechanisms but the same meaning. Oban turns `max_attempts` and `backoff` into the generated trigger's own options and lets Oban's own retry loop run the attempts. Precise re-arms its timer for the backoff delay after a failed attempt, under the same key the original deadline used. Either way, `on_error` runs only after the final attempt has failed. It never runs on an attempt a retry will follow.

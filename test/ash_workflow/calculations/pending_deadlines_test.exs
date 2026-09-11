@@ -31,7 +31,7 @@ defmodule AshWorkflow.Calculations.PendingDeadlinesTest do
       assert [%{name: :reminder}, %{name: :escalation}] = deadlines(record)
     end
 
-    test "computes due_at as field + after", %{record: record} do
+    test "computes due_at as field + fire_after", %{record: record} do
       assert [reminder, escalation] = deadlines(record)
 
       assert DateTime.diff(reminder.due_at, record.state_entered_at, :day) == 2

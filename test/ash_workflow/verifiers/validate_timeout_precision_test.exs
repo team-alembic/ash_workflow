@@ -48,7 +48,7 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutPrecisionTest do
       assert_dsl_error(
         workflow(
           "SubMinuteSeconds",
-          "timeout :nudge, after: {30, :seconds}, action: :send_reminder"
+          "timeout :nudge, fire_after: {30, :seconds}, action: :send_reminder"
         ),
         ~r/which is shorter than AshWorkflow.Scheduler.Oban can honour/
       )
@@ -56,7 +56,10 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutPrecisionTest do
 
     test "the smallest possible duration" do
       assert_dsl_error(
-        workflow("OneSecond", "timeout :nudge, after: {1, :seconds}, action: :send_reminder"),
+        workflow(
+          "OneSecond",
+          "timeout :nudge, fire_after: {1, :seconds}, action: :send_reminder"
+        ),
         ~r/checks no more often than every 1m/
       )
     end
@@ -65,7 +68,7 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutPrecisionTest do
       assert_dsl_error(
         workflow(
           "SubMinuteCustomField",
-          "timeout :nudge, after: {1, :seconds}, field: :deadline_at, action: :send_reminder"
+          "timeout :nudge, fire_after: {1, :seconds}, field: :deadline_at, action: :send_reminder"
         ),
         ~r/which is shorter than AshWorkflow.Scheduler.Oban can honour/
       )
@@ -75,7 +78,7 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutPrecisionTest do
       assert_dsl_error(
         workflow(
           "SubMinuteTransition",
-          "timeout :nudge, after: {5, :seconds}, transition_to: :escalated"
+          "timeout :nudge, fire_after: {5, :seconds}, transition_to: :escalated"
         ),
         ~r/which is shorter than AshWorkflow.Scheduler.Oban can honour/
       )
@@ -85,15 +88,15 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutPrecisionTest do
       assert_dsl_error(
         workflow(
           "SubMinuteGuidance",
-          "timeout :nudge, after: {5, :seconds}, action: :send_reminder"
+          "timeout :nudge, fire_after: {5, :seconds}, action: :send_reminder"
         ),
-        ~r/after: \{1, :minutes\}/
+        ~r/fire_after: \{1, :minutes\}/
       )
 
       assert_dsl_error(
         workflow(
           "SubMinuteGuidance2",
-          "timeout :nudge, after: {5, :seconds}, action: :send_reminder"
+          "timeout :nudge, fire_after: {5, :seconds}, action: :send_reminder"
         ),
         ~r/self_scheduled\?: true/
       )
@@ -105,7 +108,7 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutPrecisionTest do
       assert_dsl_error(
         workflow(
           "SubMinuteNamesPrecise",
-          "timeout :nudge, after: {5, :seconds}, action: :send_reminder"
+          "timeout :nudge, fire_after: {5, :seconds}, action: :send_reminder"
         ),
         ~r/scheduler AshWorkflow.Scheduler.Precise/
       )
@@ -122,7 +125,7 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutPrecisionTest do
         |> Map.fetch!(:timeouts)
         |> Enum.find(&(&1.name == :nudge))
 
-      assert timeout.after == {5, :seconds}
+      assert timeout.fire_after == {5, :seconds}
       refute timeout.self_scheduled?
     end
   end
@@ -164,6 +167,18 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutPrecisionTest do
 
       assert trigger.scheduler_cron == "0 * * * *"
       assert trigger.scheduler
+    end
+  end
+
+  describe "the retired `after` option" do
+    test "no longer compiles" do
+      assert_dsl_error(
+        workflow(
+          "RetiredAfterOption",
+          "timeout :nudge, after: {3, :days}, action: :send_reminder"
+        ),
+        ~r/unknown options \[:after\], valid options are:.*:fire_after/
+      )
     end
   end
 end

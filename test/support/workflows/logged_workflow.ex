@@ -27,9 +27,9 @@ defmodule AshWorkflowTest.LoggedWorkflow do
       transition :approve, to: :done
       transition :reject, to: :rejected
 
-      timeout :reminder, after: {2, :days}, action: :send_reminder, repeat: true
-      timeout :nudge, after: {3, :days}, action: :send_nudge
-      timeout :escalation, after: {7, :days}, transition_to: :escalated
+      timeout :reminder, fire_after: {2, :days}, action: :send_reminder, repeat: true
+      timeout :nudge, fire_after: {3, :days}, action: :send_nudge
+      timeout :escalation, fire_after: {7, :days}, transition_to: :escalated
     end
 
     step :done, terminal: true

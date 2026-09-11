@@ -20,7 +20,7 @@ defmodule AshWorkflowTest.ExprCalcTimeoutWorkflow do
       transition :deactivate, to: :inactive
 
       timeout :inactivity,
-        after: {3, :days},
+        fire_after: {3, :days},
         field: :grace_period_start,
         transition_to: :inactive_review
     end

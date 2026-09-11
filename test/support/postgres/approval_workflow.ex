@@ -30,7 +30,7 @@ defmodule AshWorkflowTest.Postgres.ApprovalWorkflow do
       transition :approve, to: :approved
       transition :reject, to: :rejected
 
-      timeout :escalation, after: {2, :days}, transition_to: :escalated
+      timeout :escalation, fire_after: {2, :days}, transition_to: :escalated
     end
 
     step :approved, terminal: true

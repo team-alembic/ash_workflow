@@ -20,7 +20,7 @@ Action timeouts run an Ash action without changing state. Use them for reminders
 step :awaiting_response do
   transition :respond, to: :next_step
 
-  timeout :reminder, after: {3, :days}, action: :send_reminder
+  timeout :reminder, fire_after: {3, :days}, action: :send_reminder
 end
 ```
 
@@ -43,7 +43,7 @@ Transition timeouts force the workflow into a new state. Use them for escalation
 step :awaiting_review do
   transition :approve, to: :approved
 
-  timeout :escalation, after: {7, :days}, transition_to: :escalated
+  timeout :escalation, fire_after: {7, :days}, transition_to: :escalated
 end
 
 step :escalated, terminal: true
@@ -60,18 +60,22 @@ step :awaiting_response do
   transition :respond, to: :next_step
 
   # Fires once after 3 days
-  timeout :reminder, after: {3, :days}, action: :send_reminder
+  timeout :reminder, fire_after: {3, :days}, action: :send_reminder
 
   # Fires after 3 days, then on every check_interval while still waiting
-  timeout :follow_up, after: {3, :days}, action: :send_follow_up, repeat: true
+  timeout :follow_up do
+    fire_after {3, :days}
+    action :send_follow_up
+    repeat true
+  end
 end
 ```
 
-When a repeating timeout fires, the extension resets `state_entered_at` to the current time. This restarts the duration window — so `after: {3, :days}` means the action fires every 3 days, not every scheduler cycle.
+When a repeating timeout fires, the extension resets `state_entered_at` to the current time. This restarts the duration window — so `fire_after: {3, :days}` means the action fires every 3 days, not every scheduler cycle.
 
 This reset is why `state_entered_at` is a timer anchor rather than a reliable "when did we enter this state" fact — a workflow that's been waiting for nine days with reminders every two reports `state_entered_at` as two days ago. If you need the honest answer, see [Workflow history](workflow-history.md), which adds an `entered_current_state_at` calculation that ignores repeat resets.
 
-Non-repeating timeouts (the default) use Oban's `trigger_once?` to prevent re-firing after the action completes, and they leave `state_entered_at` alone. Resetting it would push every other deadline on the same step back by the same amount, so a `timeout :warn, after: {30, :minutes}, action: :warn` cannot delay the `timeout :breach, after: {1, :hours}, transition_to: :escalated` beside it. Transition timeouts (with `transition_to`) don't need either mechanism since the state change naturally prevents re-firing.
+Non-repeating timeouts (the default) use Oban's `trigger_once?` to prevent re-firing after the action completes, and they leave `state_entered_at` alone. Resetting it would push every other deadline on the same step back by the same amount, so a `timeout :warn, fire_after: {30, :minutes}, action: :warn` cannot delay the `timeout :breach, fire_after: {1, :hours}, transition_to: :escalated` beside it. Transition timeouts (with `transition_to`) don't need either mechanism since the state change naturally prevents re-firing.
 
 ## Data-driven deadlines with `field`
 
@@ -82,9 +86,11 @@ step :active do
   transition :deactivate, to: :inactive
 
   # Fires 3 months after the worker's last session, not after entering :active
-  timeout :inactivity, after: {3, :days},
-    field: :last_session_date,
-    transition_to: :inactive_review
+  timeout :inactivity do
+    fire_after {3, :days}
+    field :last_session_date
+    transition_to :inactive_review
+  end
 end
 ```
 
@@ -106,15 +112,15 @@ Use cases include:
 Supported units: `:seconds`, `:minutes`, `:hours`, `:days`.
 
 ```elixir
-timeout :hourly_ping, after: {1, :hours}, action: :send_ping
-timeout :weekly_expire, after: {7, :days}, transition_to: :expired
+timeout :hourly_ping, fire_after: {1, :hours}, action: :send_ping
+timeout :weekly_expire, fire_after: {7, :days}, transition_to: :expired
 ```
 
 ### Shorter than a poll interval
 
 The shortest deadline you can declare comes from the scheduler you selected.
 `AshWorkflow.Scheduler.Oban` is the default and polls on a cron interval, and
-cron cannot poll more often than once a minute, so `after: {30, :seconds}`
+cron cannot poll more often than once a minute, so `fire_after: {30, :seconds}`
 would fire up to 60 seconds late — an error larger than the deadline itself.
 `AshWorkflow.Verifiers.ValidateTimeoutPrecision` rejects it at compile time
 rather than making a promise the scheduler cannot keep.
@@ -128,7 +134,7 @@ workflow do
 
   step :awaiting_confirmation do
     # Fires 30 seconds later, not up to 60 seconds after that
-    timeout :quick_check, after: {30, :seconds}, action: :check_status
+    timeout :quick_check, fire_after: {30, :seconds}, action: :check_status
   end
 end
 ```
@@ -154,10 +160,11 @@ resolution the deadline needs:
 ```elixir
 # Nothing polls for this one. Call AshOban.schedule/2, or drive it from your
 # own process, as often as the deadline requires.
-timeout :quick_check,
-  after: {30, :seconds},
-  action: :check_status,
-  self_scheduled?: true
+timeout :quick_check do
+  fire_after {30, :seconds}
+  action :check_status
+  self_scheduled? true
+end
 ```
 
 ## Polling interval and precision
@@ -179,10 +186,14 @@ workflow do
     transition :approve, to: :approved
 
     # Inherits the hourly interval above
-    timeout :nudge, after: {2, :days}, action: :send_nudge
+    timeout :nudge, fire_after: {2, :days}, action: :send_nudge
 
     # Overrides it: checked once a day at 9am
-    timeout :daily_report, after: {3, :days}, action: :generate_report, check_interval: "0 9 * * *"
+    timeout :daily_report do
+      fire_after {3, :days}
+      action :generate_report
+      check_interval "0 9 * * *"
+    end
   end
 end
 ```

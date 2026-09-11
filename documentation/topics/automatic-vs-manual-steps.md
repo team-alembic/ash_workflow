@@ -126,9 +126,10 @@ A wait state runs nothing on entry and offers no transition anybody can call. Re
 
 ```elixir
 step :cooling_off do
-  timeout :period_elapsed,
-    after: {14, :days},
-    transition_to: :active
+  timeout :period_elapsed do
+    fire_after {14, :days}
+    transition_to :active
+  end
 end
 ```
 
@@ -138,10 +139,11 @@ A wait state's deadline can come from the record rather than the clock, using `f
 
 ```elixir
 step :scheduled do
-  timeout :due,
-    after: {1, :minutes},
-    field: :run_at,
-    transition_to: :running
+  timeout :due do
+    fire_after {1, :minutes}
+    field :run_at
+    transition_to :running
+  end
 end
 ```
 

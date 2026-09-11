@@ -82,7 +82,7 @@ defmodule AshWorkflow.Transformers.AddCalculations do
          %{
            name: timeout.name,
            field: timeout.field,
-           after: timeout.after,
+           fire_after: timeout.fire_after,
            kind: if(timeout.transition_to, do: :transition, else: :action),
            target: timeout.transition_to
          }

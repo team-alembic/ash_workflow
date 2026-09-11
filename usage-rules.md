@@ -42,9 +42,9 @@ Set it once for an application instead:
 config :ash_workflow, scheduler: {AshWorkflow.Scheduler.Oban, queue: :workflow}
 ```
 
-`AshWorkflow.Scheduler.Oban` polls: it turns each automatic step and each timeout into an AshOban trigger whose `where` clause finds eligible records. Polling is what puts a floor under accuracy — cron cannot ask for less than a minute, which is why a sub-minute `after` is rejected.
+`AshWorkflow.Scheduler.Oban` polls: it turns each automatic step and each timeout into an AshOban trigger whose `where` clause finds eligible records. Polling is what puts a floor under accuracy — cron cannot ask for less than a minute, which is why a sub-minute `fire_after` is rejected.
 
-`AshWorkflow.Scheduler.Precise` arms a timer per deadline instead, so its floor is a millisecond and a sub-minute `after` compiles. Select it in the `workflow` block and start `AshWorkflow.Scheduler.Precise.Timeline` with the resources it recovers deadlines for:
+`AshWorkflow.Scheduler.Precise` arms a timer per deadline instead, so its floor is a millisecond and a sub-minute `fire_after` compiles. Select it in the `workflow` block and start `AshWorkflow.Scheduler.Precise.Timeline` with the resources it recovers deadlines for:
 
 ```elixir
 workflow do
@@ -75,7 +75,7 @@ end
 Each `AshWorkflow.Scheduler.Work` describes one unit of scheduled work without reference to Oban. Two of its fields carry the same fact in different shapes, so opposite strategies both work:
 
 - `match` — an Ash expression selecting records eligible **now**. All a polling scheduler needs.
-- `deadline` — `%{field:, after:}`, the rule for computing the exact instant. All a scheduler that arms timers needs. `nil` for an automatic step, which is eligible as soon as a record occupies it.
+- `deadline` — `%{field:, fire_after:}`, the rule for computing the exact instant. All a scheduler that arms timers needs. `nil` for an automatic step, which is eligible as soon as a record occupies it.
 
 Call `AshWorkflow.Scheduler.execute/3` when the moment arrives. It runs the action and routes failure to the step's `on_error`, so swapping schedulers changes when work happens and never what it does.
 
@@ -286,8 +286,13 @@ Timeouts fire when a workflow stays in a step longer than a specified duration. 
 ### Action Timeout (stay in state, run side-effect)
 
 ```elixir
-timeout :reminder, after: {3, :days}, action: :send_reminder
-timeout :follow_up, after: {7, :days}, action: :send_follow_up, repeat: true
+timeout :reminder, fire_after: {3, :days}, action: :send_reminder
+
+timeout :follow_up do
+  fire_after {7, :days}
+  action :send_follow_up
+  repeat true
+end
 ```
 
 - `action`: References a user-defined update action. The workflow stays in the current state.
@@ -296,8 +301,8 @@ timeout :follow_up, after: {7, :days}, action: :send_follow_up, repeat: true
 ### Transition Timeout (force state change)
 
 ```elixir
-timeout :escalation, after: {7, :days}, transition_to: :escalated
-timeout :expire, after: {14, :days}, transition_to: :expired
+timeout :escalation, fire_after: {7, :days}, transition_to: :escalated
+timeout :expire, fire_after: {14, :days}, transition_to: :expired
 ```
 
 - `transition_to`: Forces the workflow to move to the specified step.
@@ -538,8 +543,8 @@ end
 step :awaiting_approval do
   transition :approve, to: :approved
 
-  timeout :reminder, after: {2, :days}, action: :send_approval_reminder
-  timeout :escalate, after: {5, :days}, transition_to: :escalated
+  timeout :reminder, fire_after: {2, :days}, action: :send_approval_reminder
+  timeout :escalate, fire_after: {5, :days}, transition_to: :escalated
 end
 ```
 

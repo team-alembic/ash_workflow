@@ -13,7 +13,7 @@ defmodule AshWorkflowTest.SixtySecondsWorkflow do
     step :waiting do
       transition :resolve, to: :done
 
-      timeout :nudge, after: {60, :seconds}, transition_to: :escalated
+      timeout :nudge, fire_after: {60, :seconds}, transition_to: :escalated
     end
 
     step :done, terminal: true

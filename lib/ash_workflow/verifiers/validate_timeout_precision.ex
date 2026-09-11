@@ -7,7 +7,7 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutPrecision do
   `AshWorkflow.Scheduler.Oban` polls on a cron interval, and cron's finest
   granularity is one minute — `Oban.Cron` zeroes the seconds field and its
   scheduler only wakes on minute boundaries — so a deadline shorter than a
-  minute cannot be honoured there. `after: {30, :seconds}` compiles happily and
+  minute cannot be honoured there. `fire_after: {30, :seconds}` compiles happily and
   then fires anywhere up to 60 seconds late, an error larger than the deadline
   itself.
 
@@ -48,7 +48,7 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutPrecision do
   defp validate(_step, %{self_scheduled?: true}, _scheduler, _floor_ms), do: :ok
 
   defp validate(step, timeout, {module, _opts}, floor_ms) do
-    if AshWorkflow.Duration.to_milliseconds(timeout.after) < floor_ms do
+    if AshWorkflow.Duration.to_milliseconds(timeout.fire_after) < floor_ms do
       {:error,
        DslError.exception(
          path: [:workflow, :step, step.name, :timeout, timeout.name],
@@ -60,17 +60,17 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutPrecision do
   end
 
   defp message(step, timeout, module, floor_ms) do
-    {value, unit} = timeout.after
+    {value, unit} = timeout.fire_after
 
     """
-    Timeout :#{timeout.name} on step :#{step.name} has after: {#{value}, :#{unit}}, \
+    Timeout :#{timeout.name} on step :#{step.name} has fire_after: {#{value}, :#{unit}}, \
     which is shorter than #{inspect(module)} can honour. That scheduler checks no more \
     often than every #{humanize(floor_ms)}, so this deadline would fire up to \
     #{humanize(floor_ms)} late, which is later than the deadline itself.
 
     Either lengthen the deadline past that floor:
 
-        timeout :#{timeout.name}, after: {#{floor_value(floor_ms)}}, ...
+        timeout :#{timeout.name}, fire_after: {#{floor_value(floor_ms)}}, ...
 
     or select a scheduler that fires precisely:
 
@@ -81,7 +81,7 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutPrecision do
     or declare that you drive this trigger yourself, at whatever resolution the \
     deadline needs:
 
-        timeout :#{timeout.name}, after: {#{value}, :#{unit}}, self_scheduled?: true, ...
+        timeout :#{timeout.name}, fire_after: {#{value}, :#{unit}}, self_scheduled?: true, ...
 
     If you are using a custom field to carry the deadline, {1, :minutes} behaves \
     the same as a sub-minute duration — both mean "once that instant has passed", \

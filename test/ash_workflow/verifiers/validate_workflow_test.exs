@@ -47,7 +47,7 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflowTest do
   defp timeout(name, opts) do
     %Timeout{
       name: name,
-      after: opts[:after] || {1, :days},
+      fire_after: opts[:fire_after] || {1, :days},
       action: opts[:action],
       transition_to: opts[:transition_to],
       repeat: opts[:repeat] || false

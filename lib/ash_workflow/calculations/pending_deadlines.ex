@@ -10,7 +10,7 @@ defmodule AshWorkflow.Calculations.PendingDeadlines do
   ## What this is not
 
   This is the schedule *implied* by the DSL and the record's current field
-  values — `field + after`, computed on read. It is not a record of what has
+  values — `field + fire_after`, computed on read. It is not a record of what has
   already fired.
 
   For a transition timeout that distinction does not arise: firing changes the
@@ -60,7 +60,7 @@ defmodule AshWorkflow.Calculations.PendingDeadlines do
         []
 
       from ->
-        {value, unit} = timeout.after
+        {value, unit} = timeout.fire_after
 
         [
           %{

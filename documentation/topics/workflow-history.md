@@ -95,7 +95,7 @@ denormalised `note`) — the verifier only requires the attributes above.
 The log writes one row per workflow *event*, and not every event is a
 transition. Every timeout that names an action appends a row with
 `from_state == to_state` and `triggered_by: :timeout`, whether it fires once
-or repeats. A one-shot `timeout :nudge, after: {3, :days}, action: :send_nudge`
+or repeats. A one-shot `timeout :nudge, fire_after: {3, :days}, action: :send_nudge`
 writes a row the first and only time it fires, and a repeating
 `timeout :follow_up, ..., repeat: true` writes one on every scheduler cycle
 while the workflow stays in that state.

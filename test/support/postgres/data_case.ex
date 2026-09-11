@@ -27,7 +27,7 @@ defmodule AshWorkflowTest.DataCase do
   end
 
   @doc """
-  Rewinds `state_entered_at` so a timeout's `after` duration has elapsed,
+  Rewinds `state_entered_at` so a timeout's `fire_after` duration has elapsed,
   without the test having to wait for wall-clock time.
 
   Writes through Ecto rather than an Ash action: the resource deliberately has

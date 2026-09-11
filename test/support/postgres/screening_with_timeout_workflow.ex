@@ -28,7 +28,7 @@ defmodule AshWorkflowTest.Postgres.ScreeningWithTimeoutWorkflow do
       on_success :interview, when: expr(screen_score >= 5)
       on_success :rejected_by_hr, when: expr(screen_score < 5)
 
-      timeout :sla, after: {1, :hours}, transition_to: :escalated
+      timeout :sla, fire_after: {1, :hours}, transition_to: :escalated
     end
 
     step :interview, terminal: true

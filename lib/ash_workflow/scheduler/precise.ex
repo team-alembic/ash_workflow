@@ -6,7 +6,7 @@ defmodule AshWorkflow.Scheduler.Precise do
   `AshWorkflow.Scheduler.Oban` discovers work by asking the data layer which
   records match, on a cron interval, so a deadline cannot be finer than one
   minute. This scheduler is told each deadline as the record reaches it and
-  arms a one-shot timer, so `after: {30, :seconds}` fires 30 seconds later
+  arms a one-shot timer, so `fire_after: {30, :seconds}` fires 30 seconds later
   rather than up to 60 seconds after that.
 
   ## Selecting it

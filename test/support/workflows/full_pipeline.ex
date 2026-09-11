@@ -25,8 +25,8 @@ defmodule AshWorkflowTest.FullPipeline do
       transition :reject_at_review, to: :rejected
       transition :hold, to: :on_hold
 
-      timeout :reminder, after: {2, :days}, action: :send_review_reminder
-      timeout :escalation, after: {7, :days}, transition_to: :escalated
+      timeout :reminder, fire_after: {2, :days}, action: :send_review_reminder
+      timeout :escalation, fire_after: {7, :days}, transition_to: :escalated
     end
 
     step :on_hold do

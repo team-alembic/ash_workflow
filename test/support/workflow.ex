@@ -15,8 +15,8 @@ defmodule AshWorkflowTest.Workflow do
       transition :approve, to: :approved
       transition :reject, to: :rejected
 
-      timeout :reminder, after: {2, :days}, action: :send_reminder
-      timeout :escalation, after: {7, :days}, transition_to: :escalated
+      timeout :reminder, fire_after: {2, :days}, action: :send_reminder
+      timeout :escalation, fire_after: {7, :days}, transition_to: :escalated
     end
 
     step :approved, terminal: true

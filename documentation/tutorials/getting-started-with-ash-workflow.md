@@ -49,7 +49,7 @@ defmodule MyApp.DocumentApproval do
       transition :approve, to: :approved
       transition :reject, to: :rejected
 
-      timeout :reminder, after: {3, :days}, action: :send_reminder
+      timeout :reminder, fire_after: {3, :days}, action: :send_reminder
     end
 
     step :approved, terminal: true

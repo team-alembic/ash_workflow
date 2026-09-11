@@ -28,7 +28,7 @@ defmodule AshWorkflow.Entities.Timeout do
 
   defstruct [
     :name,
-    :after,
+    :fire_after,
     :action,
     :transition_to,
     :check_interval,
@@ -42,7 +42,7 @@ defmodule AshWorkflow.Entities.Timeout do
   @type duration_unit :: AshWorkflow.Duration.unit()
   @type t :: %__MODULE__{
           name: atom(),
-          after: {pos_integer(), duration_unit()},
+          fire_after: {pos_integer(), duration_unit()},
           action: atom() | nil,
           transition_to: atom() | nil,
           check_interval: String.t() | nil,
@@ -58,7 +58,7 @@ defmodule AshWorkflow.Entities.Timeout do
       required: true,
       doc: "A unique name for this timeout."
     ],
-    after: [
+    fire_after: [
       type: {:custom, __MODULE__, :validate_duration, []},
       required: true,
       doc: "Duration tuple, e.g. `{3, :days}` or `{2, :hours}`."
@@ -67,7 +67,7 @@ defmodule AshWorkflow.Entities.Timeout do
       type: :atom,
       default: :state_entered_at,
       doc:
-        "The datetime attribute or calculation to measure `after` against. Defaults to `:state_entered_at`."
+        "The datetime attribute or calculation to measure `fire_after` against. Defaults to `:state_entered_at`."
     ],
     action: [
       type: :atom,
@@ -89,7 +89,7 @@ defmodule AshWorkflow.Entities.Timeout do
       Declares that you run this timeout's trigger yourself, more often than a
       cron expression can ask for.
 
-      Cron cannot poll more often than once a minute, so a sub-minute `after`
+      Cron cannot poll more often than once a minute, so a sub-minute `fire_after`
       is normally a compile error — the deadline would fire up to 60 seconds
       late. Setting this asserts that something else drives the trigger at the
       resolution the deadline needs, and permits the shorter duration.

@@ -82,7 +82,7 @@ defmodule AshWorkflow.SchedulerTest do
       assert work.kind == :timeout
       assert work.step == :review
       assert work.timeout == :escalate
-      assert work.deadline == %{field: :state_entered_at, after: {7, :days}}
+      assert work.deadline == %{field: :state_entered_at, fire_after: {7, :days}}
       assert work.match
     end
 
@@ -137,7 +137,7 @@ defmodule AshWorkflow.SchedulerTest do
           workflow do
             step :review do
               transition :approve, to: :approved
-              timeout :escalate, after: {2, :days}, transition_to: :escalated
+              timeout :escalate, fire_after: {2, :days}, transition_to: :escalated
             end
 
             step :approved, terminal: true

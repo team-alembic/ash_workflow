@@ -239,15 +239,19 @@ defmodule AshWorkflow.Scheduler.Precise.Timeline do
     |> Enum.reduce(state, &arm(&2, work, &1))
   end
 
-  # For a deadline of `field + after`, a record's deadline falls inside the
-  # horizon when `field <= cutoff - after`. Computing the bound in Elixir keeps
+  # For a deadline of `field + fire_after`, a record's deadline falls inside the
+  # horizon when `field <= cutoff - fire_after`. Computing the bound in Elixir keeps
   # it a bind parameter, so the query is the same indexed range scan the polled
   # scheduler gets.
   defp due_records(%Work{deadline: nil} = work, state, _cutoff) do
     read(work.resource, work.match, state)
   end
 
-  defp due_records(%Work{deadline: %{field: field, after: {value, unit}}} = work, state, cutoff) do
+  defp due_records(
+         %Work{deadline: %{field: field, fire_after: {value, unit}}} = work,
+         state,
+         cutoff
+       ) do
     bound = DateTime.add(cutoff, -value, singular(unit))
     step = work.step
 

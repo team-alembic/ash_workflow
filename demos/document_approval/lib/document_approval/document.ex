@@ -55,8 +55,13 @@ defmodule DocumentApproval.Document do
 
       transition :reject, to: :rejected, accept: [:rejection_reason]
 
-      timeout :nudge, after: {2, :days}, action: :send_review_nudge, repeat: true
-      timeout :expire, after: {14, :days}, transition_to: :expired
+      timeout :nudge do
+        fire_after {2, :days}
+        action :send_review_nudge
+        repeat true
+      end
+
+      timeout :expire, fire_after: {14, :days}, transition_to: :expired
     end
 
     step :approved, terminal: true

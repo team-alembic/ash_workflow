@@ -25,7 +25,7 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutActionTest do
 
             step :waiting do
               transition :resolve, to: :done
-              timeout :reminder, after: {3, :days}, action: :send_reminder
+              timeout :reminder, fire_after: {3, :days}, action: :send_reminder
             end
 
             step :done, terminal: true
@@ -52,7 +52,7 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutActionTest do
           workflow do
             step :waiting do
               transition :resolve, to: :done
-              timeout :reminder, after: {3, :days}, action: :send_reminder
+              timeout :reminder, fire_after: {3, :days}, action: :send_reminder
             end
 
             step :done, terminal: true
