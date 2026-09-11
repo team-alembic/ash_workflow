@@ -2,10 +2,21 @@
 
 AshWorkflow lets you define multi-step workflows — combining human actions, background jobs, and time-based deadlines — as a single Ash resource. This guide walks you through building a simple document approval workflow.
 
-## Prerequisites
+## Installation
 
-- An existing Ash project with `ash_state_machine` and `ash_oban` as dependencies
-- Oban configured in your application (with at least a `:workflow` queue)
+You need an existing Ash project. Install AshWorkflow with Igniter:
+
+```bash
+mix igniter.install ash_workflow
+```
+
+That adds `ash_workflow`, `ash_oban` and `ash_state_machine` as dependencies, composes `ash_oban.install` to configure Oban and its cron plugin, adds the `:workflow` queue that generated triggers publish to, and imports the workflow DSL into `.formatter.exs`. Pass `--queue` and `--queue-concurrency` to change the queue it adds. See `mix ash_workflow.install`.
+
+Add `ash_workflow` to your dependencies and nothing else. Do not add `AshStateMachine` to the resource's `extensions` — `AshWorkflow.Transformers.AddStateMachine` adds it and writes its DSL for you. Add `AshOban` yourself, because the scheduler that generates its triggers is one choice among several; see `AshWorkflow.Scheduler`.
+
+### Installing by hand
+
+Without Igniter, add the dependencies yourself and configure Oban with a queue for workflow triggers:
 
 ```elixir
 # config/config.exs
@@ -14,9 +25,11 @@ config :my_app, Oban,
   queues: [default: 10, workflow: 5]
 ```
 
+The queue name must match the workflow's `queue` option, which defaults to `:workflow`. A trigger publishing to a queue Oban does not run inserts jobs that never execute.
+
 ## Define the workflow
 
-Create a resource with the `AshWorkflow` and `AshOban` extensions. `AshStateMachine` is added for you; `AshOban` is not, because the scheduler that generates its triggers is one choice among several. See `AshWorkflow.Scheduler`.
+Create a resource with the `AshWorkflow` and `AshOban` extensions.
 
 ```elixir
 defmodule MyApp.DocumentApproval do
@@ -86,6 +99,29 @@ From that DSL, AshWorkflow generates:
 - **Code interface functions** for the manual transitions: `approve/1`, `reject/1`
 - A **`state_entered_at`** attribute to track when the current state was entered
 - The resource's own create action initializes the workflow using the initial step and `state_entered_at` defaults
+
+> #### You define the create action {: .warning}
+>
+> AshWorkflow does not generate one. A workflow record's creation inputs are specific to your application, so the extension leaves `create` to you and only adds the changes that set the initial state and `state_entered_at`. A resource with a `workflow` block and no create action compiles, and then nothing can start a workflow.
+
+`:auto_check` becomes the initial state because it is the first step by declaration order that is not terminal. `AshWorkflow.Entities.Step.find_initial/1` picks it. To name the initial step instead of relying on declaration order, mark it:
+
+```elixir
+workflow do
+  step :review do
+    transition :approve, to: :approved
+  end
+
+  step :intake do
+    initial true
+    transition :submit, to: :review
+  end
+
+  step :approved, terminal: true
+end
+```
+
+Without `initial true` that workflow would start in `:review`, because `:review` is declared first. A step that declares transitions has to set `initial` inside its block: `step :intake, initial: true do ... end` does not compile, because the DSL macro takes either options or a block.
 
 ## Use the workflow
 

@@ -99,7 +99,7 @@ Use cases include:
 >
 > Repeating timeouts reset `state_entered_at` to restart the duration window. With a custom field, this reset would need to update that field to "now" — but that's semantically wrong. If `field: :last_session_date`, resetting it to "now" would falsely claim a session occurred. The extension rejects this combination at compile time.
 >
-> If you need periodic checks against a custom field, use a non-repeating timeout. The Oban trigger will keep matching on every poll cycle as long as the condition holds.
+> A non-repeating timeout against a custom field is not a periodic check. Its trigger keeps matching while the condition holds, but `trigger_once?` stops the action running a second time for the same record, so the reminder fires once. For a genuinely periodic check, add the cadence to the field itself — advance `:next_check_at` in the timeout action — so the condition stops matching until the next window opens.
 
 ## Duration units
 
@@ -109,6 +109,8 @@ Supported units: `:seconds`, `:minutes`, `:hours`, `:days`.
 timeout :hourly_ping, after: {1, :hours}, action: :send_ping
 timeout :weekly_expire, after: {7, :days}, transition_to: :expired
 ```
+
+### Shorter than a poll interval
 
 The shortest deadline you can declare comes from the scheduler you selected.
 `AshWorkflow.Scheduler.Oban` is the default and polls on a cron interval, and
@@ -218,7 +220,7 @@ end
 >
 > A timeout fires on the first scheduler cycle *after* the duration has elapsed. With the default every-minute cron, a `{2, :days}` timeout fires somewhere between exactly 2 days and 2 days + 1 minute after `state_entered_at`. If you set `check_interval: "0 * * * *"` (hourly), the window is up to 1 hour.
 >
-> For sub-minute precision, use a more frequent cron expression like `"* * * * * *"` (every second, if your Oban configuration supports it) — but see [What polling costs](#what-polling-costs) first, and set it on the individual timeout rather than the whole workflow.
+> Do not try to close that window with a faster cron. `AshWorkflow.Verifiers.ValidateTimeoutPrecision` rejects a deadline shorter than a minute on the polling scheduler, because cron does not poll below that. For sub-minute precision select `AshWorkflow.Scheduler.Precise`, or set `self_scheduled?: true` on the one timeout you drive yourself. See [Shorter than a poll interval](#shorter-than-a-poll-interval) above.
 
 ## Oban queue configuration
 

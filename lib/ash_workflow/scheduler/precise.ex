@@ -30,7 +30,7 @@ defmodule AshWorkflow.Scheduler.Precise do
   A timer lives in memory, so a node restart forgets every deadline it held.
   Precision therefore comes from one path and correctness from another.
 
-  `AshWorkflow.Scheduler.deadline_changed/2` fires the moment a record enters a
+  `c:AshWorkflow.Scheduler.deadline_changed/2` fires the moment a record enters a
   step, and arms a timer for the exact instant. That is the precise path.
 
   A look-ahead sweep runs every `:look_ahead_ms` and arms timers for every
