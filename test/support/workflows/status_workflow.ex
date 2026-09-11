@@ -18,7 +18,7 @@ defmodule AshWorkflowTest.StatusWorkflow do
     extensions: [AshWorkflow, AshOban]
 
   workflow do
-    state_attribute(:status)
+    state_attribute :status
 
     transition_log AshWorkflowTest.StatusLog
 

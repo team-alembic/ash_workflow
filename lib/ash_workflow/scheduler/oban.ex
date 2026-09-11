@@ -30,6 +30,13 @@ defmodule AshWorkflow.Scheduler.Oban do
       `workflow` block's `check_interval`. A timeout's own `check_interval`
       still overrides it.
 
+  ## Retry
+
+  A step's or timeout's `retry` block becomes the generated trigger's
+  `max_attempts` and `backoff`. ash_oban runs the step's `on_error` action only
+  after the final attempt has failed, which is the same rule
+  `AshWorkflow.Scheduler.execute/3` documents.
+
   ## Module names
 
   Worker and scheduler module names are derived from the resource, the step and
@@ -83,6 +90,8 @@ defmodule AshWorkflow.Scheduler.Oban do
         queue: queue(dsl, opts),
         on_error: work.on_error,
         trigger_once?: work.once?,
+        max_attempts: work.retry.max_attempts,
+        backoff: oban_backoff(work.retry.backoff),
         worker_module_name: module_name(work, Workers),
         scheduler_module_name: module_name(work, Schedulers),
         scheduler_cron: check_interval(dsl, work, opts),
@@ -91,6 +100,11 @@ defmodule AshWorkflow.Scheduler.Oban do
 
     Transformer.add_entity(dsl, [:oban, :triggers], trigger)
   end
+
+  # ash_oban's trigger `backoff` is in seconds, which is why a duration tuple
+  # is converted here rather than handed through as-is.
+  defp oban_backoff(:exponential), do: :exponential
+  defp oban_backoff(duration), do: AshWorkflow.Duration.to_seconds(duration)
 
   defp queue(dsl, opts) do
     Keyword.get_lazy(opts, :queue, fn ->

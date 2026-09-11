@@ -22,8 +22,8 @@ end
 
 When `:do_processing` fails:
 
-1. Oban records the failed attempt. AshWorkflow does not set `max_attempts` on the triggers it generates, so AshOban's default of `1` applies and the first failure is also the last attempt.
-2. AshOban calls `__on_error_process`, which transitions the record from `:process` to `:failed`.
+1. Oban records the failed attempt. `max_attempts` comes from the step's `retry` block and defaults to `1`, so without one the first failure is also the last attempt.
+2. Once the last attempt has failed, AshOban calls `__on_error_process`, which transitions the record from `:process` to `:failed`.
 3. `AshWorkflow.Changes.RecordEvent` writes a transition log row for that transition with `triggered_by: :error_path`, and `AshWorkflow.Telemetry` emits the state change.
 4. Oban marks the job completed rather than discarded, because AshOban's `on_error_fails_job?` defaults to `false`.
 
@@ -33,11 +33,47 @@ The record does not stay in `:process` waiting for an operator. It moves to `:fa
 
 A step with no `on_error` has no error action for the trigger to call. The job fails, the record stays in the step, and the trigger matches it again on the next scheduler cycle. The action runs again, and keeps running on every cycle until it succeeds or someone moves the record by hand. Declare `on_error` on every automatic step whose action can fail.
 
+## Retry
+
+A step or a timeout can declare a `retry` block, the failure policy for its generated work:
+
+```elixir
+step :process do
+  action :do_processing
+  on_success :done
+  on_error :failed
+
+  retry do
+    max_attempts 3
+    backoff {10, :seconds}
+  end
+end
+```
+
+- `max_attempts` defaults to `1`. A step with no `retry` block gets that default, so its `on_error` moves it to the error state on the very first failure. The example above raises that to three attempts before `:process` moves to `:failed`.
+- `backoff` is a duration tuple, such as `{10, :seconds}`, for a fixed delay between attempts, or `:exponential` to grow the delay with the attempt number. It has no effect while `max_attempts` is `1`.
+
+A timeout can declare its own `retry` block, with the same options and the same defaults. `after` is a reserved block clause in Elixir, so it stays an inline option and the `retry` block is passed as `do:`:
+
+```elixir
+timeout :reminder,
+  after: {3, :days},
+  action: :send_reminder,
+  do:
+    (retry do
+       max_attempts 3
+     end)
+```
+
+`AshWorkflow.Scheduler.Oban` and `AshWorkflow.Scheduler.Precise` honour `retry` through different mechanisms but the same meaning. Oban turns `max_attempts` and `backoff` into the generated trigger's own options and lets Oban's own retry loop run the attempts. Precise re-arms its timer for the backoff delay after a failed attempt, under the same key the original deadline used. Either way, `on_error` runs only after the final attempt has failed. It never runs on an attempt a retry will follow.
+
+A `retry` block is rejected at compile time on a manual step, a wait state, or a terminal step, since none of them has a generated trigger for it to apply to.
+
 ## Designing for failure
 
 ### Make step actions idempotent
 
-A step's action can run more than once: on a repeat cycle when the step has no `on_error`, and on a retry if you raise `max_attempts` on the generated trigger. Actions should be safe to run twice. If a step sends an email, record a flag on the record and check it, rather than sending again.
+A step's action can run more than once: on a repeat cycle when the step has no `on_error`, and on every attempt the step's `retry` block allows. Actions should be safe to run twice. If a step sends an email, record a flag on the record and check it, rather than sending again.
 
 ### Use error states for investigation
 

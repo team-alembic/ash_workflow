@@ -23,6 +23,7 @@ defmodule AshWorkflow.Transformers.AddScheduler do
   """
   use Spark.Dsl.Transformer
 
+  alias AshWorkflow.Entities.Retry
   alias AshWorkflow.Entities.Step
   alias AshWorkflow.Scheduler.Work
   alias AshWorkflow.Transformers.AddActions
@@ -69,7 +70,8 @@ defmodule AshWorkflow.Transformers.AddScheduler do
         action: step.action,
         on_error: on_error(step),
         match: in_step(state_attribute, step_name),
-        deadline: nil
+        deadline: nil,
+        retry: step.retry || %Retry{}
       }
     end)
   end
@@ -122,6 +124,7 @@ defmodule AshWorkflow.Transformers.AddScheduler do
       # on, which is a durable record that it fired.
       once?: not timeout.repeat and timeout.action != nil,
       self_scheduled?: timeout.self_scheduled?,
+      retry: timeout.retry || %Retry{},
       opts: [check_interval: timeout.check_interval]
     }
   end

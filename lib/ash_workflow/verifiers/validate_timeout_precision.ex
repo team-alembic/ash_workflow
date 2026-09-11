@@ -48,7 +48,7 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutPrecision do
   defp validate(_step, %{self_scheduled?: true}, _scheduler, _floor_ms), do: :ok
 
   defp validate(step, timeout, {module, _opts}, floor_ms) do
-    if in_milliseconds(timeout.after) < floor_ms do
+    if AshWorkflow.Duration.to_milliseconds(timeout.after) < floor_ms do
       {:error,
        DslError.exception(
          path: [:workflow, :step, step.name, :timeout, timeout.name],
@@ -96,9 +96,4 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutPrecision do
   defp floor_value(ms) when rem(ms, 60_000) == 0, do: "#{div(ms, 60_000)}, :minutes"
   defp floor_value(ms) when rem(ms, 1_000) == 0, do: "#{div(ms, 1_000)}, :seconds"
   defp floor_value(_ms), do: "1, :seconds"
-
-  defp in_milliseconds({value, :seconds}), do: value * 1_000
-  defp in_milliseconds({value, :minutes}), do: value * 60_000
-  defp in_milliseconds({value, :hours}), do: value * 3_600_000
-  defp in_milliseconds({value, :days}), do: value * 86_400_000
 end

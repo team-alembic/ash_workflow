@@ -6,7 +6,7 @@ Timeouts in AshWorkflow are powered by Oban cron jobs. When a step has timeouts,
 
 The check happens on the schedule defined by `check_interval` (default: every minute). This means timeouts are not precise to the second — they fire on the next cron tick after the deadline has passed.
 
-**One minute is the shortest deadline you can ask for.** Cron cannot poll more often than once a minute, so a sub-minute `after` would fire up to 60 seconds late — an error larger than the deadline itself. `after: {30, :seconds}` is a compile error. Set `self_scheduled?: true` if something other than cron drives the trigger at the resolution the deadline needs.
+One minute is the shortest deadline you can ask for. Cron cannot poll more often than once a minute, so a sub-minute `after` would fire up to 60 seconds late — an error larger than the deadline itself. `after: {30, :seconds}` is a compile error. Set `self_scheduled?: true` if something other than cron drives the trigger at the resolution the deadline needs.
 
 Set `check_interval` on the `workflow` block to change it for every trigger on the resource, or on an individual `timeout` to override that default:
 
@@ -143,6 +143,25 @@ timeout :escalation, after: {4, :hours}, transition_to: :escalated, check_interv
 ```
 
 Reducing check frequency lowers database load from Oban polling queries.
+
+## Retry
+
+A timeout can declare its own `retry` block, with the same `max_attempts` and `backoff` options a step's can have:
+
+```elixir
+timeout :reminder,
+  after: {3, :days},
+  action: :send_reminder,
+  do:
+    (retry do
+       max_attempts 3
+       backoff {10, :seconds}
+     end)
+```
+
+`after` is a reserved block clause in Elixir, so a `timeout` cannot take `after` inside a `do` block. Keep `after` an inline option and pass the `retry` block as `do:`, as above.
+
+`max_attempts` defaults to `1`, so a timeout with no `retry` block runs its action once and does not retry. `backoff` defaults to `:exponential` and has no effect while `max_attempts` is `1`.
 
 ## Duration Units
 

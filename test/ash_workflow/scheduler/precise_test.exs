@@ -17,6 +17,7 @@ defmodule AshWorkflow.Scheduler.PreciseTest do
   alias AshWorkflow.Scheduler.Precise
   alias AshWorkflow.Scheduler.Precise.Timeline
   alias AshWorkflowTest.PreciseDeadlineWorkflow
+  alias AshWorkflowTest.PreciseRetryWorkflow
   alias AshWorkflowTest.PreciseTimeoutWorkflow
   alias Spark.Dsl.Extension
 
@@ -68,8 +69,8 @@ defmodule AshWorkflow.Scheduler.PreciseTest do
   # that case in the failure message instead of raising from inside a helper.
   # `reset_storage/0` above is what stops the table disappearing under a test;
   # this is what makes the next such fault legible rather than opaque.
-  defp current_state(record) do
-    case Ash.get(@resource, record.id) do
+  defp current_state(record, resource) do
+    case Ash.get(resource, record.id) do
       {:ok, reloaded} -> reloaded.state
       {:error, _not_found} -> :missing
     end
@@ -81,14 +82,14 @@ defmodule AshWorkflow.Scheduler.PreciseTest do
     start_supervised!({Timeline, opts})
   end
 
-  defp await_state(record, state, timeout_ms) do
+  defp await_state(record, state, timeout_ms, resource \\ @resource) do
     deadline = System.monotonic_time(:millisecond) + timeout_ms
 
-    await_state(record, state, deadline, nil)
+    await_state(record, state, deadline, nil, resource)
   end
 
-  defp await_state(record, state, deadline, last) do
-    current = current_state(record)
+  defp await_state(record, state, deadline, last, resource) do
+    current = current_state(record, resource)
 
     cond do
       current == state ->
@@ -102,7 +103,7 @@ defmodule AshWorkflow.Scheduler.PreciseTest do
         # starves the timeline process of the scheduler time it needs to run
         # the action its timer just fired.
         Process.sleep(10)
-        await_state(record, state, deadline, current)
+        await_state(record, state, deadline, current, resource)
     end
   end
 
@@ -316,6 +317,40 @@ defmodule AshWorkflow.Scheduler.PreciseTest do
       assert PreciseTimeoutWorkflow
              |> Extension.get_persisted(:extensions, [])
              |> Enum.member?(AshOban) == false
+    end
+  end
+
+  describe "retry" do
+    @retry_resource PreciseRetryWorkflow
+    @retry_table_manager Module.concat(PreciseRetryWorkflow, Ash.DataLayer.Ets.TableManager)
+
+    setup do
+      on_exit(fn ->
+        Ets.stop(@retry_resource)
+        await_stopped(@retry_table_manager)
+      end)
+
+      :ok
+    end
+
+    test "a failed attempt re-arms rather than reaching on_error immediately, and on_error runs once the retry also fails" do
+      start_timeline(resources: [@retry_resource])
+
+      record =
+        @retry_resource |> Ash.Changeset.for_create(:create, %{title: "one"}) |> Ash.create!()
+
+      # The first attempt fires as soon as the record enters :processing, since
+      # an automatic step has no deadline to wait for. It fails, and with
+      # max_attempts: 2 that is a retry rather than on_error — the record
+      # stays in :processing well past the first attempt, since nothing
+      # transitions it until the final attempt also fails.
+      assert {:timeout, :processing} =
+               await_state(record, :failed, 300, @retry_resource)
+
+      # The retry fires roughly `backoff` seconds later. Once it also fails,
+      # this was the final attempt, so on_error runs and the record reaches
+      # :failed.
+      assert {:ok, :failed} = await_state(record, :failed, 2_000, @retry_resource)
     end
   end
 

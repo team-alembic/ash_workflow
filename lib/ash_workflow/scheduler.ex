@@ -66,6 +66,7 @@ defmodule AshWorkflow.Scheduler do
     dropped. A discovering implementation needs neither.
   """
 
+  alias AshWorkflow.Entities.Retry
   alias AshWorkflow.Scheduler.Work
 
   @default AshWorkflow.Scheduler.Oban
@@ -227,13 +228,32 @@ defmodule AshWorkflow.Scheduler do
 
   Owned by AshWorkflow rather than by each implementation so that swapping the
   scheduler cannot change what a timeout does — only when it happens.
+
+  `:attempt` is the attempt number about to run, defaulting to 1. When the
+  action fails and `attempt < work.retry.max_attempts`, this returns
+  `{:retry, delay_ms}` instead of running `on_error`, where `delay_ms` comes
+  from `AshWorkflow.Entities.Retry.delay_ms/2`. The caller is responsible for
+  running the work again after that delay — `execute/3` only decides that a
+  retry should happen, not when. Once the final attempt has failed, this
+  behaves exactly as it always has: `on_error` runs if declared, otherwise the
+  error is returned. With the default `max_attempts` of 1, `{:retry, _}` is
+  never returned.
   """
   @spec execute(Work.t(), Ash.Resource.record(), keyword()) ::
-          {:ok, Ash.Resource.record()} | {:error, term()}
+          {:ok, Ash.Resource.record()} | {:error, term()} | {:retry, non_neg_integer()}
   def execute(%Work{} = work, record, opts \\ []) do
+    attempt = Keyword.get(opts, :attempt, 1)
+
     case run_action(work.action, record, opts) do
-      {:ok, record} -> {:ok, record}
-      {:error, error} -> handle_error(work, record, error, opts)
+      {:ok, record} ->
+        {:ok, record}
+
+      {:error, error} ->
+        if attempt < work.retry.max_attempts do
+          {:retry, Retry.delay_ms(work.retry, attempt)}
+        else
+          handle_error(work, record, error, opts)
+        end
     end
   end
 

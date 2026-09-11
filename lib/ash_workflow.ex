@@ -57,13 +57,30 @@ defmodule AshWorkflow do
     ]
   }
 
+  @retry %Spark.Dsl.Entity{
+    name: :retry,
+    describe: """
+    Declares the failure policy for the step's or timeout's generated work: how
+    many attempts and how long between them. Scheduler-neutral:
+    `AshWorkflow.Scheduler.Oban` turns it into the trigger's `max_attempts` and
+    `backoff`, and `AshWorkflow.Scheduler.Precise` re-arms its timer. Either
+    way, `on_error` runs only after the final attempt fails.
+    """,
+    target: Entities.Retry,
+    schema: Entities.Retry.attribute_schema()
+  }
+
   @timeout %Spark.Dsl.Entity{
     name: :timeout,
     describe:
       "Declares a time-based action or forced transition if the workflow stays in this step too long.",
     target: Entities.Timeout,
     args: [:name],
-    schema: Entities.Timeout.attribute_schema()
+    schema: Entities.Timeout.attribute_schema(),
+    entities: [
+      retry: [@retry]
+    ],
+    singleton_entity_keys: [:retry]
   }
 
   @belongs_to_actor %Spark.Dsl.Entity{
@@ -110,8 +127,10 @@ defmodule AshWorkflow do
     entities: [
       transitions: [@transition],
       timeouts: [@timeout],
-      on_success: [@on_success]
-    ]
+      on_success: [@on_success],
+      retry: [@retry]
+    ],
+    singleton_entity_keys: [:retry]
   }
 
   @workflow %Spark.Dsl.Section{
@@ -206,6 +225,7 @@ defmodule AshWorkflow do
       AshWorkflow.Verifiers.ValidateWorkflow,
       AshWorkflow.Verifiers.ValidateTimeoutFields,
       AshWorkflow.Verifiers.ValidateTimeoutPrecision,
+      AshWorkflow.Verifiers.ValidateRetry,
       AshWorkflow.Verifiers.ValidateTransitionLog,
       AshWorkflow.Verifiers.ValidateUndo,
       AshWorkflow.Verifiers.ValidateStepPolicies
