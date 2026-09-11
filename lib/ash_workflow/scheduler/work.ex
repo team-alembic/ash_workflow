@@ -33,6 +33,13 @@ defmodule AshWorkflow.Scheduler.Work do
   scheduler may use it as a durable key — a job's unique constraint, a row in
   its own table, a registry entry. Renaming a step or timeout changes it, which
   is the same breaking change it already is for the generated action names.
+
+  ## `retry`
+
+  `retry` is the failure policy for this work: how many attempts and how long
+  between them. It is always present, defaulting to
+  `%AshWorkflow.Entities.Retry{}`, one attempt and no retry, so a scheduler
+  implementation can read `work.retry.max_attempts` without a nil check.
   """
 
   @type kind :: :step | :timeout
@@ -55,6 +62,7 @@ defmodule AshWorkflow.Scheduler.Work do
           repeat?: boolean(),
           once?: boolean(),
           self_scheduled?: boolean(),
+          retry: AshWorkflow.Entities.Retry.t(),
           opts: keyword()
         }
 
@@ -71,6 +79,7 @@ defmodule AshWorkflow.Scheduler.Work do
     repeat?: false,
     once?: false,
     self_scheduled?: false,
+    retry: %AshWorkflow.Entities.Retry{},
     opts: []
   ]
 end

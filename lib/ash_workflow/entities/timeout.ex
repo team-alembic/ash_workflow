@@ -35,10 +35,11 @@ defmodule AshWorkflow.Entities.Timeout do
     self_scheduled?: false,
     __spark_metadata__: nil,
     field: :state_entered_at,
-    repeat: false
+    repeat: false,
+    retry: nil
   ]
 
-  @type duration_unit :: :seconds | :minutes | :hours | :days
+  @type duration_unit :: AshWorkflow.Duration.unit()
   @type t :: %__MODULE__{
           name: atom(),
           after: {pos_integer(), duration_unit()},
@@ -47,7 +48,8 @@ defmodule AshWorkflow.Entities.Timeout do
           check_interval: String.t() | nil,
           self_scheduled?: boolean(),
           field: atom(),
-          repeat: boolean()
+          repeat: boolean(),
+          retry: AshWorkflow.Entities.Retry.t() | nil
         }
 
   @schema [
@@ -110,12 +112,5 @@ defmodule AshWorkflow.Entities.Timeout do
 
   def attribute_schema, do: @schema
 
-  def validate_duration({value, unit})
-      when is_integer(value) and value > 0 and unit in [:seconds, :minutes, :hours, :days] do
-    {:ok, {value, unit}}
-  end
-
-  def validate_duration(other) do
-    {:error, "Expected a duration tuple like {3, :days}, got: #{inspect(other)}"}
-  end
+  def validate_duration(value), do: AshWorkflow.Duration.validate(value)
 end

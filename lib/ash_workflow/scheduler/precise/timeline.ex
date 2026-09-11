@@ -22,6 +22,15 @@ defmodule AshWorkflow.Scheduler.Precise.Timeline do
   and it is the same guarantee ash_oban gets by re-checking a trigger's `where`
   before a job runs. A record that has left the step, or had its deadline
   moved, fires nothing.
+
+  ## Retry
+
+  A failed attempt that has not yet reached `work.retry.max_attempts` re-arms a
+  timer for the backoff delay, under the same key as the original deadline.
+  That is what lets a record leaving the step drop a pending retry through the
+  same `drop_timers_for/2` and `cancel/2` paths as any other timer. `on_error`
+  only runs once the last attempt has failed, exactly as
+  `AshWorkflow.Scheduler.execute/3` decides.
   """
   use GenServer
 
@@ -118,7 +127,7 @@ defmodule AshWorkflow.Scheduler.Precise.Timeline do
     |> Enum.reduce(0, fn work, count ->
       records = read(work.resource, work.match, state)
 
-      Enum.each(records, &run(work, &1, state))
+      Enum.each(records, &run_once(work, &1, state))
 
       count + length(records)
     end)
@@ -154,13 +163,16 @@ defmodule AshWorkflow.Scheduler.Precise.Timeline do
     {:noreply, schedule_sweep(state)}
   end
 
-  def handle_info({:fire, key, work}, state) do
+  def handle_info({:fire, key, work, attempt}, state) do
     state = %{state | timers: Map.delete(state.timers, key)}
 
-    if Leader.leader?(state.leader) do
-      {_resource, _name, primary_key} = key
-      fire(work, primary_key, state)
-    end
+    state =
+      if Leader.leader?(state.leader) do
+        {_resource, _name, primary_key} = key
+        fire(work, primary_key, attempt, state)
+      else
+        state
+      end
 
     {:noreply, state}
   end
@@ -216,10 +228,7 @@ defmodule AshWorkflow.Scheduler.Precise.Timeline do
     # is no instant to arm a timer for. Run the matching records now.
     work
     |> due_records(state, nil)
-    |> Enum.reduce(state, fn record, state ->
-      run(work, record, state)
-      state
-    end)
+    |> Enum.reduce(state, &run(work, &1, 1, &2))
   end
 
   defp sweep_work(state, %Work{} = work) do
@@ -297,27 +306,24 @@ defmodule AshWorkflow.Scheduler.Precise.Timeline do
   # Arming
 
   defp arm(state, %Work{} = work, record) do
-    key = key(work, record)
-
     case delay_ms(work, record) do
       nil ->
         state
 
       delay when delay <= 0 ->
-        # Through `fire/3` rather than straight to `run/3`, so this path
+        # Through `fire/4` rather than straight to `run/4`, so this path
         # re-checks `Work.match` exactly as an expired timer does. A record
         # handed to `deadline_changed/2` is whatever the caller held, and a
         # deadline already in the past would otherwise run its action without
         # anything confirming the record still occupies the step.
-        fire(work, primary_key(record), state)
-
-        state
+        fire(work, primary_key(record), 1, state)
 
       delay ->
+        key = key(work, record)
         state = cancel_timer(state, key)
         # A one-shot timer accumulates no drift, so a computed delay is as
         # accurate here as an absolute monotonic target would be.
-        timer = Process.send_after(self(), {:fire, key, work}, delay)
+        timer = Process.send_after(self(), {:fire, key, work, 1}, delay)
 
         %{state | timers: Map.put(state.timers, key, timer)}
     end
@@ -363,7 +369,7 @@ defmodule AshWorkflow.Scheduler.Precise.Timeline do
 
   # Firing
 
-  defp fire(%Work{} = work, primary_key, state) do
+  defp fire(%Work{} = work, primary_key, attempt, state) do
     pk_filter =
       work.resource
       |> Ash.Resource.Info.primary_key()
@@ -374,22 +380,54 @@ defmodule AshWorkflow.Scheduler.Precise.Timeline do
     case read(work.resource, filter, state) do
       # The record left the step, or its deadline moved. Whatever armed this
       # timer is out of date, and doing nothing is the correct outcome.
-      [] -> :ok
-      [record] -> run(work, record, state)
+      [] -> state
+      [record] -> run(work, record, attempt, state)
     end
   end
 
-  defp run(%Work{} = work, record, state) do
-    case Scheduler.execute(work, record, state.action_opts) do
+  defp run(%Work{} = work, record, attempt, state) do
+    action_opts = Keyword.put(state.action_opts, :attempt, attempt)
+
+    case Scheduler.execute(work, record, action_opts) do
       {:ok, _record} ->
-        :ok
+        state
+
+      {:retry, delay_ms} ->
+        arm_retry(state, work, record, attempt, delay_ms)
 
       {:error, error} ->
-        Logger.warning("""
-        #{inspect(__MODULE__)} failed to run #{inspect(work.name)} on \
-        #{inspect(work.resource)}: #{inspect(error)}
-        """)
+        warn_failed(work, error)
+        state
     end
+  end
+
+  # Rearms under the same key the original deadline used, so a record leaving
+  # the step drops a pending retry through the same `drop_timers_for/2` and
+  # `cancel/2` paths as any other timer.
+  defp arm_retry(state, work, record, attempt, delay_ms) do
+    key = key(work, record)
+    state = cancel_timer(state, key)
+    timer = Process.send_after(self(), {:fire, key, work, attempt + 1}, delay_ms)
+
+    %{state | timers: Map.put(state.timers, key, timer)}
+  end
+
+  # A retry needs the timer-holding process to re-arm, which `run_due/2` does
+  # not have — it runs synchronously in the caller's process, for tests. So it
+  # runs attempt 1 only and treats a requested retry as nothing left to do.
+  defp run_once(work, record, state) do
+    case Scheduler.execute(work, record, Keyword.put(state.action_opts, :attempt, 1)) do
+      {:ok, _record} -> :ok
+      {:retry, _delay_ms} -> :ok
+      {:error, error} -> warn_failed(work, error)
+    end
+  end
+
+  defp warn_failed(work, error) do
+    Logger.warning("""
+    #{inspect(__MODULE__)} failed to run #{inspect(work.name)} on \
+    #{inspect(work.resource)}: #{inspect(error)}
+    """)
   end
 
   # Timers

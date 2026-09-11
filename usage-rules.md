@@ -125,6 +125,28 @@ end
 - `on_error` (optional): Step to transition to on failure. If omitted, the record stays in the current state on error.
 - Must NOT have `transitions` or `terminal true`.
 
+#### Retry
+
+An automatic step or a timeout can declare a `retry` block, the failure policy for its generated work:
+
+```elixir
+step :send_offer do
+  action :send_offer_email
+  on_success :awaiting_response
+  on_error :send_failed
+
+  retry do
+    max_attempts 3
+    backoff :exponential
+  end
+end
+```
+
+- `max_attempts` (optional, default `1`): how many times the action runs before giving up. The default of 1 means no retry, which is why `on_error` moves the step on the first failure.
+- `backoff` (optional, default `:exponential`): a duration tuple such as `{10, :seconds}` for a fixed delay between attempts, or `:exponential` (grows with the attempt number). Has no effect while `max_attempts` is 1.
+- `on_error` only runs after the final attempt has failed.
+- Rejected at compile time on a manual step, a wait state, or a terminal step — nothing is scheduled for those, so `retry` would do nothing.
+
 #### Conditional `on_success` routing
 
 `on_success` is a repeatable entity, not a scalar option. Declare it more
@@ -306,6 +328,7 @@ Prefer raising `check_interval` over leaving the default when deadlines are meas
 - Each timeout must have EITHER `action` OR `transition_to` — not both, not neither.
 - Supported duration units: `:seconds`, `:minutes`, `:hours`, `:days`.
 - `check_interval` (optional): Oban cron expression for how often to poll. Defaults to the workflow-level `check_interval`, which itself defaults to `"* * * * *"` (every minute).
+- A timeout can also declare a `retry` block, with the same `max_attempts` and `backoff` options as a step's — see [Retry](#retry) under Automatic Steps.
 
 ## Transition Log (Workflow History)
 

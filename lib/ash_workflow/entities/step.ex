@@ -11,7 +11,8 @@ defmodule AshWorkflow.Entities.Step do
     terminal: false,
     transitions: [],
     timeouts: [],
-    on_success: []
+    on_success: [],
+    retry: nil
   ]
 
   @type t :: %__MODULE__{
@@ -23,7 +24,8 @@ defmodule AshWorkflow.Entities.Step do
           initial: boolean(),
           terminal: boolean(),
           transitions: [AshWorkflow.Entities.Transition.t()],
-          timeouts: [AshWorkflow.Entities.Timeout.t()]
+          timeouts: [AshWorkflow.Entities.Timeout.t()],
+          retry: AshWorkflow.Entities.Retry.t() | nil
         }
 
   @schema [
@@ -93,7 +95,7 @@ defmodule AshWorkflow.Entities.Step do
   Returns `true` if the step is a manual step — i.e., it has declared
   transitions and is not a terminal state.
 
-  Manual-ness is derived from the shape of the step: a step with
+  Manual-ness is derived from the step's fields: a step with
   `transitions` is manual; a step with an `action` is automatic; a step
   with nothing at all is an end state.
 
