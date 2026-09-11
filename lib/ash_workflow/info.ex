@@ -313,52 +313,118 @@ defmodule AshWorkflow.Info do
   @doc """
   Returns a graph representation of the workflow as a map.
 
-  Each key is a step name, and the value is a map with `:transitions` (list of
-  target step names from manual transitions), `:on_success` (the step's
-  single unconditional `on_success` target, or `nil` if it has none or is
-  conditional), `:on_success_targets` (every step `on_success` could reach —
-  one entry per declared `on_success`), `:on_error` (for automatic steps),
-  and `:timeouts` (list of `{timeout_name, target}` tuples).
+  Each key is a step name, and the value describes that step and every edge
+  leaving it, so a caller can draw and label the whole workflow without
+  reaching back into the DSL.
+
+  The step itself carries:
+
+  * `:name` — the step name, repeated so an entry stands alone once taken out
+    of the map
+  * `:action` — the action an automatic step runs, `nil` for every other step
+  * `:policy` — the step's `policy` check, or `nil`
+  * `:retry` — the step's `AshWorkflow.Entities.Retry`, or `nil`
+  * `:initial` — `true` for the step the workflow starts in, as
+    `AshWorkflow.Entities.Step.find_initial/1` picks it
+  * `:terminal` — `true` for an end state
+  * `:manual` — `true` when nothing runs on entry
+  * `:wait_state` — `true` when a timeout is the step's only exit
+
+  The edges are four lists:
+
+  * `:transitions` — one entry per reachable target, as `%{name:, to:,
+    condition:, undoable?:, accept:}`. A conditional transition contributes one
+    entry per route, each carrying that route's `when` expression as
+    `:condition`; a simple transition contributes one entry with a `nil`
+    condition. `:undoable?` is `true` only when the workflow declares an `undo`
+    block and the transition opts in.
+  * `:on_success` — one entry per declared `on_success` route, as `%{to:,
+    condition:}`.
+  * `:on_error` — the step an automatic step falls to on failure, or `nil`.
+  * `:timeouts` — one entry per timeout, as `%{name:, to:, fire_after:, field:,
+    action:, repeat:, retry:}`. A timeout that runs an action rather than
+    moving the workflow has a `nil` `:to` and a non-`nil` `:action`.
 
   ## Example
 
       AshWorkflow.Info.workflow_graph(MyApp.OnboardingWorkflow)
       #=> %{
-      #=>   screening: %{transitions: [:interviewing, :rejected], on_success: nil, on_success_targets: [], on_error: nil, timeouts: []},
-      #=>   interviewing: %{transitions: [:offer, :rejected], on_success: nil, on_success_targets: [], on_error: nil, timeouts: []},
+      #=>   screening: %{
+      #=>     name: :screening,
+      #=>     action: nil,
+      #=>     policy: nil,
+      #=>     retry: nil,
+      #=>     initial: true,
+      #=>     terminal: false,
+      #=>     manual: true,
+      #=>     wait_state: false,
+      #=>     transitions: [
+      #=>       %{name: :advance, to: :interviewing, condition: nil, undoable?: true, accept: [:notes]},
+      #=>       %{name: :reject, to: :rejected, condition: nil, undoable?: false, accept: []}
+      #=>     ],
+      #=>     on_success: [],
+      #=>     on_error: nil,
+      #=>     timeouts: [
+      #=>       %{name: :chase, to: nil, fire_after: {3, :days}, field: :state_entered_at, action: :send_reminder, repeat: true, retry: nil}
+      #=>     ]
+      #=>   },
       #=>   ...
       #=> }
   """
   @spec workflow_graph(Ash.Resource.t()) :: %{atom() => map()}
   def workflow_graph(resource) do
-    resource
-    |> steps()
-    |> Map.new(&step_to_graph_entry/1)
+    steps = steps(resource)
+    initial = Step.find_initial(steps)
+    undo_enabled? = undo(resource) != nil
+
+    Map.new(steps, &step_to_graph_entry(&1, initial, undo_enabled?))
   end
 
-  defp step_to_graph_entry(step) do
-    transition_targets = Enum.flat_map(step.transitions, &transition_targets/1)
-
-    timeout_targets =
-      step.timeouts
-      |> Enum.filter(& &1.transition_to)
-      |> Enum.map(&{&1.name, &1.transition_to})
-
+  defp step_to_graph_entry(step, initial, undo_enabled?) do
     {step.name,
      %{
-       transitions: transition_targets,
-       on_success: bare_on_success(step),
-       on_success_targets: Step.on_success_targets(step),
-       on_error: step.on_error,
-       timeouts: timeout_targets,
+       name: step.name,
+       action: step.action,
+       policy: step.policy,
+       retry: step.retry,
+       initial: step == initial,
        terminal: Step.terminal?(step),
-       manual: Step.manual?(step)
+       manual: Step.manual?(step),
+       wait_state: Step.wait_state?(step),
+       transitions: Enum.flat_map(step.transitions, &transition_edges(&1, undo_enabled?)),
+       on_success: Enum.map(step.on_success, &%{to: &1.to, condition: &1.when}),
+       on_error: step.on_error,
+       timeouts: Enum.map(step.timeouts, &timeout_edge/1)
      }}
   end
 
-  defp bare_on_success(%{on_success: [%{to: to, when: nil}]}), do: to
-  defp bare_on_success(%{}), do: nil
+  defp transition_edges(%Transition{routes: []} = transition, undo_enabled?) do
+    [transition_edge(transition, transition.to, nil, undo_enabled?)]
+  end
 
-  defp transition_targets(%{routes: []} = t), do: [t.to]
-  defp transition_targets(%{routes: routes}), do: Enum.map(routes, & &1.to)
+  defp transition_edges(%Transition{routes: routes} = transition, undo_enabled?) do
+    Enum.map(routes, &transition_edge(transition, &1.to, &1.when, undo_enabled?))
+  end
+
+  defp transition_edge(transition, to, condition, undo_enabled?) do
+    %{
+      name: transition.name,
+      to: to,
+      condition: condition,
+      undoable?: undo_enabled? and transition.undoable?,
+      accept: transition.accept
+    }
+  end
+
+  defp timeout_edge(timeout) do
+    %{
+      name: timeout.name,
+      to: timeout.transition_to,
+      fire_after: timeout.fire_after,
+      field: timeout.field,
+      action: timeout.action,
+      repeat: timeout.repeat,
+      retry: timeout.retry
+    }
+  end
 end

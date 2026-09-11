@@ -139,18 +139,98 @@ defmodule AshWorkflow.InfoTest do
   end
 
   describe "workflow_graph/1" do
-    test "returns graph with manual step transitions" do
+    test "names each transition and its target" do
       graph = Info.workflow_graph(AshWorkflowTest.ApprovalWorkflow)
 
-      assert %{transitions: transitions} = graph[:review]
-      assert :approved in transitions
-      assert :rejected in transitions
+      assert %{name: :approve, to: :approved, condition: nil} =
+               find_transition(graph[:review], :approve)
+
+      assert %{name: :reject, to: :rejected, condition: nil} =
+               find_transition(graph[:review], :reject)
     end
 
-    test "returns graph with automatic step on_success" do
+    test "carries what a transition accepts" do
+      graph = Info.workflow_graph(AshWorkflowTest.AcceptWorkflow)
+
+      assert %{accept: []} = find_transition(graph[:review], :approve)
+      assert %{accept: [:reason]} = find_transition(graph[:review], :reject)
+    end
+
+    test "gives each conditional route its own edge, carrying its condition" do
+      graph = Info.workflow_graph(AshWorkflowTest.ConditionalWorkflow)
+
+      assert [training, fast_track] =
+               Enum.filter(graph[:compliance].transitions, &(&1.name == :complete))
+
+      assert %{to: :training, condition: training_condition} = training
+      assert %{to: :fast_track, condition: fast_track_condition} = fast_track
+      assert inspect(training_condition) == "path_type == :full"
+      assert inspect(fast_track_condition) == "path_type == :abbreviated"
+    end
+
+    test "marks a transition undoable only when the workflow enables undo" do
+      undoable = Info.workflow_graph(AshWorkflowTest.UndoWorkflow)
+      assert find_transition(undoable[:review], :approve).undoable?
+      refute find_transition(undoable[:review], :escalate).undoable?
+
+      without_undo = Info.workflow_graph(AshWorkflowTest.ApprovalWorkflow)
+      refute find_transition(without_undo[:review], :approve).undoable?
+    end
+
+    test "reports the action an automatic step runs, and where it goes" do
       graph = Info.workflow_graph(AshWorkflowTest.LinearWorkflow)
 
-      assert %{on_success: :complete, on_error: :failed} = graph[:process]
+      assert %{
+               action: :do_processing,
+               manual: false,
+               on_success: [%{to: :complete, condition: nil}],
+               on_error: :failed
+             } = graph[:process]
+    end
+
+    test "keeps every on_success route with its condition" do
+      graph = Info.workflow_graph(AshWorkflowTest.OnSuccessWorkflow)
+
+      assert [interview, rejected, also_qualifies] = graph[:screening].on_success
+      assert %{to: :interview} = interview
+      assert %{to: :rejected_by_hr} = rejected
+      assert %{to: :also_qualifies} = also_qualifies
+      assert Enum.all?([interview, rejected, also_qualifies], &(&1.condition != nil))
+    end
+
+    test "describes a timeout that transitions and one that runs an action" do
+      graph = Info.workflow_graph(AshWorkflowTest.TimeoutWorkflow)
+
+      assert %{
+               name: :escalation,
+               to: :escalated,
+               fire_after: {7, :days},
+               field: :state_entered_at,
+               action: nil,
+               repeat: false
+             } = find_timeout(graph[:waiting], :escalation)
+
+      assert %{name: :reminder, to: nil, fire_after: {2, :days}, action: :send_reminder} =
+               find_timeout(graph[:waiting], :reminder)
+    end
+
+    test "reports the field a timeout measures against" do
+      graph = Info.workflow_graph(AshWorkflowTest.WaitStateWorkflow)
+
+      assert %{field: :release_at, to: :running} = find_timeout(graph[:queued], :release)
+    end
+
+    test "marks the initial step" do
+      graph = Info.workflow_graph(AshWorkflowTest.ApprovalWorkflow)
+
+      assert graph[:review].initial
+      refute graph[:approved].initial
+    end
+
+    test "marks the initial step a workflow declares out of order" do
+      graph = Info.workflow_graph(AshWorkflowTest.InitialFlagWorkflow)
+
+      assert graph[:review].initial
     end
 
     test "marks terminal steps" do
@@ -161,19 +241,39 @@ defmodule AshWorkflow.InfoTest do
       refute graph[:review].terminal
     end
 
-    test "includes timeout targets" do
-      graph = Info.workflow_graph(AshWorkflowTest.TimeoutWorkflow)
+    test "marks a wait state" do
+      graph = Info.workflow_graph(AshWorkflowTest.WaitStateWorkflow)
 
-      waiting = graph[:waiting]
-      assert {:escalation, :escalated} in waiting.timeouts
+      assert graph[:queued].wait_state
+      refute graph[:running].wait_state
     end
 
-    test "includes conditional route targets" do
-      graph = Info.workflow_graph(AshWorkflowTest.ConditionalWorkflow)
+    test "carries the retry policy of a step and of a timeout" do
+      graph = Info.workflow_graph(AshWorkflowTest.RetryWorkflow)
 
-      compliance = graph[:compliance]
-      assert :training in compliance.transitions
-      assert :fast_track in compliance.transitions
+      refute graph[:no_retry].retry
+
+      assert %AshWorkflow.Entities.Retry{max_attempts: 3, backoff: {10, :seconds}} =
+               graph[:fixed_backoff].retry
+
+      assert %AshWorkflow.Entities.Retry{max_attempts: 2, backoff: {30, :seconds}} =
+               find_timeout(graph[:waiting], :nudge).retry
+    end
+
+    test "carries a step's policy" do
+      graph = Info.workflow_graph(AshWorkflowTest.PolicyWorkflow)
+
+      assert graph[:manager_review].policy
+      refute graph[:approved].policy
+    end
+
+    test "repeats each step's name in its entry" do
+      graph = Info.workflow_graph(AshWorkflowTest.ApprovalWorkflow)
+
+      assert Enum.all?(graph, fn {name, entry} -> entry.name == name end)
     end
   end
+
+  defp find_transition(step, name), do: Enum.find(step.transitions, &(&1.name == name))
+  defp find_timeout(step, name), do: Enum.find(step.timeouts, &(&1.name == name))
 end
