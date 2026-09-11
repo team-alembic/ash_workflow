@@ -27,6 +27,56 @@ defmodule AshWorkflow.InfoTest do
     end
   end
 
+  describe "transition/2" do
+    test "merges the steps a shared transition name leaves" do
+      merged = Info.transition(AshWorkflowTest.SharedTransitionWorkflow, :complete)
+
+      assert merged.name == :complete
+      assert merged.from == [:step_a, :step_b]
+      assert merged.generated_action == :complete
+    end
+
+    test "returns one route per declared target, each carrying its step" do
+      merged = Info.transition(AshWorkflowTest.SharedTransitionWorkflow, :complete)
+
+      assert merged.routes == [
+               %{from: :step_a, to: :done_a, when: nil},
+               %{from: :step_b, to: :done_b, when: nil}
+             ]
+    end
+
+    test "keeps the condition on a conditional route" do
+      merged = Info.transition(AshWorkflowTest.SharedConditionalWorkflow, :advance)
+
+      assert merged.from == [:screening, :review, :compliance, :training, :fast_track]
+
+      assert [%{to: :training, when: training_when}, %{to: :fast_track, when: fast_track_when}] =
+               Enum.filter(merged.routes, &(&1.from == :compliance))
+
+      refute is_nil(training_when)
+      refute is_nil(fast_track_when)
+
+      assert Enum.all?(merged.routes, &(&1.from == :compliance or is_nil(&1.when)))
+    end
+
+    test "unions the accepted inputs" do
+      assert Info.transition(AshWorkflowTest.AcceptWorkflow, :reject).accepted_inputs == [:reason]
+      assert Info.transition(AshWorkflowTest.AcceptWorkflow, :approve).accepted_inputs == []
+    end
+
+    test "names the action the transition generated" do
+      merged = Info.transition(AshWorkflowTest.AcceptWorkflow, :reject)
+      action = Ash.Resource.Info.action(AshWorkflowTest.AcceptWorkflow, merged.generated_action)
+
+      assert action.type == :update
+      assert action.accept == merged.accepted_inputs
+    end
+
+    test "returns nil for a name no step declares" do
+      assert Info.transition(AshWorkflowTest.ApprovalWorkflow, :nonexistent) == nil
+    end
+  end
+
   describe "available_actions/2" do
     test "returns transition names for manual steps" do
       assert Info.available_actions(AshWorkflowTest.ApprovalWorkflow, :review) == [
