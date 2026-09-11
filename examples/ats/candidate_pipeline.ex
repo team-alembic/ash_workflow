@@ -111,6 +111,7 @@ defmodule ATS.CandidatePipeline do
   use Ash.Resource,
     domain: ATS.Domain,
     data_layer: AshPostgres.DataLayer,
+    authorizers: [Ash.Policy.Authorizer],
     extensions: [AshWorkflow, AshOban]
 
   postgres do

@@ -19,6 +19,7 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
          :ok <- validate_single_initial(steps),
          :ok <- validate_step_configs(steps),
          :ok <- validate_references(steps),
+         :ok <- validate_timeout_actions(dsl, steps),
          :ok <- validate_shared_transition_policies(steps) do
       validate_reachability(steps)
     end
@@ -238,6 +239,34 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
 
         true ->
           {:cont, :ok}
+      end
+    end)
+  end
+
+  # A timeout's `action` is handed to the scheduler as the action to invoke, so
+  # a name that matches nothing fails when the deadline passes rather than at
+  # compile time. `AshWorkflow.Transformers.AddActions` already raises for the
+  # repeating case, because it has to rewrite the action to add
+  # `AshWorkflow.Changes.RecordEvent`; a non-repeating one was passed through
+  # unchecked.
+  defp validate_timeout_actions(dsl, steps) do
+    action_names =
+      dsl
+      |> Verifier.get_entities([:actions])
+      |> MapSet.new(& &1.name)
+
+    steps
+    |> Enum.flat_map(fn step -> Enum.map(step.timeouts, &{step, &1}) end)
+    |> Enum.reject(fn {_step, timeout} -> is_nil(timeout.action) end)
+    |> Enum.reduce_while(:ok, fn {step, timeout}, :ok ->
+      if MapSet.member?(action_names, timeout.action) do
+        {:cont, :ok}
+      else
+        {:halt,
+         step_error(
+           step,
+           "Timeout :#{timeout.name} on step :#{step.name} references action :#{timeout.action}, but no such action is defined on the resource."
+         )}
       end
     end)
   end

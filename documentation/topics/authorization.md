@@ -2,6 +2,15 @@
 
 AshWorkflow integrates with Ash's policy system to control who can trigger workflow transitions.
 
+Every policy in this guide needs `Ash.Policy.Authorizer` on the resource. `AshWorkflow.Transformers.AddPolicies` generates nothing without it, so a `policy` on a step used to be accepted and then never enforced. `AshWorkflow.Verifiers.ValidateStepPolicies` now rejects that at compile time.
+
+```elixir
+use Ash.Resource,
+  domain: MyApp.Documents,
+  authorizers: [Ash.Policy.Authorizer],
+  extensions: [AshWorkflow, AshOban]
+```
+
 ## Step-level policies
 
 Add a `policy` to a manual step to restrict all its transitions to a specific kind of actor:
@@ -94,7 +103,7 @@ doc.available_actions
 #=> [:approve, :reject]
 ```
 
-This uses `Ash.can?/2` under the hood to check each action against the actor's permissions.
+It calls `Ash.can?/2` for each action to check it against the actor's permissions.
 
 ## SAT solver dependency
 
