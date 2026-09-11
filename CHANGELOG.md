@@ -54,14 +54,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`terminal: true` is derived.** A step that declares no action, no transitions, no timeouts, no `on_success` and no `on_error` has no way out, so `AshWorkflow.Entities.Step.terminal?/1` reports it as terminal whether or not the option is set. `step :approved` is now enough. The option stays as an assertion: `AshWorkflow.Verifiers.ValidateWorkflow` still rejects a step that sets it and then declares something outgoing, and everything that reads the flag — the scheduler's work list, the generated policies, the state machine, `AshWorkflow.Info.workflow_graph/1` — now reads the predicate.
+
+  A step that becomes terminal by accident is caught by the reachability check rather than by a missing-action error: an end state nothing transitions to is unreachable. The error for a stranded step therefore changes. `step :stranded` in an otherwise working workflow now reports "not reachable from the first step", and a workflow of nothing but terminal steps reports "must have at least one non-terminal step".
+
 - Triggers now stream with `:keyset` rather than `:full_read`. ash_oban suggests `:full_read` when a `where` clause changes between batches, which ours do, but keyset orders by primary key: unlike `:offset`, a row leaving the filter mid-stream cannot shift another row past the cursor. A record becoming eligible at a key the stream has already passed waits for the next poll, bounded by `check_interval`. In exchange, a backlog after downtime is no longer read into memory in one unpaginated read.
 
 ### Fixed
 
+- **A policy with no authorizer to enforce it is a compile error.** `AshWorkflow.Transformers.AddPolicies` generates nothing when `Ash.Policy.Authorizer` is absent from the resource, so a `policy` on a step or on the `undo` block was accepted and then silently unenforced: every caller was authorized, including the ones the policy named. `AshWorkflow.Verifiers.ValidateStepPolicies` now names each step that declared one and says how to add the authorizer.
+- A timeout naming an action the resource does not define is rejected by `AshWorkflow.Verifiers.ValidateWorkflow`. Under the default scheduler AshOban's own verifier caught it on the trigger it generated, but a workflow scheduled by `AshWorkflow.Scheduler.Precise` generates no trigger, so the name went unchecked until the deadline passed.
+- A timeout `field` referencing a module calculation is now rejected at compile time. Only expression calculations inline into a data-layer filter, so a module calculation passed the verifier and then raised when the scheduler built its query. Use an expression calculation or a plain attribute.
 - A manual transition's `route` conditions now see the input the same call accepted. `AshWorkflow.Changes.ConditionalTransition` evaluated them against `changeset.data`, so `route :approved, when: expr(decision == :approve)` on a transition that accepts `:decision` could only match a value already persisted, and "submit the outcome, then route on the outcome" needed a separate transition name per outcome or a custom change. Routes now read the record as it was loaded with the transition's `accept` list applied on top.
 
   Only the accepted attributes are applied. An attribute written by one of the action's own changes stays invisible to the routes, so a route can still ask what the record looked like when the call arrived — which is what a two-signature sign-off needs, where one action records the current approver and the routes ask whether anyone approved before. `AshWorkflow.Changes.ConditionalOnSuccess` continues to apply every pending attribute, since an automatic step has no caller input to distinguish from what its action computed.
-- A timeout `field` referencing a module calculation is now rejected at compile time. Only expression calculations inline into a data-layer filter, so a module calculation passed the verifier and then raised when the scheduler built its query. Use an expression calculation or a plain attribute.
 
 ### Changed
 
@@ -89,6 +95,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A step declaring neither an action, a transition, nor a timeout now reports what it needs, rather than the misleading `Automatic step :x references action :, but no such action is defined on the resource.`
 - The generated `__on_error_<step>` action is now covered by the generated policies and the AshOban bypass. On a resource with an authorizer, AshOban's invocation of it was forbidden, so a failing automatic step silently stayed put instead of routing to its error state.
 - Corrected the conditional route example in `AshWorkflow.Entities.Transition` docs, which used `to :target, when: ...` rather than the actual `route :target, when: ...`.
+- `documentation/topics/error-handling.md` described failure behaviour the library has not had since 0.5.0. It said the `on_error` transition never happens automatically, that a failing job retries, and that the record stays in the failing step once retries are exhausted. `AshWorkflow.Transformers.AddActions` generates `__on_error_<step>` and `AshWorkflow.Transformers.AddScheduler` wires it to the trigger, so the record moves to the error state on the first failure and gets an `:error_path` transition log row. The guide now documents that, and what a step with no `on_error` does instead.
+- `documentation/topics/timeouts-and-deadlines.md` recommended `"* * * * * *"` for sub-minute precision, which `AshWorkflow.Verifiers.ValidateTimeoutPrecision` rejects. It now points at `AshWorkflow.Scheduler.Precise` and `self_scheduled?`, which is what the rest of the guide already taught.
+- The same guide said a non-repeating timeout on a custom field keeps firing on every poll cycle. Its trigger keeps matching, but `trigger_once?` stops the action running twice for the same record.
+- The getting-started tutorial asked for `ash_state_machine` and `ash_oban` as prerequisites the reader adds and configures. It now leads with `mix igniter.install ash_workflow` and keeps manual setup as the fallback. One dependency rule holds across the tutorial and the README: declare `ash_workflow` only, add `AshWorkflow` and `AshOban` to the resource, never `AshStateMachine`.
+- The tutorial and the README now say that AshWorkflow generates no create action, and show what `initial: true` changes, since the initial step is otherwise the first non-terminal step by declaration order.
+- README links into `demos/` are absolute, so they resolve on HexDocs. `mix docs` emitted six unresolved-reference warnings, because the demos are not part of the published package.
 
 ### Changed
 

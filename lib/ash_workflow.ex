@@ -207,6 +207,7 @@ defmodule AshWorkflow do
       AshWorkflow.Verifiers.ValidateTimeoutFields,
       AshWorkflow.Verifiers.ValidateTimeoutPrecision,
       AshWorkflow.Verifiers.ValidateTransitionLog,
-      AshWorkflow.Verifiers.ValidateUndo
+      AshWorkflow.Verifiers.ValidateUndo,
+      AshWorkflow.Verifiers.ValidateStepPolicies
     ]
 end

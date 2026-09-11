@@ -67,7 +67,7 @@ Declares a step in the workflow. Each step becomes a state in the generated stat
 |------|------|---------|------|
 | [`action`](#workflow-step-action){: #workflow-step-action } | `atom` |  | The action to run for automatic steps. Must reference a user-defined update action on the resource. |
 | [`initial`](#workflow-step-initial){: #workflow-step-initial } | `boolean` | `false` | If true, this step is the initial state. At most one step can be marked initial. If none are, the first non-terminal step by declaration order is used. |
-| [`terminal`](#workflow-step-terminal){: #workflow-step-terminal } | `boolean` | `false` | If true, this is an end state with no outgoing transitions. |
+| [`terminal`](#workflow-step-terminal){: #workflow-step-terminal } | `boolean` | `false` | Asserts that this is an end state. A step that declares no action, no transitions, no timeouts, no on_success and no on_error is terminal whether or not this is set, so it is only needed to state the intent — the verifier then rejects the step if it grows an outgoing declaration. |
 | [`on_error`](#workflow-step-on_error){: #workflow-step-on_error } | `atom` |  | The step to transition to on failure. Optional, for automatic steps. |
 | [`policy`](#workflow-step-policy){: #workflow-step-policy } | `any` |  | An Ash policy check to apply to all transitions in this step. Accepts any {module, opts} tuple implementing Ash.Policy.Check. |
 

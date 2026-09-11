@@ -37,13 +37,13 @@ defmodule AshWorkflow.Scheduler do
   A **discovering** scheduler periodically asks the data layer which records
   match, and nothing is recorded per deadline. That is what the Oban
   implementation does, and its floor is the polling interval — one minute for
-  cron. It reads `Work.match` and ignores `deadline_changed/2`.
+  cron. It reads `Work.match` and ignores `c:deadline_changed/2`.
 
   A **registering** scheduler is told each deadline as it becomes known and arms
   a timer for it. Its floor is the timer, which is microseconds. It reads
-  `Work.deadline` and implements `deadline_changed/2`.
+  `Work.deadline` and implements `c:deadline_changed/2`.
 
-  Neither is forced into the other's shape: `deadline_changed/2` is optional, so
+  Neither is forced into the other's shape: `c:deadline_changed/2` is optional, so
   a discovering scheduler simply does not implement it, and a registering one
   gets the callback it needs without every workflow paying for a table.
 
@@ -59,7 +59,7 @@ defmodule AshWorkflow.Scheduler do
 
   * `child_spec/1` — a supervised process, for an implementation that holds
     state such as an in-memory timeline.
-  * `deadline_changed/2` — called after a record's state changes, so a
+  * `c:deadline_changed/2` — called after a record's state changes, so a
     registering implementation can re-arm. Given the record and the work still
     ahead of it.
   * `cancel/2` — called when a record leaves a step, so a pending timer can be

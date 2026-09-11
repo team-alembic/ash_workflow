@@ -24,7 +24,7 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutFields do
       |> Enum.filter(&match?(%Step{}, &1))
 
     steps
-    |> Enum.reject(& &1.terminal)
+    |> Enum.reject(&Step.terminal?/1)
     |> Enum.flat_map(fn step -> Enum.map(step.timeouts, &{step, &1}) end)
     |> Enum.reduce_while(:ok, fn {step, timeout}, :ok ->
       with {:cont, :ok} <- validate_no_repeat_with_custom_field(step, timeout) do

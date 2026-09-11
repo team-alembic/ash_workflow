@@ -9,7 +9,7 @@ AshWorkflow generates [ash_state_machine](https://hexdocs.pm/ash_state_machine) 
 - **Step** — a state the workflow can be in. Some steps run automatically (background work via Oban), others wait for a human to trigger a transition.
 - **Transition** — a named outcome from a manual step that moves the workflow to a new state. Each transition becomes a callable Ash action. The same transition name can be used across multiple steps — they merge into a single action that routes based on the current state.
 - **Timeout** — a time-based rule: "if the workflow has been in this state for N days, do X." Timeouts can run actions (reminders) or force transitions (escalations).
-- **Terminal step** — an end state with no outgoing transitions (e.g., `:rejected`, `:completed`).
+- **Terminal step** — an end state. A step that declares no action, no transitions and no timeouts has no way out, so it is terminal without saying so. `terminal: true` states the intent and makes the verifier hold you to it.
 - **Transition log** — an opt-in resource recording one row per workflow event, which becomes the source of truth for history.
 - **Undo** — rewinding a record to the state before its last transition, for transitions marked `undoable?: true`. Recorded as a new log row pointing at the one it reverses, never by erasing history.
 
@@ -316,7 +316,24 @@ From the workflow DSL, the extension generates:
 | **Calculations** | `:steps`, `:current_step`, `:available_actions` | Workflow introspection |
 | **Attributes** | `state_entered_at` | Added if not already defined |
 
-The initial state is the step with `initial true`, or the first non-terminal step by declaration order if none is marked.
+The initial state is the step with `initial true`, or the first non-terminal step by declaration order if none is marked. Declaration order is easy to trip over, so mark the step when the reading order is not the running order:
+
+```elixir
+workflow do
+  # Starts in :intake. Without `initial true` it would start in :review,
+  # the first non-terminal step by declaration order.
+  step :review do
+    transition :approve, to: :approved
+  end
+
+  step :intake do
+    initial true
+    transition :submit, to: :review
+  end
+
+  step :approved, terminal: true
+end
+```
 
 The current step lives in the `state` attribute. A resource that already has a lifecycle column of its own renames it with `state_attribute` on the `workflow` section, and everything generated follows the new name:
 
@@ -370,22 +387,25 @@ with `AshOban.config/2`. See the
 
 </details>
 
-You do **not** need to add `ash_state_machine` or `ash_oban` to your extensions
-list — `AshWorkflow` includes them automatically — and both come in as
-dependencies of `ash_workflow`, so you don't need to declare them either.
+`ash_state_machine` and `ash_oban` come in as dependencies of `ash_workflow`,
+so do not declare them in `mix.exs` yourself. On the resource, add
+`AshWorkflow` and `AshOban` to `extensions`, and leave `AshStateMachine` out:
+`AshWorkflow.Transformers.AddStateMachine` adds that extension and writes its
+DSL. `AshOban` stays explicit because the scheduler that generates its
+triggers is one choice among several. See `AshWorkflow.Scheduler`.
 
 ## Demos
 
-Runnable applications live in [`demos/`](demos), each with its own test suite
+Runnable applications live in [`demos/`](https://github.com/team-alembic/ash_workflow/tree/main/demos), each with its own test suite
 that CI runs:
 
 | Demo | What it shows |
 |---|---|
-| [`ats`](demos/ats) | A Phoenix LiveView app you can click through |
-| [`document_approval`](demos/document_approval) | Conditional routes: two admins must sign off, so one `:approve` action does not advance the workflow the first time |
-| [`order_fulfilment`](demos/order_fulfilment) | Error handling across a long automatic chain, with recovery looping back into it |
-| [`subscription_dunning`](demos/subscription_dunning) | Repeating timeouts, and deadlines measured against a date on the record |
-| [`support_ticket_sla`](demos/support_ticket_sla) | Priority routing, one transition name meaning different things per step, per-queue SLAs |
+| [`ats`](https://github.com/team-alembic/ash_workflow/tree/main/demos/ats) | A Phoenix LiveView app you can click through |
+| [`document_approval`](https://github.com/team-alembic/ash_workflow/tree/main/demos/document_approval) | Conditional routes: two admins must sign off, so one `:approve` action does not advance the workflow the first time |
+| [`order_fulfilment`](https://github.com/team-alembic/ash_workflow/tree/main/demos/order_fulfilment) | Error handling across a long automatic chain, with recovery looping back into it |
+| [`subscription_dunning`](https://github.com/team-alembic/ash_workflow/tree/main/demos/subscription_dunning) | Repeating timeouts, and deadlines measured against a date on the record |
+| [`support_ticket_sla`](https://github.com/team-alembic/ash_workflow/tree/main/demos/support_ticket_sla) | Priority routing, one transition name meaning different things per step, per-queue SLAs |
 
 ## Contributing
 

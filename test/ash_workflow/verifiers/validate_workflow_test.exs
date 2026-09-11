@@ -12,9 +12,10 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflowTest do
   alias AshWorkflow.Entities.{Route, Step, Timeout, Transition}
   alias AshWorkflow.Verifiers.ValidateWorkflow
 
-  defp build_dsl(steps) do
+  defp build_dsl(steps, action_names \\ []) do
     %{
-      [:workflow] => %{entities: steps}
+      [:workflow] => %{entities: steps},
+      [:actions] => %{entities: Enum.map(action_names, &%{name: &1})}
     }
   end
 
@@ -90,13 +91,47 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflowTest do
 
     test "step with timeouts" do
       dsl =
+        build_dsl(
+          [
+            step(:waiting,
+              transitions: [transition(:resolve, :done)],
+              timeouts: [
+                timeout(:reminder, action: :send_reminder),
+                timeout(:escalation, transition_to: :escalated)
+              ]
+            ),
+            step(:done, terminal: true),
+            step(:escalated, terminal: true)
+          ],
+          [:send_reminder]
+        )
+
+      assert :ok = ValidateWorkflow.verify(dsl)
+    end
+  end
+
+  describe "timeout action references" do
+    test "a timeout naming an action the resource does not define fails" do
+      dsl =
         build_dsl([
           step(:waiting,
             transitions: [transition(:resolve, :done)],
-            timeouts: [
-              timeout(:reminder, action: :send_reminder),
-              timeout(:escalation, transition_to: :escalated)
-            ]
+            timeouts: [timeout(:reminder, action: :send_reminder)]
+          ),
+          step(:done, terminal: true)
+        ])
+
+      assert {:error, %Spark.Error.DslError{message: message}} = ValidateWorkflow.verify(dsl)
+      assert message =~ "Timeout :reminder on step :waiting references action :send_reminder"
+      assert message =~ "no such action is defined on the resource"
+    end
+
+    test "a transition timeout needs no action" do
+      dsl =
+        build_dsl([
+          step(:waiting,
+            transitions: [transition(:resolve, :done)],
+            timeouts: [timeout(:escalation, transition_to: :escalated)]
           ),
           step(:done, terminal: true),
           step(:escalated, terminal: true)

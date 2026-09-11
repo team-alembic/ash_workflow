@@ -261,7 +261,7 @@ defmodule AshWorkflow.Transformers.AddActions do
 
   defp inject_automatic_step_changes(dsl, steps) do
     steps
-    |> Enum.reject(&(Step.manual?(&1) || &1.terminal))
+    |> Enum.reject(&(Step.manual?(&1) || Step.terminal?(&1)))
     |> Enum.reduce(dsl, fn step, dsl ->
       actions = Transformer.get_entities(dsl, [:actions])
 

@@ -98,12 +98,12 @@ defmodule AshWorkflow.Transformers.AddPolicies do
 
     automatic_actions =
       steps
-      |> Enum.reject(&(Step.manual?(&1) || &1.terminal))
+      |> Enum.reject(&(Step.manual?(&1) || Step.terminal?(&1)))
       |> Enum.map(& &1.action)
 
     timeout_actions =
       steps
-      |> Enum.reject(& &1.terminal)
+      |> Enum.reject(&Step.terminal?/1)
       |> Enum.flat_map(fn step -> Enum.map(step.timeouts, &{step, &1}) end)
       |> Enum.map(fn {step, timeout} ->
         if timeout.transition_to do
@@ -149,12 +149,12 @@ defmodule AshWorkflow.Transformers.AddPolicies do
   defp collect_oban_action_names(steps) do
     automatic_actions =
       steps
-      |> Enum.reject(&(Step.manual?(&1) || &1.terminal))
+      |> Enum.reject(&(Step.manual?(&1) || Step.terminal?(&1)))
       |> Enum.map(& &1.action)
 
     timeout_actions =
       steps
-      |> Enum.reject(& &1.terminal)
+      |> Enum.reject(&Step.terminal?/1)
       |> Enum.flat_map(fn step -> Enum.map(step.timeouts, &{step, &1}) end)
       |> Enum.map(fn {step, timeout} ->
         if timeout.transition_to do

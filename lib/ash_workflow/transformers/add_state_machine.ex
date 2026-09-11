@@ -89,7 +89,7 @@ defmodule AshWorkflow.Transformers.AddStateMachine do
   defp build_transitions(steps) do
     Enum.flat_map(steps, fn step ->
       cond do
-        step.terminal ->
+        Step.terminal?(step) ->
           []
 
         Step.manual?(step) ->
