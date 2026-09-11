@@ -296,3 +296,171 @@ All three are upstream bugs worth reporting — the sort inversion in particular
 would break *any* extension that integrates with AshOban or ash_state_machine, not
 just this one. Re-run this probe once they are fixed; the design work stands
 unchanged in the meantime.
+
+## 10. Who is working on it, and where the sort bug actually lives
+
+### Upstream activity
+
+`matt-beanland` is driving it, Zach Daniel reviewing and merging. 16 commits on
+`ash`'s `temporal` branch that aren't on `main` (12 Matt, 4 Zach), the feature
+commit dating to 2026-06-29 and a burst of work 2026-08-17→24 across `ash`,
+`ash_sql`, `ash_postgres`. Recent merged PRs: ash #2896–#2902, ash_sql #256,
+ash_postgres #818/#838/#839/#840. No open temporal PRs. Notably ash_postgres
+**#839 is "fix: order temporal migration operations under the toposort"** — they
+have already been bitten by toposort ordering once on this branch.
+
+### Root cause, minimised to five transformers
+
+Greedy minimisation of the 32-transformer list gives:
+
+```
+AshWorkflow.Transformers.AddObanTriggers          -- before?(SetDefaults) = true
+AshOban.Transformers.SetDefaults                  -- after?(_) = true
+AshStateMachine.Transformers.AddState             -- before?(DefaultAccept) = true, after?(_) = true
+Ash.Resource.Transformers.DefaultAccept
+Ash.Resource.Transformers.AddTemporalRelationshipFilters  -- after?(DefaultAccept) = true   <-- new on the branch
+```
+
+sorting to `AddState, SetDefaults, AddObanTriggers, DefaultAccept, ATRF` — with
+`AddObanTriggers` *after* `SetDefaults`, violating its declared `before?`.
+
+The edges form a cycle:
+
+```
+AddState --before--> DefaultAccept --> ATRF --(after?(_)=true on AddState)--> AddState
+```
+
+`AddTemporalRelationshipFilters.after?(DefaultAccept) -> true` is the new edge
+that closes the loop against `AddState`'s catch-all `after?(_) -> true`. Once the
+graph is cyclic, `Spark.Dsl.Transformer.walk_rest/3` leaves its clean path — and
+its two fallback branches **append** to the accumulator (`acc ++ [vertex]`) where
+the acyclic branch **prepends** (`[vertex | acc]`), with a single
+`Enum.reverse/1` at the end. So a cycle anywhere reverses the emission order of
+constraints that have nothing to do with it.
+
+### The naive fix does not work
+
+Making both fallback branches prepend fixes our violation on the full list
+(`violated? false`), but then breaks `SetDefaults.before?(DefineSchedulers)`:
+
+```
+** (RuntimeError) Exception in transformer AshOban.Transformers.DefineSchedulers
+No configuration for `domain` present on BasicWorkflow.DocumentApproval
+```
+
+So the asymmetry is load-bearing, not simply inverted. A real fix has to detect
+the cycle, break only edges *inside* it, topsort the remainder, and surface a
+warning instead of silently reordering. Two candidate homes:
+
+- **spark** — `walk_rest/3` degrading incoherently on a cyclic graph.
+- **ash (temporal branch)** — narrowing `ATRF.after?(DefaultAccept)` so the loop
+  never forms.
+
+### Why no test caught it
+
+- **ash's suite structurally cannot.** The cycle needs `ash` plus
+  `ash_state_machine` *and* `ash_oban` in one resource; ash depends on neither.
+- **spark has exactly one ordering test** — `test/persister_sort_test.exs`, three
+  transformers, acyclic, no catch-all `after?(_) -> true`. It covers the happy
+  path only.
+- Nothing anywhere pins ordering in the presence of a catch-all or a cycle.
+
+Which is the argument for the regression test: an ordering contract that
+`ash_state_machine` and `ash_oban` both depend on, that any new Ash transformer
+can silently break, and that no suite currently asserts. The five-module set above
+is small enough to be that test, in spark, with no Ash dependency — recreate the
+same `before?`/`after?` shapes with dummy modules and assert the declared pairs
+hold.
+
+## 11. The regression test
+
+Two artifacts, both on released deps so they are mergeable as-is:
+
+- `test/ash_workflow/transformer_ordering_test.exs` — asserts every `before?/1`
+  we declare against AshOban / ash_state_machine is honoured, plus the two facts
+  that depend on it (triggers have `read_action` and `scheduler_queue`; `state`
+  defaults to the initial step).
+- `bin/check-transformer-ordering.exs` — the same contract check across every
+  test-domain resource, via `mix run`, with no ExUnit. Needed because a broken
+  ordering stops `test/test_helper.exs` booting (AshOban raises on the
+  unconfigured queue before ExUnit starts), so the suite cannot report the very
+  failure the test exists to catch.
+- `test/support/transformer_contracts.ex` — the contract list, shared by both.
+
+Validated both ways:
+
+| | test | script |
+|---|---|---|
+| `ash` main | 3 tests, 0 failures | `transformer ordering OK across 21 resources`, exit 0 |
+| `ash` temporal | suite cannot boot | 189 violations, exit 1 |
+
+To reproduce the temporal run, pin in `mix.exs` (all three need `override: true`):
+
+```elixir
+{:ash, github: "ash-project/ash", branch: "temporal", override: true},
+{:ash_sql, github: "ash-project/ash_sql", branch: "temporal", override: true},
+{:ash_postgres, github: "ash-project/ash_postgres", branch: "temporal", override: true, only: [:dev, :test]},
+```
+
+and work around the cold-compile failure in §9 by compiling `ash` at `main`
+first, then `git -C deps/ash checkout origin/temporal && mix deps.compile ash`.
+
+## 12. Standalone reproduction, and how to fix it
+
+`.claude/plans/spark-sort-repro.exs` reproduces the whole thing with five dummy
+transformers and **no Ash dependency** — released spark alone. It mirrors the real
+`before?`/`after?` tables of `AddObanTriggers`, `AshOban.SetDefaults`,
+`AshStateMachine.AddState`, `Ash.Resource.Transformers.DefaultAccept`, and
+`AddTemporalRelationshipFilters`:
+
+```
+MIX_ENV=test mix run .claude/plans/spark-sort-repro.exs
+
+without ATRF          : AddObanTriggers=0 SetDefaults=3 -> OK
+with ATRF (as-is)     : AddObanTriggers=2 SetDefaults=1 -> VIOLATED
+with ATRF narrowed    : AddObanTriggers=0 SetDefaults=4 -> OK
+```
+
+The unrelated pair inverts purely because a fifth transformer closes a cycle
+elsewhere in the graph.
+
+### Fix in spark (the class of bug)
+
+`Spark.Dsl.Transformer.sort/1` builds a `:digraph` and walks it in
+`walk_rest/3`. The acyclic branch **prepends** each source vertex
+(`[vertex | acc]`); both fallback branches, taken once no source vertex exists,
+**append** (`acc ++ [vertex]`), and the whole accumulator is reversed at the end.
+So the moment a cycle appears, vertices emitted through the fallbacks land at the
+opposite end from where the walk intended, dragging satisfied constraints with
+them.
+
+Symmetrising the fallbacks to prepend does clear our violation on the full
+32-transformer list, but then breaks `SetDefaults.before?(DefineSchedulers)`
+(`No configuration for domain present on BasicWorkflow.DocumentApproval`), so the
+asymmetry is load-bearing rather than simply backwards. The principled fix:
+
+1. Detect the cycle (`:digraph_utils.is_acyclic/1`, or
+   `:digraph_utils.cyclic_strong_components/1` for the specific vertices).
+2. Break edges only *within* the offending strong component, leaving every other
+   edge intact, then `:digraph_utils.topsort/1` the result.
+3. Warn, naming the cycle. Silently reordering unrelated transformers is what made
+   this cost a day; a warning would have named the culprit immediately.
+
+Add spark's regression test alongside `test/persister_sort_test.exs`, which today
+covers three transformers, acyclic, with no catch-all `after?(_) -> true`. The
+five-module model above is the missing case.
+
+### Fix in ash (this instance)
+
+`AddTemporalRelationshipFilters.after?(Ash.Resource.Transformers.DefaultAccept)`
+is the edge that closes the loop against `AddState`'s catch-all
+`after?(_) -> true`. The model above shows dropping it clears the violation.
+Worth asking whether it is needed at all: the transformer adds relationship
+filters, `DefaultAccept` computes action accept lists, and the two look
+independent — the sibling `after?(SetRelationshipSource)` is the one doing real
+work. If it is needed, it can likely be narrowed to the specific transformer
+whose output it reads rather than `DefaultAccept` wholesale.
+
+This is worth landing regardless of the spark fix: it unblocks the temporal
+branch now, and the spark fix stops the next transformer from doing the same
+thing.
