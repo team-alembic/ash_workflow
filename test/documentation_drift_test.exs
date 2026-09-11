@@ -190,7 +190,7 @@ defmodule AshWorkflow.DocumentationDriftTest do
         #{file} references #{length(missing)} AshWorkflow function(s) that are \
         not defined:
 
-        #{missing |> Enum.map(fn {m, f, a} -> "  #{inspect(m)}.#{f}/#{a}" end) |> Enum.join("\n")}
+        #{Enum.map_join(missing, "\n", fn {m, f, a} -> "  #{inspect(m)}.#{f}/#{a}" end)}
 
         A reader who follows the reference gets nothing, and `mix docs` emits \
         an unresolved-reference warning for each one. Name the function that \
