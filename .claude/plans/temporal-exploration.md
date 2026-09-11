@@ -614,3 +614,72 @@ They are complementary, and neither supersedes the other. A resource wanting bot
 should have both — temporal costs no extra table and the log stays portable and
 carries causality. `state_at/2` remains the log's implementation even on a
 temporal resource, because it carries `triggered_by` and temporal does not.
+
+## 15. Answering the two objections to §14 (2026-09-11)
+
+Both were raised against §14's claim that temporal cannot produce a timeline.
+Both are largely right, and §14 overstated the limitation.
+
+### `triggered_by` on the row works
+
+Nothing stops a temporal resource carrying its own causality. Add
+`triggered_by` as an ordinary attribute, accept it on every transition action,
+and each version records who or what caused the state it holds. Measured on ETS:
+
+```
+~U[09:00] -> ~U[10:00]  state=:review     by="applicant"
+~U[10:00] -> ~U[11:00]  state=:review     by="recruiter:kim"
+~U[11:00] -> ~U[12:00]  state=:interview  by="recruiter:kim"
+~U[12:00] -> open       state=:rejected   by="timeout:escalation"
+```
+
+So "temporal does not record causality" was wrong. It does not record it *for
+you*, which is a different claim. The log's advantage here is that the column
+and its actor FK are generated rather than hand-maintained.
+
+### The timeline is reachable, in N+1 queries
+
+There is genuinely no all-history read. Measured: a read with no `as_of`, and a
+read with `as_of: :now`, both return exactly one row.
+
+But each returned version carries its **own** `valid_at.upper`, so the chain can
+be walked without guessing instants. Read `as_of` the first instant, take that
+version's `upper`, read `as_of` that, repeat until `upper` is nil:
+
+```
+recovered 4 versions in 5 queries
+```
+
+That is deterministic traversal, not sampling. §4 and §14 both called a timeline
+under temporal "sampling", and that was wrong — you never have to guess where to
+look, because every version names its own end.
+
+What it costs is a query per version and a client-side loop, against one ordered
+read for the log. On Postgres the walk is N round trips.
+
+### What survives of the distinction
+
+The noise is the durable part. In the run above:
+
+```
+4 versions, but only 2 were state changes
+```
+
+Every write splits the period, so reconstructing the *state* history means
+walking every version and diffing consecutive `state` values. The log stores only
+transitions, so it never has to. The gap widens with every non-transition edit —
+a record with 200 note edits and 3 transitions needs 201 queries and a diff to
+find the 3.
+
+So the corrected distinction is not "can it" but "at what cost":
+
+| | transition log | temporal |
+|---|---|---|
+| full timeline | one ordered read | N+1 reads, walking `upper` |
+| causality | generated `triggered_by` + actor FK | hand-rolled attribute |
+| transitions only | stored that way | diff consecutive versions |
+| full row at instant `t` | no | one read |
+
+Temporal can do everything the log can, with more queries and more hand-rolling.
+The log cannot reconstruct the full row at an instant at all. That asymmetry, not
+capability, is the honest ending.
