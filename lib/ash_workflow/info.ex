@@ -31,6 +31,78 @@ defmodule AshWorkflow.Info do
     Enum.find(steps(resource), &(&1.name == step_name))
   end
 
+  @typedoc """
+  The merged view of a transition name, as returned by `transition/2`.
+  """
+  @type merged_transition :: %{
+          name: atom(),
+          from: [atom()],
+          routes: [%{from: atom(), to: atom(), when: Ash.Expr.t() | nil}],
+          accepted_inputs: [atom()],
+          generated_action: atom()
+        }
+
+  @doc """
+  Returns the merged view of a transition name, or `nil` if no step declares it.
+
+  A transition name declared on more than one step becomes a single generated
+  action, and the declarations merge: `from` lists every step the action moves
+  out of, `routes` holds one entry per declared target with the `when`
+  expression that selects it, and `accepted_inputs` is the union of every
+  declaration's `accept`.
+
+  A route from a static transition has a `when` of `nil`. The step it leaves is
+  on the route itself, so a caller reading a route never has to pair it back up
+  with a step.
+
+  ## Example
+
+      AshWorkflow.Info.transition(MyApp.OnboardingWorkflow, :complete)
+      #=> %{
+      #=>   name: :complete,
+      #=>   from: [:initial_review, :detailed_review],
+      #=>   routes: [
+      #=>     %{from: :initial_review, to: :detailed_review, when: nil},
+      #=>     %{from: :detailed_review, to: :approved, when: nil}
+      #=>   ],
+      #=>   accepted_inputs: [:notes],
+      #=>   generated_action: :complete
+      #=> }
+  """
+  @spec transition(Ash.Resource.t() | map(), atom()) :: merged_transition() | nil
+  def transition(resource, name) do
+    declarations =
+      resource
+      |> steps()
+      |> Enum.filter(&Step.manual?/1)
+      |> Enum.flat_map(fn step -> Enum.map(step.transitions, &{step.name, &1}) end)
+      |> Enum.filter(fn {_step, transition} -> transition.name == name end)
+
+    case declarations do
+      [] -> nil
+      declarations -> merge_declarations(name, declarations)
+    end
+  end
+
+  defp merge_declarations(name, declarations) do
+    %{
+      name: name,
+      from: declarations |> Enum.map(fn {step, _} -> step end) |> Enum.uniq(),
+      routes: Enum.flat_map(declarations, &declared_routes/1),
+      accepted_inputs:
+        declarations |> Enum.flat_map(fn {_step, t} -> t.accept end) |> Enum.uniq(),
+      generated_action: name
+    }
+  end
+
+  defp declared_routes({step_name, %Transition{routes: []} = transition}) do
+    [%{from: step_name, to: transition.to, when: nil}]
+  end
+
+  defp declared_routes({step_name, %Transition{routes: routes}}) do
+    Enum.map(routes, &%{from: step_name, to: &1.to, when: &1.when})
+  end
+
   @doc """
   Returns the list of user-facing action names available at a given step.
 
