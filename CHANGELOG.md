@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **A non-repeating action timeout now writes a transition log row.** `AshWorkflow.Transformers.AddActions` injected `AshWorkflow.Changes.RecordEvent` only onto actions named by a timeout with `repeat: true`, so a one-shot reminder fired and left no trace in the log. Every timeout that names an action now gets the change, and the row has `from_state == to_state` with `triggered_by: :timeout`, the same shape a repeating timeout's row already had. Two timeouts naming the same action share one row per firing.
+- **A non-repeating action timeout now writes a transition log row.** `AshWorkflow.Transformers.AddActions` injected `AshWorkflow.Changes.RecordEvent` only onto actions named by a timeout with `repeat: true`, so a one-shot reminder fired and left no trace in the log. Every timeout that names an action now gets the change, and the row has `from_state == to_state` with `triggered_by: :timeout`, the same shape a repeating timeout's row already had. Two timeouts naming the same action share one row per firing. Only a repeating timeout's action resets `state_entered_at`, through the new `:touch_state_entered_at` option on `AshWorkflow.Changes.RecordEvent`: the reset is how a repeat re-arms its trigger, and a one-shot timeout doing it would push every other deadline on the step back.
 
 ### Changed
 

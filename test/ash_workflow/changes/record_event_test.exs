@@ -10,18 +10,18 @@ defmodule AshWorkflow.Changes.RecordEventTest do
   alias AshWorkflowTest.SharedTimeoutNameWorkflow
 
   describe "injection onto action timeouts" do
-    test "a non-repeating action timeout gets RecordEvent" do
-      assert [{RecordEvent, triggered_by: :timeout}] ==
+    test "a non-repeating action timeout gets RecordEvent and leaves state_entered_at alone" do
+      assert [{RecordEvent, [triggered_by: :timeout, touch_state_entered_at: false]}] ==
                change_specs(LoggedWorkflow, :send_nudge)
     end
 
-    test "a repeating action timeout gets RecordEvent" do
-      assert [{RecordEvent, triggered_by: :timeout}] ==
+    test "a repeating action timeout gets RecordEvent and resets state_entered_at" do
+      assert [{RecordEvent, [triggered_by: :timeout, touch_state_entered_at: true]}] ==
                change_specs(LoggedWorkflow, :send_reminder)
     end
 
     test "two timeouts naming the same action get one RecordEvent between them" do
-      assert [{RecordEvent, triggered_by: :timeout}] ==
+      assert [{RecordEvent, [triggered_by: :timeout, touch_state_entered_at: false]}] ==
                change_specs(SharedTimeoutNameWorkflow, :send_warning)
     end
 

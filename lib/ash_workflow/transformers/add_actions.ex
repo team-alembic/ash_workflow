@@ -400,7 +400,8 @@ defmodule AshWorkflow.Transformers.AddActions do
   # Every timeout that names an action gets `RecordEvent`, repeating or not: a
   # one-shot reminder is a workflow event, and the log's contract is one row
   # per event. Two timeouts may name the same action, so the actions are
-  # deduplicated before the change is appended.
+  # deduplicated before the change is appended, and the action resets
+  # `state_entered_at` if any timeout naming it repeats.
   defp inject_action_timeout_changes(dsl, steps) do
     steps
     |> Enum.flat_map(fn step ->
@@ -408,8 +409,12 @@ defmodule AshWorkflow.Transformers.AddActions do
       |> Enum.filter(&(&1.action != nil))
       |> Enum.map(&{step, &1})
     end)
-    |> Enum.uniq_by(fn {_step, timeout} -> timeout.action end)
-    |> Enum.reduce(dsl, fn {step, timeout}, dsl ->
+    |> Enum.group_by(fn {_step, timeout} -> timeout.action end)
+    |> Enum.map(fn {_action, pairs} ->
+      {step, timeout} = hd(pairs)
+      {step, timeout, Enum.any?(pairs, fn {_step, timeout} -> timeout.repeat end)}
+    end)
+    |> Enum.reduce(dsl, fn {step, timeout, repeats?}, dsl ->
       actions = Transformer.get_entities(dsl, [:actions])
 
       case Enum.find(actions, &(&1.name == timeout.action)) do
@@ -422,7 +427,7 @@ defmodule AshWorkflow.Transformers.AddActions do
         existing_action ->
           record_event_change =
             Transformer.build_entity!(ResourceDsl, [:actions, :update], :change,
-              change: {RecordEvent, triggered_by: :timeout}
+              change: {RecordEvent, triggered_by: :timeout, touch_state_entered_at: repeats?}
             )
 
           updated_action = %{

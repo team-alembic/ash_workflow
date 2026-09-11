@@ -91,6 +91,26 @@ defmodule AshWorkflow.TransitionLogTest do
       assert nudge.triggered_by == :timeout
     end
 
+    test "a non-repeating action timeout leaves state_entered_at where it was" do
+      {:ok, record} = LoggedWorkflow.create(%{title: "test"})
+      {:ok, record} = Ash.update(record, action: :process_intake)
+      entered_review_at = record.state_entered_at
+
+      {:ok, record} = Ash.update(record, action: :send_nudge)
+
+      assert record.state_entered_at == entered_review_at
+    end
+
+    test "a repeating action timeout resets state_entered_at to re-arm its trigger" do
+      {:ok, record} = LoggedWorkflow.create(%{title: "test"})
+      {:ok, record} = Ash.update(record, action: :process_intake)
+      entered_review_at = record.state_entered_at
+
+      {:ok, record} = Ash.update(record, action: :send_reminder)
+
+      assert DateTime.after?(record.state_entered_at, entered_review_at)
+    end
+
     test "repeating twice writes two from_state == to_state rows" do
       {:ok, record} = LoggedWorkflow.create(%{title: "test"})
       {:ok, record} = Ash.update(record, action: :process_intake)
