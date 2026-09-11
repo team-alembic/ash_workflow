@@ -394,16 +394,21 @@ defmodule AshWorkflow.Transformers.AddActions do
         Transformer.add_entity(dsl, [:actions], action)
       end)
 
-    inject_repeating_timeout_changes(dsl, steps)
+    inject_action_timeout_changes(dsl, steps)
   end
 
-  defp inject_repeating_timeout_changes(dsl, steps) do
+  # Every timeout that names an action gets `RecordEvent`, repeating or not: a
+  # one-shot reminder is a workflow event, and the log's contract is one row
+  # per event. Two timeouts may name the same action, so the actions are
+  # deduplicated before the change is appended.
+  defp inject_action_timeout_changes(dsl, steps) do
     steps
     |> Enum.flat_map(fn step ->
       step.timeouts
-      |> Enum.filter(&(&1.repeat && &1.action != nil))
+      |> Enum.filter(&(&1.action != nil))
       |> Enum.map(&{step, &1})
     end)
+    |> Enum.uniq_by(fn {_step, timeout} -> timeout.action end)
     |> Enum.reduce(dsl, fn {step, timeout}, dsl ->
       actions = Transformer.get_entities(dsl, [:actions])
 
@@ -412,7 +417,7 @@ defmodule AshWorkflow.Transformers.AddActions do
           raise DslError,
             path: [:workflow, :step, step.name],
             message:
-              "Repeating timeout :#{timeout.name} on step :#{step.name} references action :#{timeout.action}, but no such action is defined on the resource."
+              "Timeout :#{timeout.name} on step :#{step.name} references action :#{timeout.action}, but no such action is defined on the resource."
 
         existing_action ->
           record_event_change =

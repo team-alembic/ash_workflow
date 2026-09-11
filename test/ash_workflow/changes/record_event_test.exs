@@ -7,6 +7,31 @@ defmodule AshWorkflow.Changes.RecordEventTest do
   alias Ash.Resource.Info, as: ResourceInfo
   alias AshWorkflow.Changes.RecordEvent
   alias AshWorkflowTest.LoggedWorkflow
+  alias AshWorkflowTest.SharedTimeoutNameWorkflow
+
+  describe "injection onto action timeouts" do
+    test "a non-repeating action timeout gets RecordEvent" do
+      assert [{RecordEvent, triggered_by: :timeout}] ==
+               change_specs(LoggedWorkflow, :send_nudge)
+    end
+
+    test "a repeating action timeout gets RecordEvent" do
+      assert [{RecordEvent, triggered_by: :timeout}] ==
+               change_specs(LoggedWorkflow, :send_reminder)
+    end
+
+    test "two timeouts naming the same action get one RecordEvent between them" do
+      assert [{RecordEvent, triggered_by: :timeout}] ==
+               change_specs(SharedTimeoutNameWorkflow, :send_warning)
+    end
+
+    defp change_specs(resource, action_name) do
+      resource
+      |> ResourceInfo.action(action_name)
+      |> Map.get(:changes)
+      |> Enum.map(& &1.change)
+    end
+  end
 
   describe "atomicity" do
     test "manual transition actions stay require_atomic?: true — RecordEvent does not force an opt-out" do
