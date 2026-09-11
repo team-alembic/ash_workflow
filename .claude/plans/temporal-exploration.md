@@ -1,8 +1,11 @@
 # Temporal resources × AshWorkflow — exploration notes
 
-Branch: `explore-temporal`. Upstream is unreleased: `temporal` branches on
-`ash`, `ash_sql`, `ash_postgres` (last activity 2026-08-24). Requires PG19 beta,
-or `Ash.DataLayer.Ets`.
+Branch: `explore-temporal`, rebased onto `main` 2026-09-11. Upstream is
+unreleased: `temporal` branches on `ash` (`89fec87`, reporting v3.33.3),
+`ash_sql` and `ash_postgres`. Requires PG19 beta, or `Ash.DataLayer.Ets`.
+
+Read §13 and §14 first. They correct §3, §7 and §8, which were written before
+any of this could be run.
 
 Reference: https://github.com/ash-project/ash/blob/temporal/documentation/topics/advanced/temporal-resources.md
 
@@ -12,7 +15,7 @@ Reference: https://github.com/ash-project/ash/blob/temporal/documentation/topics
 (a `Version` struct; `AshPostgres.Repo.BeforeCompile` errors if undefined). So a
 version check is available.
 
-**But we shouldn't use it.** The signal AshWorkflow cares about is
+We shouldn't use it. The signal AshWorkflow cares about is
 `Ash.Resource.Info.temporal?(dsl)`, not the PG version:
 
 - `Ash.Resource.Verifiers.ValidateTemporal` already rejects a temporal resource
@@ -20,7 +23,7 @@ version check is available.
 - `AshPostgres.Verifiers.VerifyTemporal` already requires `btree_gist` in
   `installed_extensions/0`.
 
-Branching on `temporal?` also gets the ETS data layer for free, which is how the
+Branching on `temporal?` also covers the ETS data layer without extra configuration, which is how the
 demos/tests would run without a PG19 build. Policing the server version is
 upstream's job, and today it's soft anyway — a temporal resource on PG18
 compiles and fails at migrate time.
@@ -66,28 +69,48 @@ What needs work:
 
 ## 3. DSL implications
 
-### Drop on temporal resources
+### `state_entered_at` stays — corrected 2026-09-11
 
-- **`state_entered_at` injection** (`transformers/add_attributes.ex`) — the
-  period's lower bound *is* the moment the state was entered.
-- **`set_attribute(:state_entered_at, &DateTime.utc_now/0)`** on the five
-  transition sites in `add_actions.ex` — not merely redundant: it uses the wall
-  clock while the period uses `as_of`, so a backdated transition would have the
-  two disagree.
-- **Timeout `field:` default** becomes `lower(valid_at)` rather than
-  `state_entered_at`.
+An earlier draft of this section said to drop the `state_entered_at` injection
+in `transformers/add_attributes.ex`, drop the
+`set_attribute(:state_entered_at, &DateTime.utc_now/0)` calls on the five
+transition sites in `add_actions.ex`, and default the timeout `field:` to
+`lower(valid_at)`. **That was wrong, and §13 has the measurement.**
 
-### Genuinely breaks: `repeat: true`
+`lower(valid_at)` is the instant *this version* was written, not the instant the
+state was entered. Every update splits the period, including an update that
+changes no state, so an unrelated edit moves the lower bound and silently
+re-arms every timeout anchored on it.
 
-Repeating timeouts work by resetting `state_entered_at` to now without changing
-state (`add_actions.ex:inject_repeating_timeout_changes`). On a temporal
-resource there is no state change, so no new period, so `lower(valid_at)` never
-moves and the timeout re-fires forever. Options: keep a real `last_fired_at`
-attribute for repeats only, or move repetition into Oban's own scheduling.
+So on a temporal resource:
 
-Note the existing docstring already argues repeats can't reset an arbitrary
-`field:` without lying about the data — temporal makes *every* field that
-honest, which is the same argument arriving one level deeper.
+- **Keep the `state_entered_at` attribute.** It is the only thing that tracks
+  state entry, exactly as on a non-temporal resource.
+- **Keep the five `set_attribute` calls**, but set them from the changeset's
+  `as_of` rather than `&DateTime.utc_now/0`. The wall clock and the period
+  would otherwise disagree on a backdated transition — that part of the original
+  note stands, it is the conclusion drawn from it that does not.
+- **The timeout `field:` default stays `state_entered_at`.**
+
+What temporal removes from AshWorkflow is not the anchor. It is the
+point-in-time read and the aggregate in §6.
+
+### `repeat: true` — not broken, but noisier
+
+An earlier draft claimed this was the one thing temporal genuinely breaks, on the
+reasoning that a repeat changes no state, so no new period is written, so
+`lower(valid_at)` never moves and the timeout re-fires forever. Both halves are
+wrong. Every update splits the period whether or not `state` changed (§13), and
+the anchor was never `lower(valid_at)` to begin with.
+
+Repeating timeouts reset `state_entered_at`
+(`add_actions.ex:inject_repeating_timeout_changes`) and that keeps working
+unchanged on a temporal resource.
+
+What is genuinely different is cost, not correctness. Each reset writes a new
+version, so a 2-day reminder across a 9-day state leaves four extra versions
+whose only difference is the anchor. Reads stay correct. The history gets harder
+to read, which is the `rows written` row in §14.
 
 ### Relationships
 
@@ -103,7 +126,7 @@ flag would just be a second source of truth.
 
 ## 4. The sharp limitation
 
-**No all-history reads.** Every read is one instant; querying across a record's
+No all-history reads. Every read is one instant; querying across a record's
 periods is unsupported. So the workflow *timeline* ("every state this instance
 passed through") still needs a transition log. Temporal gives point-in-time
 reconstruction, not an audit trail — the distinction to make on stage.
@@ -114,6 +137,7 @@ reconstruction, not an audit trail — the distinction to make on stage.
 - Does ash_state_machine's transition validation interact with a period split?
 - Does an `as_of`-carrying Oban job survive the `TriggerNoLongerApplies` path?
 - What does `mix ash_postgres.generate_migrations` emit for a workflow resource?
+- Answered in §13: does `lower(valid_at)` track state entry? It does not.
 
 ## 6. Relationship to the transition-log branch (`.wt/feat/transition-history`)
 
@@ -128,7 +152,7 @@ The two features answer different questions and do not overlap much:
 | "how many in `:awaiting_review` on date X" | non-portable `DISTINCT ON`, documented not shipped | `Ash.count(filter(state == :awaiting_review), as_of: t)` — one indexed query |
 
 That last row is where temporal earns its place: the aggregate query
-`workflow-history.md` explicitly gives up on is trivial under temporal.
+`workflow-history.md` explicitly gives up on is one indexed read under temporal.
 
 If both ever ship, `state_at/2` stays the log's implementation — portable, and it
 carries `triggered_by`.
@@ -136,14 +160,23 @@ carries `triggered_by`.
 ## 7. Implementing `repeat`
 
 `workflow-history.md` already did the conceptual work by splitting the **timer
-anchor** from **state entry**. On a temporal resource `lower(valid_at)` *is*
-`entered_current_state_at`, so a repeat needs its anchor somewhere other than the
-period. Options:
+anchor** from **state entry**.
 
-1. **Anchor column on the workflow row — no.** Any update to a temporal row splits
-   the period. A 2-day reminder across a 9-day state yields four extra periods with
-   identical `state`. Reads stay correct, but `lower(valid_at)` stops meaning
-   "entered this state" — the exact lie the design doc set out to kill, one level down.
+The original framing here assumed `lower(valid_at)` *is* `entered_current_state_at`
+on a temporal resource, so that only `repeat` needed an anchor elsewhere. §13
+measured that assumption and it is false: the period tracks the last write, so
+`lower(valid_at)` is not the anchor for a repeating timeout *or* a one-shot one.
+`state_entered_at` stays either way, per §3.
+
+That removes the reason `repeat` was special. It re-arms by moving its anchor,
+exactly as it does on a non-temporal resource, and the only remaining question is
+what the period churn costs. Options:
+
+1. **Anchor column on the workflow row.** Every anchor write splits the period. A
+   2-day reminder across a 9-day state yields four extra versions with identical
+   `state`. Reads stay correct and the anchor stays honest, because the anchor is
+   its own column rather than the period. The cost is table growth and a history
+   full of versions that differ only in a timer field.
 2. **Anchor on a non-temporal 1:1 companion row.** Keeps the trigger `where` a plain
    indexed comparison (the doc's stated reason for not using an aggregate), no period
    churn. Cost: another table to keep in step.
@@ -173,7 +206,26 @@ period. Options:
 Option 3 makes `repeat` honest independent of temporal — worth doing on the
 transition-history branch regardless.
 
-## 8. Decision: temporal repeats require the transition log
+## 8. Decision: withdrawn — temporal repeats do not require the transition log
+
+**Superseded by §13.** This section concluded that a temporal resource must carry
+a transition log before `repeat: true` is allowed, and specified a verifier to
+enforce it. The whole argument rested on `lower(valid_at)` being the state-entry
+anchor, which left a repeat with nowhere to record when it last fired. §13 shows
+the period was never the anchor, so `state_entered_at` is present on temporal
+resources too and a repeat re-arms against it exactly as it does today.
+
+Consequences:
+
+- **Do not build the verifier.** `temporal? and repeat: true and no transition_log`
+  is not an error. There is nothing to enforce.
+- **No coupling** between the timeout feature and the transition log. They stay
+  independent, which is what §6 wanted anyway.
+- The self-rescheduling design below is still worth doing, but on its own merits
+  (it drops repeats out of per-tick polling), not because temporal forces it. It
+  applies equally to non-temporal resources.
+
+The original text follows, kept for the reasoning about reconcilers.
 
 Chosen shape (option A + option 3 from §7):
 
@@ -349,7 +401,7 @@ No configuration for `domain` present on BasicWorkflow.DocumentApproval
 ```
 
 So the asymmetry is load-bearing, not simply inverted. A real fix has to detect
-the cycle, break only edges *inside* it, topsort the remainder, and surface a
+the cycle, break only edges *inside* it, topsort the remainder, and report a
 warning instead of silently reordering. Two candidate homes:
 
 - **spark** — `walk_rest/3` degrading incoherently on a cyclic graph.
@@ -464,3 +516,101 @@ whose output it reads rather than `DefaultAccept` wholesale.
 This is worth landing regardless of the spark fix: it unblocks the temporal
 branch now, and the spark fix stops the next transformer from doing the same
 thing.
+
+## 13. What the period actually anchors, measured (2026-09-11)
+
+Re-ran the probe after the rebase onto `main`. `ash_state_machine` 0.2.12 removed
+the catch-all `after?(_)` that was closing the cycle in §10, so the suite now runs
+against the stock `temporal` branch with no patched deps: `transformer ordering OK
+across 51 resources`, `715 tests, 0 failures`.
+
+That made it possible to test §3's central claim for the first time.
+
+### The measurement
+
+A temporal resource on `Ash.DataLayer.Ets` with `AshStateMachine`, carrying
+`state` and an unrelated `notes` attribute. Three writes, each with an explicit
+`as_of`:
+
+| write | `state` after | `valid_at` of the current version |
+|---|---|---|
+| create at `t0`, enters `:review` | `:review` | `[t0, ∞)` |
+| `add_note` at `t1` — **no state change** | `:review` | `[t1, ∞)`, and `t0`'s version truncated to `[t0, t1)` |
+| `reject` at `t2` | `:rejected` | `[t2, ∞)` |
+
+An update that touched only `notes` moved the lower bound from `t0` to `t1` while
+`state` stayed `:review`.
+
+### What it means
+
+`lower(valid_at)` answers "when was this version written", not "when was this
+state entered". The two coincide only on a resource whose sole writes are
+transitions, which is not a constraint AshWorkflow imposes or should impose.
+
+A 30-minute review timeout anchored on `lower(valid_at)` is re-armed by anybody
+adding a note. The timeout never fires, and nothing reports it. This is the same
+failure the `field:` docstring already describes for resetting an arbitrary field
+— it just arrives through the storage layer rather than through the DSL.
+
+The docs state it plainly, and the measurement agrees: "**An update splits the
+period.**" There is no qualification about which attributes changed.
+
+### Naming
+
+`state_valid_at` was considered as a rename and rejected. `valid_at` names
+row-version validity in Ash's temporal vocabulary, so `state_valid_at` reads as a
+second period over the state rather than a timestamp, which is not what it is and
+not something the data layer offers. `state_entered_at` already says what it holds.
+
+## 14. The verdict: it depends, and on what
+
+Neither mechanism dominates. They record different things, and the deciding
+question is whether the reader needs **values** or **events**.
+
+| | transition log | temporal |
+|---|---|---|
+| state at instant `t` | yes, `state_at/2` | yes |
+| **full row** at instant `t` | no — from/to/name/occurred_at/triggered_by only | **yes** |
+| whole timeline in one query | **yes**, ordered | no — every read is one instant |
+| why it moved: `triggered_by`, actor | **yes** | no |
+| how many in state X on date Y | non-portable `DISTINCT ON` | one indexed read |
+| rows written | one per transition | one per **update**, transition or not |
+| timer anchor | `state_entered_at` | `state_entered_at` — unchanged, per §13 |
+| data layer | any | PG19 beta, or non-transactional ETS |
+| ships | now | when PG19 does |
+
+Two rows carry the decision. Temporal reconstructs the **whole record** and the
+log cannot. The log reconstructs the **sequence and its causes** and temporal
+cannot.
+
+The `rows written` row is the one that is easy to miss. A temporal workflow row
+accumulates a version for every edit, so a record touched often has a history
+dominated by versions whose `state` never changed. That is exactly right for
+reconstructing values and actively unhelpful for reading a state history.
+
+### A use case for each
+
+Temporal wins when the question is what a person saw. A reviewer approved a
+candidate at 14:02 and the decision is later challenged. The question is not
+which states the record passed through, it is what the record *said* at that
+instant — every field, plus whatever the loaded relationships said, because
+`as_of` propagates through them. One read answers it, and the answer is
+internally consistent rather than assembled from a log plus assumptions about
+what else had changed by then.
+
+The log wins when the question is how something took nine days. An application sat in
+`:review` far past its SLA. The question is the sequence and its causes: when it
+entered `:review`, whether it bounced back from `:interview` and how many times,
+which escalation timeout fired, and who or what performed each move. That is one
+ordered read of the log. Under temporal it is a guess at sampling instants, and
+even with perfect sampling the `triggered_by` and actor are simply not recorded.
+
+Stated as a pair of questions: *"what did it look like?"* is temporal, *"how did
+it get here?"* is the log.
+
+### Consequence for the roadmap
+
+They are complementary, and neither supersedes the other. A resource wanting both
+should have both — temporal costs no extra table and the log stays portable and
+carries causality. `state_at/2` remains the log's implementation even on a
+temporal resource, because it carries `triggered_by` and temporal does not.
