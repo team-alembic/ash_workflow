@@ -75,7 +75,7 @@ defmodule AshWorkflow.Transformers.AddCalculations do
   # record. Terminal steps are excluded: a record there has no deadlines ahead.
   defp timeouts_map(steps) do
     steps
-    |> Enum.reject(&(&1.terminal or &1.timeouts == []))
+    |> Enum.reject(&(Step.terminal?(&1) or &1.timeouts == []))
     |> Map.new(fn step ->
       {step.name,
        Enum.map(step.timeouts, fn timeout ->

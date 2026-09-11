@@ -137,7 +137,7 @@ defmodule AshWorkflow.WaitStateTest do
       )
     end
 
-    test "still rejects a step with no action, no transitions and no timeouts" do
+    test "a workflow of nothing but terminal steps is rejected" do
       assert_dsl_error(
         """
         defmodule StrandedStepWorkflow do
@@ -150,6 +150,60 @@ defmodule AshWorkflow.WaitStateTest do
             step :stranded
 
             step :done, terminal: true
+          end
+
+          attributes do
+            uuid_v7_primary_key :id
+            attribute :title, :string, allow_nil?: false
+          end
+        end
+        """,
+        ~r/must have at least one non-terminal step/
+      )
+    end
+
+    test "a step stranded among working ones is rejected as unreachable" do
+      assert_dsl_error(
+        """
+        defmodule StrandedAmongWorkingWorkflow do
+          use Ash.Resource,
+            domain: AshWorkflowTest.Domain,
+            data_layer: Ash.DataLayer.Ets,
+            extensions: [AshWorkflow, AshOban]
+
+          workflow do
+            step :review do
+              transition :approve, to: :approved
+            end
+
+            step :stranded
+
+            step :approved, terminal: true
+          end
+
+          attributes do
+            uuid_v7_primary_key :id
+            attribute :title, :string, allow_nil?: false
+          end
+        end
+        """,
+        ~r/not reachable from the first step :review: \[:stranded\]/
+      )
+    end
+
+    test "a step declaring on_error and nothing else still needs an action" do
+      assert_dsl_error(
+        """
+        defmodule OnErrorWithoutActionWorkflow do
+          use Ash.Resource,
+            domain: AshWorkflowTest.Domain,
+            data_layer: Ash.DataLayer.Ets,
+            extensions: [AshWorkflow, AshOban]
+
+          workflow do
+            step :process, on_error: :failed
+
+            step :failed, terminal: true
           end
 
           attributes do

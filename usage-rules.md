@@ -83,6 +83,8 @@ Call `AshWorkflow.Scheduler.execute/3` when the moment arrives. It runs the acti
 
 All workflow configuration goes inside a single `workflow do ... end` block. Steps are declared in order — the first non-terminal step becomes the initial state.
 
+A step that declares no action, no transitions, no timeouts, no `on_success` and no `on_error` is terminal, whether or not it sets `terminal: true`. Setting it states the intent, and the verifier then rejects the step if it grows an outgoing declaration.
+
 ```elixir
 workflow do
   step :process do
