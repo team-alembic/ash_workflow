@@ -683,3 +683,83 @@ So the corrected distinction is not "can it" but "at what cost":
 Temporal can do everything the log can, with more queries and more hand-rolling.
 The log cannot reconstruct the full row at an instant at all. That asymmetry, not
 capability, is the honest ending.
+
+## 16. The escape hatch: a manual read returns every version in one query
+
+§15 said the timeline costs N+1 queries. That is true only of generated read
+actions. A manual read action returns the whole history in one.
+
+The `as_of` filter is applied *by the data layer*, and a manual read never
+invokes it. The docs say as much, in a bullet aimed at writes: "**Manual actions
+bypass temporal handling** — the data layer is never invoked, so it's on you to
+manage periods."
+
+```elixir
+defmodule AllVersions do
+  use Ash.Resource.ManualRead
+
+  def read(ash_query, _ecto_query, _opts, _context) do
+    query = Ash.DataLayer.Ets.resource_to_query(ash_query.resource, ash_query.domain)
+    # never calling Ash.DataLayer.set_as_of/3
+    Ash.DataLayer.Ets.run_query(query, ash_query.resource)
+  end
+end
+
+read :all_versions do
+  manual AllVersions
+end
+```
+
+Measured on ETS against the temporal branch:
+
+```
+ordinary read (as_of defaults)     1 row
+manual read, as_of never set       4 rows — ONE query
+
+  09:00 -> 10:00  state=:review     by="applicant"
+  10:00 -> 11:00  state=:review     by="recruiter:kim"
+  11:00 -> 12:00  state=:interview  by="recruiter:kim"
+  12:00 -> open   state=:rejected   by="timeout:escalation"
+```
+
+Full `Ash.Resource` structs, with `valid_at` populated, sortable and filterable
+like any other attribute.
+
+### On Postgres — reasoned, not measured
+
+No PG19 build here, so this part is argument rather than result. It should hold
+more firmly than on ETS: the table physically stores every version under
+`PRIMARY KEY (id, valid_at WITHOUT OVERLAPS)`, and `as_of` is a `WHERE` clause
+that `ash_sql` adds. A manual read that builds its own Ecto query, or a plain
+`Ecto.Adapters.SQL.query!/3`, never gets that clause and sees all versions.
+Ordering by `lower(valid_at)` is then an ordinary indexed sort. Worth confirming
+on a real PG19 build before relying on it.
+
+### What it costs
+
+- **Unsupported.** The docs name this as a hole, not a feature. Nothing promises
+  the signature of `run_query/2` or that a manual read keeps bypassing the filter.
+- **Data-layer specific.** The module above names `Ash.DataLayer.Ets`. A Postgres
+  version is a different module, so the portability argument for the log stands.
+- **`as_of` no longer propagates** into that read's relationships, calculations or
+  aggregates. You are outside the mechanism that makes time travel consistent.
+- **Reads only.** A manual *write* means managing periods by hand, which is where
+  the docs' warning actually bites. Do not.
+
+### What survives, finally
+
+Capability is no longer the distinction, and neither is query count:
+
+| | transition log | temporal + manual read |
+|---|---|---|
+| full timeline | one ordered read | one read |
+| causality | generated, with actor FK | an attribute you maintain |
+| transitions only | stored that way | **diff every version** |
+| full row at instant `t` | no | one read |
+| portable across data layers | yes | no — one module per data layer |
+| supported | yes | explicitly not |
+
+Two things are left, and they are the honest ones. Temporal stores a version per
+*write*, so finding state changes means diffing consecutive versions however you
+fetch them. And the log is generated and portable where the escape hatch is
+hand-rolled and outside the contract.
