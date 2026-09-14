@@ -95,7 +95,7 @@ defmodule AshWorkflowDemoWeb.ApplyLive do
         </form>
 
         <p class="text-xs text-stone-500 text-center">
-          Warning: El Jefe has {Deadlines.seconds(:auto_reject)} seconds to decide.
+          Warning: Janine has {Deadlines.seconds(:janine_responds)} seconds to get to your pitch.
         </p>
       </div>
     </div>

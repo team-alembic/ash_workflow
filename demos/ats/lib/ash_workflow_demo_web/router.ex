@@ -20,6 +20,13 @@ defmodule AshWorkflowDemoWeb.Router do
     live "/", DashboardLive
     live "/apply", ApplyLive
     live "/c/:id", CandidateLive
+    live "/dbs", DbsBureauLive
+  end
+
+  scope "/webhooks", AshWorkflowDemoWeb do
+    pipe_through :api
+
+    post "/dbs", DbsWebhookController, :create
   end
 
   # Other scopes may use custom stacks.

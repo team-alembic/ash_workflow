@@ -1,6 +1,6 @@
 # ash_workflow_demo
 
-Conference stage demo for [AshWorkflow](https://github.com/team-alembic/ash_workflow). An ATS pipeline where attendees submit themselves from their phones, El Jefe picks one, and everyone else cascades to `:position_filled`.
+Conference stage demo for [AshWorkflow](https://github.com/team-alembic/ash_workflow). An ATS pipeline where attendees submit themselves from their phones, two reviewers who are played by the workflow itself wave them through or turn them down, a background check answers from outside the application, and El Jefe picks one.
 
 ## One-time setup
 
@@ -25,17 +25,40 @@ TUNNEL_URL=https://<xxx>.trycloudflare.com mix phx.server
 
 Open http://localhost:4000/ — that's El Jefe's kanban. Project it. The QR in the corner points at `<tunnel>/apply`.
 
+Open `<tunnel>/dbs` on a second screen or a phone. That's the Disclosure & Background Bureau portal, and it is the only way a candidate leaves `:background_check` before the check lapses.
+
 If you forget to set `TUNNEL_URL`, the dashboard shows a text input where you can paste the URL at runtime.
 
 ## Demo flow
 
-1. Open dashboard. QR code is top-right.
-2. Audience scans QR → lands on `/apply`. Submitting creates a candidate in `:submitted`, a wait state holding them until their own `verify_after` deadline passes; within a few seconds the automatic `:verifying` step scores them and they land in `:review`. The delay is a per-candidate timestamp, not a sleep, so a whole room applying at once does not queue up behind each other.
-3. On a `:review` card, a 30-second countdown runs. If El Jefe doesn't hire or reject, the workflow auto-rejects.
-4. Click **Hire** on one card — that candidate becomes `:hired` and every other `:review` candidate cascades to `:position_filled`.
-5. Candidates watch themselves on `/c/:id` — a mobile-optimised view with their current state. The winner sees confetti.
-6. **Insert Random Candidate** injects a fake one if the audience is shy.
-7. **Reset the Req** clears `:review` candidates to `:position_filled` so you can run the demo again.
+1. Open the dashboard. QR code is top-right.
+2. Audience scans QR, lands on `/apply`. Submitting puts them on `:hr_screen`, waiting on Janine.
+3. Janine comes back after a delay drawn for that candidate. She scores the pitch out of ten and writes a line about it. Four or better goes to the background check; anything less is rejected there and then. Nobody clicked anything.
+4. On the DBS portal, the candidate is listed by their `dbs_reference`. Return a disclosure and they carry an absurd offence for the rest of the pipeline. Ignore the portal and the bureau answers for itself after 90 seconds, disclosing something about three times in five.
+5. Steve, the engineering lead, comes back after his own delay and writes up the interview. He has read the disclosure and is unbothered by it. Four or better reaches El Jefe.
+6. El Jefe's column is the only one with buttons. **Make the offer** hires that candidate and sweeps every other candidate still moving — at any step — to `:rejected` in the same instant. **Veto** rejects just that one.
+7. Candidates watch all of it on `/c/:id`, including their own disclosure.
+8. **Insert Random Candidate** injects a fake one if the audience is shy.
+9. **Reset the Req** sweeps everyone still in flight to `:rejected` so you can run it again.
+
+Every waiting step has a deadline that advances the candidate rather than stalling them, so the board keeps moving whether or not you touch it, and El Jefe's own 45-second timer makes the offer for him if he dithers.
+
+## Who moves a candidate
+
+Three parties, and only one of them is in the room.
+
+| Party | Steps | Played by |
+|---|---|---|
+| Janine, HR | `:hr_screen` → `:hr_decision` | the workflow, after a per-candidate delay |
+| The bureau | `:background_check` → `:bureau_result` | the `/dbs` portal or the webhook, from outside, or itself on a timeout |
+| Steve, engineering lead | `:lead_interview` → `:lead_decision` | the workflow, after a per-candidate delay |
+| El Jefe | `:final_approval` | you, with the only two buttons on the board |
+
+Each reviewer is a wait step whose only exit is their own deadline, followed by an instantaneous decision step that runs their action and branches on the score with conditional `on_success` routes. The decision steps never visibly hold a card, so the board files each pair under one column.
+
+The bureau is the same shape with the roles reversed. `:background_check` waits for an answer from outside, and its `:bureau_responds` deadline is the fallback rather than the mechanism: when it fires, `:bureau_result` rolls a result itself, disclosing something 60% of the time. Nobody has to work the portal for the demo to stay funny, and working it overrides the roll.
+
+Both delays are drawn once on submission and stored on the record. That is what lets a whole room apply in the same second and still come back staggered — the delay is data, not a sleep holding a database connection.
 
 ## Tests
 
@@ -43,15 +66,21 @@ If you forget to set `TUNNEL_URL`, the dashboard shows a text input where you ca
 mix test
 ```
 
-Seven tests cover: initial state, verify→review transition, hire cascade, cascade leaves terminal states alone, auto-reject timeout action, list + get code interface.
+Covering: initial state, verify→review transition, hire cascade, cascade leaves terminal states alone, auto-reject timeout action, list + get code interface, and the DBS chain — reference issued on hire, clear and flagged results, duplicate and unknown references, and hire through to `:hired`.
 
 ## Architecture
 
 - `lib/ash_workflow_demo/ats/candidate.ex` — the star. One Ash resource whose `workflow do` block generates the state machine, transitions, and Oban triggers.
-- `lib/ash_workflow_demo/ats/candidate/fake_score.ex` — the verify step's "AI scorer". Sleeps 2–5 seconds, assigns a random score and canned reason. Honours `:fast_tests` app env.
-- `lib/ash_workflow_demo/ats/candidate/cascade.ex` — `after_action` hook on `:hire` that transitions all other non-terminal candidates to `:position_filled`.
+- `lib/ash_workflow_demo/ats/candidate/cascade.ex` — `after_action` hook on `:offer` that sweeps every other in-flight candidate to `:rejected` through the `slot_taken` transition. A distinct transition name from El Jefe's `veto`, so the log says whether a candidate was turned down or simply beaten to the slot.
+- `lib/ash_workflow_demo/ats/candidate/janine_screens.ex` and `steve_interviews.ex` — the two reviewers. Neither sleeps; the delay belongs to the step's deadline.
+- `lib/ash_workflow_demo/ats/candidate/set_response_delays.ex` and `start_lead_clock.ex` — where each reviewer's deadline is stamped.
+- `lib/ash_workflow_demo/ats/dbs_bureau.ex` — the caller-side half of an external event, correlating on `dbs_reference`.
+- `lib/ash_workflow_demo/ats/candidate/dbs_offences.ex` — the disclosures. Crimes against a codebase, never real offences: the candidate on the projector is a real person in the room.
+- `lib/ash_workflow_demo_web/live/dbs_bureau_live.ex` — the portal, deliberately styled as a different application.
 - `lib/ash_workflow_demo/ats/candidate/notifier.ex` — Ash notifier that broadcasts changes to Phoenix.PubSub.
-- `AshWorkflow.Scheduler.Precise` — declared in the resource's `workflow` block. Arms a timer per deadline rather than polling cron, which is how the 30-second timeout and the 1-second `:submitted` dwell are expressible at all. This replaced a hand-rolled 1-second ticker.
+- `AshWorkflow.Scheduler.Precise` — declared in the resource's `workflow` block. Arms a timer per deadline rather than polling cron, which is how deadlines of a few seconds are expressible at all. This replaced a hand-rolled 1-second ticker.
+
+  One caveat found while building this. `Timeout`'s `field` option documents support for a calculation, and the two reviewer deadlines read far better as `state_entered_at` plus the candidate's delay than as stamped columns. The scheduler builds the right SQL filter for such a calculation, then arms its timer from the unloaded value on the record and crashes `AshWorkflow.Scheduler.Precise.Timeline` with a `FunctionClauseError` in `as_datetime/1`. The deadlines here are real columns because of it.
 - `lib/ash_workflow_demo/tunnel_url.ex` — Agent storing the public tunnel URL for the QR code.
 - `lib/ash_workflow_demo_web/live/dashboard_live.ex` — El Jefe's kanban.
 - `lib/ash_workflow_demo_web/live/candidate_live.ex` — candidate's mobile self-view.
@@ -59,7 +88,8 @@ Seven tests cover: initial state, verify→review transition, hire cascade, casc
 
 ## Why it's flashy
 
-- The entire hiring pipeline is ~25 lines of DSL.
+- The entire hiring pipeline, DBS check and two approval gates included, is one `workflow do` block.
 - Timeouts genuinely fire live — not mocked.
 - Every screen updates in real time via Phoenix.PubSub.
-- One click cascades the whole "losers" population to `:position_filled`.
+- One click sweeps every other candidate, at every step at once, to `:rejected`.
+- A stranger's HTTP request, from a different screen on a different URL, resumes a workflow that was sitting still.

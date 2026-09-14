@@ -1,17 +1,23 @@
 defmodule AshWorkflowDemo.ATSTest do
   @moduledoc """
   The point of this demo is a workflow you watch happen: nobody calls the
-  scoring step, a per-candidate deadline lets it run, and a single `:hire`
-  sweeps every rival off the board.
+  scoring steps, a per-candidate deadline lets each one run, and a single
+  `:offer` sweeps every rival off the board.
 
-  Tests here drive the workflow through its Oban triggers wherever the stage
-  does, rather than calling the generated actions directly — a demo whose
-  actions work but whose triggers do not is a demo that fails in the room.
+  Tests here drive the workflow through its scheduler triggers wherever the
+  stage does, rather than calling the generated actions directly — a demo
+  whose actions work but whose triggers do not is a demo that fails in the
+  room.
+
+  Janine's and Steve's scores are drawn at random, so a couple of tests retry
+  a fresh candidate until they land on the branch under test rather than
+  asserting on a single draw.
   """
   use AshWorkflowDemo.DataCase, async: false
 
   alias AshWorkflowDemo.ATS
   alias AshWorkflowDemo.ATS.Candidate
+  alias AshWorkflowDemo.ATS.DbsBureau
 
   setup do
     Application.put_env(:ash_workflow_demo, :fast_tests, true)
@@ -24,223 +30,215 @@ defmodule AshWorkflowDemo.ATSTest do
     candidate
   end
 
-  defp reach_review(name \\ "Alice", pitch \\ "I ship") do
-    name
-    |> start_candidate(pitch)
-    |> ready_to_verify()
-    |> then(fn candidate ->
+  defp drive_hr_decision(candidate) do
+    candidate
+    |> ready_for_hr_decision()
+    |> then(fn c ->
       run_workflow_triggers(Candidate)
-      reload(candidate)
+      reload(c)
     end)
   end
 
+  defp drive_lead_decision(candidate) do
+    candidate
+    |> ready_for_lead_decision()
+    |> then(fn c ->
+      run_workflow_triggers(Candidate)
+      reload(c)
+    end)
+  end
+
+  # Retries a fresh candidate through `attempt` until one lands in `state`,
+  # since Janine and Steve draw a random score each time.
+  defp until_state(state, attempt, tries \\ 100) do
+    Enum.find_value(1..tries, fn _ ->
+      candidate = attempt.()
+      if candidate.state == state, do: candidate
+    end) || flunk("never reached #{state} in #{tries} tries")
+  end
+
+  defp reach_background_check(name \\ "Alice") do
+    until_state(:background_check, fn -> name |> start_candidate() |> drive_hr_decision() end)
+  end
+
   describe "start/3" do
-    test "creates a candidate in the :submitted wait state" do
+    test "creates a candidate on :hr_screen" do
       candidate = start_candidate()
 
-      assert candidate.state == :submitted
+      assert candidate.state == :hr_screen
       assert candidate.name == "Alice"
       assert candidate.score == nil
     end
 
-    test "stamps a verify_after deadline the scorer has to wait for" do
-      assert %DateTime{} = start_candidate().verify_after
-    end
-
-    test "each candidate gets their own deadline" do
-      Application.put_env(:ash_workflow_demo, :fast_tests, false)
-
-      deadlines =
-        1..12
-        |> Enum.map(&start_candidate("Applicant #{&1}").verify_after)
-        |> Enum.uniq()
-
-      assert length(deadlines) > 1
+    test "stamps an hr_respond_after deadline Janine has to wait for" do
+      assert %DateTime{} = start_candidate().hr_respond_after
     end
   end
 
-  describe "the :submitted wait state" do
-    test "a candidate whose deadline has not passed is left alone" do
-      candidate = start_candidate()
-      set_datetime(candidate, :verify_after, DateTime.add(DateTime.utc_now(), 1, :hour))
+  describe "record_hr_screen" do
+    test "sets a score, a reason in Janine's voice, and a dbs_reference" do
+      candidate = start_candidate() |> drive_hr_decision()
 
-      run_workflow_triggers(Candidate)
-
-      reloaded = reload(candidate)
-      assert reloaded.state == :submitted
-      assert reloaded.score == nil
-    end
-
-    test "a candidate whose deadline has passed is verified and scored" do
-      candidate = reach_review()
-
-      assert candidate.state == :review
       assert candidate.score in 1..10
       assert is_binary(candidate.score_reason)
+      assert is_binary(candidate.dbs_reference)
     end
 
-    test "nothing but the timeout can move a candidate out of :submitted" do
+    test "a passing score routes to :background_check" do
+      candidate = reach_background_check()
+
+      assert candidate.score >= 4
+    end
+
+    test "a failing score routes to :rejected" do
+      candidate =
+        until_state(:rejected, fn -> start_candidate() |> drive_hr_decision() end)
+
+      assert candidate.score < 4
+    end
+
+    test "nothing but the timeout can move a candidate out of :hr_screen" do
       candidate = start_candidate()
 
       assert {:error, %Ash.Error.Invalid{}} =
-               Ash.update(candidate, action: :hire, authorize?: false)
+               Ash.update(candidate, action: :offer, authorize?: false)
 
-      assert reload(candidate).state == :submitted
-    end
-
-    test "the wait is not a sleep — starting many candidates is immediate" do
-      Application.put_env(:ash_workflow_demo, :fast_tests, false)
-
-      {elapsed_us, _} =
-        :timer.tc(fn -> Enum.each(1..10, &start_candidate("Rush #{&1}")) end)
-
-      assert elapsed_us < 2_000_000
+      assert reload(candidate).state == :hr_screen
     end
   end
 
-  describe "the automatic :verifying step" do
-    test "runs without anybody calling it" do
-      assert reach_review().state == :review
+  describe "the background check" do
+    test "a :clear result from the bureau reaches :lead_interview" do
+      candidate = reach_background_check()
+
+      assert {:ok, cleared} = DbsBureau.return_result(candidate.dbs_reference, :clear)
+
+      assert cleared.state == :lead_interview
+      assert cleared.dbs_offence == nil
     end
 
-    test "an unscorable pitch routes to :verification_failed" do
-      candidate = reach_review("Emoji Only", "🎉🎉🎉")
+    test "a :flagged result reaches :lead_interview and records a non-nil offence" do
+      candidate = reach_background_check()
 
-      assert candidate.state == :verification_failed
-      assert candidate.score == nil
+      assert {:ok, flagged} = DbsBureau.return_result(candidate.dbs_reference, :flagged)
+
+      assert flagged.state == :lead_interview
+      assert is_binary(flagged.dbs_offence)
     end
 
-    test "a failed verification is terminal" do
-      candidate = reach_review("Emoji Only", "🎉🎉🎉")
+    test "a duplicate reference is reported rather than reapplied" do
+      candidate = reach_background_check()
+      {:ok, _} = DbsBureau.return_result(candidate.dbs_reference, :clear)
 
-      assert {:error, %Ash.Error.Invalid{}} =
-               Ash.update(candidate, action: :hire, authorize?: false)
+      assert DbsBureau.return_result(candidate.dbs_reference, :clear) == :already_returned
     end
 
-    test "one candidate failing does not stop the others being scored" do
-      good = start_candidate("Good", "I ship") |> ready_to_verify()
-      bad = start_candidate("Bad", "!!!") |> ready_to_verify()
-
-      run_workflow_triggers(Candidate)
-
-      assert reload(good).state == :review
-      assert reload(bad).state == :verification_failed
+    test "an unknown reference is reported rather than raised" do
+      assert DbsBureau.return_result("DBS-NOTREAL", :clear) == :unknown_reference
     end
   end
 
-  describe "hire cascade" do
-    test "hiring one candidate moves every other reviewable candidate to :position_filled" do
-      one = reach_review("One")
-      two = reach_review("Two")
-      three = reach_review("Three")
+  describe "record_lead_interview" do
+    defp reach_lead_interview(name \\ "Alice") do
+      candidate = reach_background_check(name)
+      {:ok, cleared} = DbsBureau.return_result(candidate.dbs_reference, :clear)
+      cleared
+    end
 
-      {:ok, hired} = ATS.hire(one, %{}, authorize?: false)
+    test "sets lead_score and lead_note" do
+      candidate = reach_lead_interview() |> drive_lead_decision()
+
+      assert candidate.lead_score in 1..10
+      assert is_binary(candidate.lead_note)
+    end
+
+    test "a passing lead_score routes to :final_approval" do
+      candidate =
+        until_state(:final_approval, fn -> reach_lead_interview() |> drive_lead_decision() end)
+
+      assert candidate.lead_score >= 4
+    end
+
+    test "a failing lead_score routes to :rejected" do
+      candidate =
+        until_state(:rejected, fn -> reach_lead_interview() |> drive_lead_decision() end)
+
+      assert candidate.lead_score < 4
+    end
+  end
+
+  describe "offer" do
+    defp reach_final_approval(name \\ "Alice") do
+      until_state(:final_approval, fn ->
+        reach_lead_interview(name) |> drive_lead_decision()
+      end)
+    end
+
+    test "reaches :hired" do
+      winner = reach_final_approval()
+
+      {:ok, hired} = ATS.offer(winner, %{}, authorize?: false)
 
       assert hired.state == :hired
-      assert reload(two).state == :position_filled
-      assert reload(three).state == :position_filled
     end
 
-    test "leaves terminal candidates untouched" do
-      winner = reach_review("Hired")
-      rejected = reach_review("Rejected")
+    test "sweeps every other in-flight candidate to :rejected" do
+      winner = reach_final_approval("Winner")
+      on_hr_screen = start_candidate("StillOnHrScreen")
+      on_background_check = reach_background_check("StillOnBackgroundCheck")
+      on_lead_interview = reach_lead_interview("StillOnLeadInterview")
 
-      {:ok, rejected} = ATS.reject(rejected, %{}, authorize?: false)
-      assert rejected.state == :rejected
+      {:ok, _} = ATS.offer(winner, %{}, authorize?: false)
 
-      {:ok, _} = ATS.hire(winner, %{}, authorize?: false)
-
-      assert reload(rejected).state == :rejected
+      assert reload(on_hr_screen).state == :rejected
+      assert reload(on_background_check).state == :rejected
+      assert reload(on_lead_interview).state == :rejected
     end
 
-    test "a candidate still waiting to be scored is not swept up" do
-      winner = reach_review("Winner")
-      waiting = start_candidate("Waiting")
+    test "leaves already-terminal candidates untouched" do
+      winner = reach_final_approval("Winner")
 
-      {:ok, _} = ATS.hire(winner, %{}, authorize?: false)
+      already_rejected =
+        until_state(:rejected, fn -> start_candidate() |> drive_hr_decision() end)
 
-      assert reload(waiting).state == :submitted
+      {:ok, _} = ATS.offer(winner, %{}, authorize?: false)
+
+      assert reload(already_rejected).state == :rejected
     end
 
-    test "hiring twice is refused — the slot is gone" do
-      winner = reach_review("Winner")
-      {:ok, hired} = ATS.hire(winner, %{}, authorize?: false)
+    test "offering twice is refused — the slot is gone" do
+      winner = reach_final_approval()
+      {:ok, hired} = ATS.offer(winner, %{}, authorize?: false)
 
-      assert {:error, %Ash.Error.Invalid{}} = ATS.hire(hired, %{}, authorize?: false)
-    end
-  end
-
-  describe "reviewer decisions" do
-    test "reject moves one candidate without touching the rest" do
-      rejected = reach_review("Rejected")
-      bystander = reach_review("Bystander")
-
-      {:ok, rejected} = ATS.reject(rejected, %{}, authorize?: false)
-
-      assert rejected.state == :rejected
-      assert reload(bystander).state == :review
+      assert {:error, %Ash.Error.Invalid{}} = ATS.offer(hired, %{}, authorize?: false)
     end
 
-    test "position_filled is a transition a reviewer can make directly" do
-      candidate = reach_review()
+    test "a dbs_offence recorded before :lead_interview survives all the way to :hired" do
+      winner =
+        until_state(:final_approval, fn ->
+          candidate = reach_background_check()
+          {:ok, flagged} = DbsBureau.return_result(candidate.dbs_reference, :flagged)
+          drive_lead_decision(flagged)
+        end)
 
-      {:ok, candidate} = ATS.position_filled(candidate, %{}, authorize?: false)
+      assert is_binary(winner.dbs_offence)
 
-      assert candidate.state == :position_filled
-    end
+      {:ok, hired} = ATS.offer(winner, %{}, authorize?: false)
 
-    test "every terminal state refuses further transitions" do
-      for {name, transition} <- [{"A", :reject}, {"B", :position_filled}] do
-        candidate = reach_review(name)
-        {:ok, terminal} = Ash.update(candidate, action: transition, authorize?: false)
-
-        assert {:error, %Ash.Error.Invalid{}} =
-                 Ash.update(terminal, action: :hire, authorize?: false)
-      end
+      assert hired.state == :hired
+      assert hired.dbs_offence == winner.dbs_offence
     end
   end
 
-  describe "the auto-reject timeout" do
-    test "a candidate nobody decides on is auto-rejected once the deadline passes" do
-      candidate = reach_review() |> age_by(31, :second)
+  describe "veto" do
+    test "moves a candidate on :final_approval to :rejected without a sweep" do
+      candidate = reach_final_approval("VetoMe")
+      bystander = start_candidate("Bystander")
 
-      run_workflow_triggers(Candidate)
+      {:ok, vetoed} = ATS.veto(candidate, %{}, authorize?: false)
 
-      assert reload(candidate).state == :auto_rejected
-    end
-
-    test "a candidate inside the 30 seconds is left in :review" do
-      candidate = reach_review() |> age_by(5, :second)
-
-      run_workflow_triggers(Candidate)
-
-      assert reload(candidate).state == :review
-    end
-
-    test "the timeout cannot clobber a candidate who was already hired" do
-      candidate = reach_review() |> age_by(31, :second)
-      {:ok, hired} = ATS.hire(candidate, %{}, authorize?: false)
-
-      run_workflow_triggers(Candidate)
-
-      assert reload(hired).state == :hired
-    end
-
-    test "the generated timeout action refuses to fire on a hired candidate" do
-      candidate = reach_review()
-      {:ok, hired} = ATS.hire(candidate, %{}, authorize?: false)
-
-      assert {:error,
-              %Ash.Error.Invalid{errors: [%AshStateMachine.Errors.NoMatchingTransition{}]}} =
-               Ash.update(hired, action: :__timeout_review_auto_reject, authorize?: false)
-    end
-
-    test "the timeout does not reach a candidate still in :submitted" do
-      candidate = start_candidate() |> age_by(31, :second)
-
-      run_workflow_triggers(Candidate)
-
-      refute reload(candidate).state == :auto_rejected
+      assert vetoed.state == :rejected
+      assert reload(bystander).state == :hr_screen
     end
   end
 
