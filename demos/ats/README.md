@@ -51,7 +51,7 @@ Seven tests cover: initial state, verify→review transition, hire cascade, casc
 - `lib/ash_workflow_demo/ats/candidate/fake_score.ex` — the verify step's "AI scorer". Sleeps 2–5 seconds, assigns a random score and canned reason. Honours `:fast_tests` app env.
 - `lib/ash_workflow_demo/ats/candidate/cascade.ex` — `after_action` hook on `:hire` that transitions all other non-terminal candidates to `:position_filled`.
 - `lib/ash_workflow_demo/ats/candidate/notifier.ex` — Ash notifier that broadcasts changes to Phoenix.PubSub.
-- `lib/ash_workflow_demo/demo_scheduler.ex` — 1-second-tick GenServer that invokes AshOban schedulers directly. Sub-minute granularity for the 30-second timeout (free Oban cron is minute-level).
+- `AshWorkflow.Scheduler.Precise` — declared in the resource's `workflow` block. Arms a timer per deadline rather than polling cron, which is how the 30-second timeout and the 1-second `:submitted` dwell are expressible at all. This replaced a hand-rolled 1-second ticker.
 - `lib/ash_workflow_demo/tunnel_url.ex` — Agent storing the public tunnel URL for the QR code.
 - `lib/ash_workflow_demo_web/live/dashboard_live.ex` — El Jefe's kanban.
 - `lib/ash_workflow_demo_web/live/candidate_live.ex` — candidate's mobile self-view.
