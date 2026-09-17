@@ -4,14 +4,10 @@ on:
   push:
     tags: ["v*"]
 
-permissions:
-  contents: read
-
 jobs:
-  publish:
-    name: mix hex.publish
+  verify-version:
+    name: Verify the tag matches the project version
     runs-on: ubuntu-latest
-    environment: hex
 
     steps:
       - uses: actions/checkout@v7
@@ -21,12 +17,10 @@ jobs:
           version-file: .tool-versions
           version-type: strict
 
-      - run: mix deps.get
-
       # Guard against tagging a commit whose version was never bumped: the tag
-      # and mix.exs must agree before anything is published.
-      - name: Verify the tag matches the project version
-        run: |
+      # and mix.exs must agree before anything is published. ash-ci.yml checks
+      # that the version reached Hex, not that the tag names the right one.
+      - run: |
           project_version="$(mix run --no-start -e 'IO.puts(Mix.Project.config()[:version])')"
           tag_version="${GITHUB_REF_NAME#v}"
 
@@ -37,6 +31,45 @@ jobs:
 
           echo "Publishing ${project_version}."
 
-      - run: mix hex.publish --yes
-        env:
-          HEX_API_KEY: ${{ secrets.HEX_API_KEY }}
+  release:
+    needs: verify-version
+    uses: ash-project/ash/.github/workflows/ash-ci.yml@main
+    with:
+      release: true
+
+      # HexDocs already receives the docs from `mix hex.publish`. The Pages
+      # deploy is a second copy that needs Pages configured on the repository.
+      publish-docs: false
+
+      community-files: true
+
+      # Everything below duplicates a tool `mix check` already runs in ci.yml,
+      # or does not apply to this library. See .check.exs for the real gate.
+      unused-deps: false
+      deps-audit: false
+      hex-audit: false
+      doctor: false
+      codegen: false
+      igniter-upgrade: false
+
+      # Not a Phoenix app; no endpoints or templates for sobelow to analyse.
+      sobelow: false
+
+      # `mix check` runs `mix docs`, which regenerates the cheat sheets through
+      # the `docs` alias and fails on a drifted DSL document.
+      spark-cheat-sheets: false
+      spark-formatter: false
+
+      # The Postgres and Oban integration tests run in ci.yml, against the
+      # postgres service defined there.
+      postgres: false
+      tenants: false
+      ash_postgres: false
+
+      conventional-commit: false
+
+    permissions:
+      contents: write
+
+    secrets:
+      hex_api_key: ${{ secrets.HEX_API_KEY }}
