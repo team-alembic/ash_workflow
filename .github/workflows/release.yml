@@ -68,8 +68,13 @@ jobs:
 
       conventional-commit: false
 
+    # Validated when the file is parsed, so a nested job that never runs still
+    # needs its permissions granted.
     permissions:
       contents: write
+      pages: write
+      id-token: write
+      security-events: write
 
     secrets:
       hex_api_key: ${{ secrets.HEX_API_KEY }}
