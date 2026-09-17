@@ -21,6 +21,8 @@ defmodule AshWorkflowDemoWeb.Router do
     live "/apply", ApplyLive
     live "/c/:id", CandidateLive
     live "/dbs", DbsBureauLive
+    live "/history", HistoryLive
+    live "/rewind", RewindLive
   end
 
   scope "/webhooks", AshWorkflowDemoWeb do

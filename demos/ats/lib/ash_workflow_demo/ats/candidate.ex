@@ -119,6 +119,14 @@ defmodule AshWorkflowDemo.ATS.Candidate do
     # need no self_scheduled? flag and no hand-rolled ticker.
     scheduler AshWorkflow.Scheduler.Precise
 
+    transition_log AshWorkflowDemo.ATS.CandidateTransition
+
+    # Matches the talk script: a mis-click has half an hour to get corrected
+    # before the window closes.
+    undo do
+      within {30, :minutes}
+    end
+
     # Janine is reading the pitch. Nothing runs while the candidate waits here;
     # the step's only exit is her own deadline.
     step :hr_screen do
@@ -147,8 +155,8 @@ defmodule AshWorkflowDemo.ATS.Candidate do
     # the workflow has no way to say "wait for an event keyed on
     # :dbs_reference". See issue #61.
     step :background_check do
-      transition :dbs_clear, to: :lead_interview
-      transition :dbs_flag, to: :lead_interview, accept: [:dbs_offence]
+      transition :dbs_clear, to: :lead_interview, undoable?: true
+      transition :dbs_flag, to: :lead_interview, accept: [:dbs_offence], undoable?: true
       transition :slot_taken, to: :rejected
 
       # Long enough that a person can pick up the other screen and answer on
@@ -182,9 +190,16 @@ defmodule AshWorkflowDemo.ATS.Candidate do
     end
 
     # The only step with a human on the other side of it.
+    #
+    # Undo resolves by (from_state, to_state) edge, not by which named
+    # transition wrote the row — AshWorkflow.Info.undoable_edge?/3 only ever
+    # sees the pair. :veto and :slot_taken both land on :final_approval ->
+    # :rejected, so a bystander swept here by the offer cascade reads as
+    # undoable too, purely because :veto shares that edge. See
+    # candidate_transition_test.exs's "shares :veto's undoable edge" test.
     step :final_approval do
-      transition :offer, to: :hired
-      transition :veto, to: :rejected
+      transition :offer, to: :hired, undoable?: true
+      transition :veto, to: :rejected, undoable?: true
       transition :slot_taken, to: :rejected
 
       timeout :jefe_rubber_stamp, fire_after: {45, :seconds}, transition_to: :hired

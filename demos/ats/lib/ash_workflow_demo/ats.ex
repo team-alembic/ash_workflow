@@ -14,5 +14,7 @@ defmodule AshWorkflowDemo.ATS do
       define :list_candidates, action: :read
       define :get_candidate, action: :read, get_by: :id
     end
+
+    resource AshWorkflowDemo.ATS.CandidateTransition
   end
 end

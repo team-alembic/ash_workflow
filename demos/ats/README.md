@@ -29,6 +29,35 @@ Open `<tunnel>/dbs` on a second screen or a phone. That's the Disclosure & Backg
 
 If you forget to set `TUNNEL_URL`, the dashboard shows a text input where you can paste the URL at runtime.
 
+Two more pages, both reading the same `transition_log` and neither touching the kanban's own look or behaviour:
+
+| Page | Shows |
+|---|---|
+| `/history` | Every candidate's transition log — where they came from, where they went, which transition ran, when, and what triggered it — plus undo/redo. |
+| `/rewind` | A single playhead dragged across every candidate at once, resolving each one's state at that instant from the log via `state_at/2`. |
+
+### `/history`
+
+Open it after a few candidates have moved. Each candidate gets a band (drawn from `Candidate.history/1`) and a table of every logged row: `#`, `when`, `from → to`, `transition`, `triggered by` (`submitted`, `automatic step`, `person`, `timeout`, `error path`, or `undo`), and `undoes` — a pointer to the row an undo row reverses.
+
+`:offer`, `:veto`, and the bureau's `:dbs_clear` / `:dbs_flag` are undoable for 30 minutes (`undo do within({30, :minutes}) end`). Click **undo → \<state\>** on a candidate that has one:
+
+1. The candidate rewinds to the state the log says it actually came from.
+2. A *new* row appears, `triggered by: undo`, marked `↩ row N` — pointing at the row it reverses. That row is still there, struck through. Nothing was edited or deleted.
+3. The **Showing: what happened / corrected history** toggle changes the band. The literal reading still contains the segment undo rewound out of, because the candidate really was in that state for a while. The corrected reading (`history(effective: true)`) drops it.
+
+Both readings come out of the same rows — the whole argument for recording an undo as a pointer rather than a flag on the row it reverses.
+
+A few things worth clicking:
+
+- **Undo twice.** The second undo is a redo — it reverses the undo row, landing back where the first undo rewound out of.
+- **A freshly screened candidate says "nothing to undo".** Its most recent state change came from Janine's automatic `:record_hr_screen`, which is not an undoable transition.
+- **A bystander swept by `:offer`'s cascade from `:final_approval` still shows an undo button.** Undo resolves by `(from_state, to_state)` edge, not by which named transition wrote the row, and `:veto` shares that exact edge (`:final_approval -> :rejected`) with the `:slot_taken` cascade. A bystander swept from any *other* step stays correctly non-undoable, since no undoable transition shares that edge. See the comment on the `:final_approval` step in `candidate.ex`.
+
+### `/rewind`
+
+Drag the slider: the yellow playhead sweeps across every candidate's band at once, and each one's "state at playhead" readout updates to whatever the log says was true at that instant — not the candidate's current `state` column. This is log-backed and live (PubSub-driven, like every other page here), deliberately not built on Ash temporal resources / Postgres 19 — that is a separate, later piece of this talk.
+
 ## Demo flow
 
 1. Open the dashboard. QR code is top-right.
@@ -68,6 +97,12 @@ mix test
 
 Covering: initial state, verify→review transition, hire cascade, cascade leaves terminal states alone, auto-reject timeout action, list + get code interface, and the DBS chain — reference issued on hire, clear and flagged results, duplicate and unknown references, and hire through to `:hired`.
 
+`test/candidate_transition_test.exs` covers the transition log itself: every `triggered_by` value (`:initial`, `:automatic`, `:error_path`, `:manual`, `:timeout`), `history/1` ordered by `occurred_at`, `state_at/2` before the first row / between two rows / after the last, undo leaving the reversed row in place with a pointer to it, undoing an undo as a redo, the 30-minute undo window expiring, and the `:final_approval` edge-sharing nuance between `:veto` and `:slot_taken`.
+
+`test/history_live_test.exs` covers the `/history` page: the log render, undo and redo through the LiveView, the effective/what-happened toggle, and a candidate whose last change was automatic offering nothing to undo.
+
+`test/rewind_live_test.exs` covers `/rewind`: the band render, the slider actually tracking the playhead via `render_change/3`, and a new candidate appearing on the next PubSub broadcast.
+
 ## Architecture
 
 - `lib/ash_workflow_demo/ats/candidate.ex` — the star. One Ash resource whose `workflow do` block generates the state machine, transitions, and Oban triggers.
@@ -85,6 +120,9 @@ Covering: initial state, verify→review transition, hire cascade, cascade leave
 - `lib/ash_workflow_demo_web/live/dashboard_live.ex` — El Jefe's kanban.
 - `lib/ash_workflow_demo_web/live/candidate_live.ex` — candidate's mobile self-view.
 - `lib/ash_workflow_demo_web/live/apply_live.ex` — public submission form.
+- `lib/ash_workflow_demo/ats/candidate_transition.ex` — the transition log, scaffolded by `mix ash_workflow.gen.transition_log AshWorkflowDemo.ATS.Candidate` and hand-adjusted (the generated `:workflow` relationship renamed to `:candidate`). No `belongs_to_actor`: this demo has no actor/auth resource, and `triggered_by` alone is enough to say who or what moved a candidate.
+- `lib/ash_workflow_demo_web/live/history_live.ex` — the `/history` page: per-candidate log and undo/redo, built the same way as `demos/workflow_timeline`'s `undo_live.ex`.
+- `lib/ash_workflow_demo_web/live/rewind_live.ex` — the `/rewind` page: the all-candidates playhead, built the same way as `demos/workflow_timeline`'s `timeline_live.ex`.
 
 ## Why it's flashy
 
@@ -93,3 +131,5 @@ Covering: initial state, verify→review transition, hire cascade, cascade leave
 - Every screen updates in real time via Phoenix.PubSub.
 - One click sweeps every other candidate, at every step at once, to `:rejected`.
 - A stranger's HTTP request, from a different screen on a different URL, resumes a workflow that was sitting still.
+- El Jefe's own veto, undone within 30 minutes, un-happens without erasing the row that recorded it.
+- One slider rewinds every candidate on the board at once, live, from nothing but an append-only log.

@@ -37,7 +37,8 @@ defmodule AshWorkflowDemoWeb.ConnCase do
           ready_for_hr_decision: 1,
           ready_for_lead_decision: 1,
           reload: 1,
-          age_by: 3
+          age_by: 3,
+          set_datetime: 3
         ]
     end
   end
