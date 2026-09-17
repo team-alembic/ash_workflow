@@ -93,6 +93,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 - Updated the locked `ash` from 3.27.7 to 3.32.1, which carried four advisories. The most serious, EEF-CVE-2026-67579 (HIGH), is filter expression injection via a forged keyset pagination cursor — relevant here because the read action this extension generates for ash_oban's triggers uses keyset pagination. The dependency constraint (`~> 3.0`) was already permissive; only the lockfile held the old version.
+- Updated the locked `ash` to 3.33.5, which fixes EEF-CVE-2026-86338 (MEDIUM): field policies do not filter-nil forbidden calculations and aggregates, so a forbidden value can be inferred from whether a row is returned. Introduced in 2.11.0-rc.0 and fixed in 3.33.4. The `~> 3.0` constraint already allowed the fix; only the lockfile held the affected version.
 
 ## [0.5.0] - 2026-08-21
 
