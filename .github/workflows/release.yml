@@ -12,17 +12,20 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: erlef/setup-beam@v1
-        with:
-          version-file: .tool-versions
-          version-type: strict
-
       # Guard against tagging a commit whose version was never bumped: the tag
       # and mix.exs must agree before anything is published. ash-ci.yml checks
       # that the version reached Hex, not that the tag names the right one.
+      #
+      # Read from the @version literal rather than Mix.Project.config/0, which
+      # would mean fetching every dependency to print one string.
       - run: |
-          project_version="$(mix run --no-start -e 'IO.puts(Mix.Project.config()[:version])')"
+          project_version="$(sed -n 's/^  @version "\(.*\)"$/\1/p' mix.exs)"
           tag_version="${GITHUB_REF_NAME#v}"
+
+          if [ -z "$project_version" ]; then
+            echo "No @version found in mix.exs."
+            exit 1
+          fi
 
           if [ "$project_version" != "$tag_version" ]; then
             echo "Tag ${GITHUB_REF_NAME} does not match mix.exs version ${project_version}."
