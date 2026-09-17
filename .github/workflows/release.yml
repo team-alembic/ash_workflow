@@ -44,7 +44,9 @@ jobs:
       # deploy is a second copy that needs Pages configured on the repository.
       publish-docs: false
 
-      community-files: true
+      # Enforces ash-project's own community files byte for byte. This repo has
+      # its own code of conduct, whose enforcement contact is Alembic's.
+      community-files: false
 
       # Everything below duplicates a tool `mix check` already runs in ci.yml,
       # or does not apply to this library. See .check.exs for the real gate.
