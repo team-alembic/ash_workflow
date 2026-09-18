@@ -165,8 +165,9 @@ Declares a time-based action or forced transition if the workflow stays in this 
 
 | Name | Type | Default | Docs |
 |------|------|---------|------|
-| [`fire_after`](#workflow-step-timeout-fire_after){: #workflow-step-timeout-fire_after .spark-required} | `any` |  | Duration tuple, e.g. `{3, :days}` or `{2, :hours}`. |
-| [`field`](#workflow-step-timeout-field){: #workflow-step-timeout-field } | `atom` | `:state_entered_at` | The datetime attribute or calculation to measure `fire_after` against. Defaults to `:state_entered_at`. |
+| [`fire_after`](#workflow-step-timeout-fire_after){: #workflow-step-timeout-fire_after } | `any` |  | Duration tuple, e.g. `{3, :days}` or `{2, :hours}`, measured from `field`. Exactly one of `fire_after` or `fire_at` is required. |
+| [`fire_at`](#workflow-step-timeout-fire_at){: #workflow-step-timeout-fire_at } | `atom` |  | A datetime attribute or expression calculation holding the deadline instant itself. The timeout fires once that instant has passed, at the resolution the scheduler polls with. Cannot be combined with `fire_after` or `field`. |
+| [`field`](#workflow-step-timeout-field){: #workflow-step-timeout-field } | `atom` |  | The datetime attribute or calculation to measure `fire_after` against. Defaults to `:state_entered_at`. Has no meaning with `fire_at`, which names the deadline itself. |
 | [`action`](#workflow-step-timeout-action){: #workflow-step-timeout-action } | `atom` |  | Action to run when the timeout fires. Does not change state. |
 | [`transition_to`](#workflow-step-timeout-transition_to){: #workflow-step-timeout-transition_to } | `atom` |  | Step to force-transition to when the timeout fires. |
 | [`repeat`](#workflow-step-timeout-repeat){: #workflow-step-timeout-repeat } | `boolean` | `false` | If true, re-fire the timeout on the same interval. |

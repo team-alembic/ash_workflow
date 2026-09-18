@@ -222,25 +222,59 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
 
   defp validate_timeouts(step) do
     Enum.reduce_while(step.timeouts, :ok, fn timeout, :ok ->
-      cond do
-        timeout.action != nil and timeout.transition_to != nil ->
-          {:halt,
-           step_error(
-             step,
-             "Timeout :#{timeout.name} on step :#{step.name} must have either action or transition_to, not both."
-           )}
-
-        timeout.action == nil and timeout.transition_to == nil ->
-          {:halt,
-           step_error(
-             step,
-             "Timeout :#{timeout.name} on step :#{step.name} must have either action or transition_to."
-           )}
-
-        true ->
-          {:cont, :ok}
+      with :ok <- validate_timeout_deadline(step, timeout),
+           :ok <- validate_timeout_target(step, timeout) do
+        {:cont, :ok}
+      else
+        {:error, error} -> {:halt, {:error, error}}
       end
     end)
+  end
+
+  defp validate_timeout_deadline(step, timeout) do
+    cond do
+      timeout.fire_after != nil and timeout.fire_at != nil ->
+        step_error(
+          step,
+          "Timeout :#{timeout.name} on step :#{step.name} must have either fire_after or fire_at, not both. " <>
+            "fire_after measures an offset from `field`; fire_at names a field that already holds the deadline instant."
+        )
+
+      timeout.fire_after == nil and timeout.fire_at == nil ->
+        step_error(
+          step,
+          "Timeout :#{timeout.name} on step :#{step.name} must have either fire_after or fire_at."
+        )
+
+      timeout.fire_at != nil and timeout.field != nil ->
+        step_error(
+          step,
+          "Timeout :#{timeout.name} on step :#{step.name} has both fire_at and field. " <>
+            "field is the anchor fire_after measures from, and fire_at names the deadline itself, so it has no anchor to measure from."
+        )
+
+      true ->
+        :ok
+    end
+  end
+
+  defp validate_timeout_target(step, timeout) do
+    cond do
+      timeout.action != nil and timeout.transition_to != nil ->
+        step_error(
+          step,
+          "Timeout :#{timeout.name} on step :#{step.name} must have either action or transition_to, not both."
+        )
+
+      timeout.action == nil and timeout.transition_to == nil ->
+        step_error(
+          step,
+          "Timeout :#{timeout.name} on step :#{step.name} must have either action or transition_to."
+        )
+
+      true ->
+        :ok
+    end
   end
 
   # A timeout's `action` is handed to the scheduler as the action to invoke, so

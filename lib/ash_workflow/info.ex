@@ -5,6 +5,7 @@ defmodule AshWorkflow.Info do
 
   alias Ash.Resource.Info, as: ResourceInfo
   alias AshWorkflow.Entities.Step
+  alias AshWorkflow.Entities.Timeout
   alias AshWorkflow.Entities.Transition
   alias AshWorkflow.Entities.TransitionLog
   alias AshWorkflow.Entities.Undo
@@ -211,7 +212,8 @@ defmodule AshWorkflow.Info do
   as a list of attribute-name lists, most useful first.
 
   Every trigger's `where` clause filters on the state attribute, and every
-  timeout also filters on its `field`. Because `ago/2` compiles to a bind
+  timeout also filters on the datetime field it reads: its `field`, or its
+  `fire_at` when it declares one. Because `ago/2` compiles to a bind
   parameter rather than a per-row function call, a timeout's filter reaches the
   data layer as `state = $1 AND state_entered_at <= $2` — an ordinary composite
   range scan. Without these indexes each poll is a sequential scan.
@@ -241,7 +243,7 @@ defmodule AshWorkflow.Info do
     timeout_fields =
       steps
       |> Enum.flat_map(& &1.timeouts)
-      |> Enum.map(& &1.field)
+      |> Enum.map(&Timeout.deadline_field/1)
       |> Enum.filter(&column?(resource, &1))
       |> Enum.uniq()
       |> Enum.sort_by(&(&1 != :state_entered_at))
@@ -341,9 +343,11 @@ defmodule AshWorkflow.Info do
   * `:on_success` — one entry per declared `on_success` route, as `%{to:,
     condition:}`.
   * `:on_error` — the step an automatic step falls to on failure, or `nil`.
-  * `:timeouts` — one entry per timeout, as `%{name:, to:, fire_after:, field:,
-    action:, repeat:, retry:}`. A timeout that runs an action rather than
-    moving the workflow has a `nil` `:to` and a non-`nil` `:action`.
+  * `:timeouts` — one entry per timeout, as `%{name:, to:, fire_after:, fire_at:,
+    field:, action:, repeat:, retry:}`. A timeout that runs an action rather than
+    moving the workflow has a `nil` `:to` and a non-`nil` `:action`. A `fire_at`
+    timeout names the field holding its deadline, so it has a `nil` `:fire_after`
+    and a `nil` `:field`.
 
   ## Example
 
@@ -365,7 +369,8 @@ defmodule AshWorkflow.Info do
       #=>     on_success: [],
       #=>     on_error: nil,
       #=>     timeouts: [
-      #=>       %{name: :chase, to: nil, fire_after: {3, :days}, field: :state_entered_at, action: :send_reminder, repeat: true, retry: nil}
+      #=>       %{name: :chase, to: nil, fire_after: {3, :days}, fire_at: nil, field: :state_entered_at, action: :send_reminder, repeat: true, retry: nil},
+      #=>       %{name: :expire, to: :expired, fire_after: nil, fire_at: :offer_expires_at, field: nil, action: nil, repeat: false, retry: nil}
       #=>     ]
       #=>   },
       #=>   ...
@@ -421,7 +426,8 @@ defmodule AshWorkflow.Info do
       name: timeout.name,
       to: timeout.transition_to,
       fire_after: timeout.fire_after,
-      field: timeout.field,
+      fire_at: timeout.fire_at,
+      field: if(timeout.fire_at, do: nil, else: Timeout.anchor_field(timeout)),
       action: timeout.action,
       repeat: timeout.repeat,
       retry: timeout.retry

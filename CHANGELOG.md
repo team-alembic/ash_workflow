@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`fire_at` on a timeout.** Names a datetime attribute or expression calculation that already holds the deadline instant, rather than an anchor to measure an offset from: `timeout :dormant do fire_at :next_check_at; transition_to :dormant_review end` fires once `next_check_at` has passed, at whatever resolution the selected scheduler polls with. `fire_at` and `fire_after` are mutually exclusive and exactly one of them is required, and `fire_at` cannot be combined with `field`, which is the anchor `fire_after` measures from. `AshWorkflow.Verifiers.ValidateTimeoutPrecision` skips a `fire_at` timeout: it promises no duration, so there is no precision for the scheduler to miss. That replaces the `fire_after: {1, :seconds}` sentinel the verifier used to coach people towards, which handed it a number that meant nothing. `AshWorkflow.Scheduler.Work`'s `deadline` map expresses both shapes, with a `nil` `fire_after` meaning the field holds the instant, and `AshWorkflow.Scheduler.due_at/2` resolves either to a `DateTime`. `AshWorkflow.Info.workflow_graph/1` carries `fire_at`, and `AshWorkflow.Info.recommended_indexes/1` covers a `fire_at` field with the same `(state, field)` composite index it gives a `field`.
+
+### Fixed
+
+- `AshWorkflow.Scheduler.due_at/2` returns `nil` for a deadline field that is an unloaded calculation, rather than raising on the `%Ash.NotLoaded{}` struct it read. `AshWorkflow.Scheduler.Precise.Timeline` loads a calculation deadline field with the records it sweeps and re-reads before firing, so it arms the timer from a value rather than from nothing. That is the [#70](https://github.com/team-alembic/ash_workflow/issues/70) failure mode under the Precise scheduler; a caller computing `due_at/2` from a record of its own still has to load the calculation first.
+
 ## [0.6.0] - 2026-09-17
 
 ### Added

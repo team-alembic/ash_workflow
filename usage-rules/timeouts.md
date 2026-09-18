@@ -229,7 +229,7 @@ end
 
 `self_scheduled?: true` changes nothing about what is generated — the scheduler and its cron still exist, so `AshOban.schedule/2` and `AshOban.schedule_and_run_triggers/1` keep working. It records that something calls them more often than the cron does, and permits the shorter duration. `demos/ats` is the worked example: a GenServer ticks every second and invokes the trigger, which is what makes its 30-second deadline honourable.
 
-This also applies when a custom `field` carries the deadline. `{1, :minutes}` and `{1, :seconds}` both mean "once that instant has passed" — the polling interval, not the duration, decides how soon after — so use `{1, :minutes}`.
+A field that already holds the deadline instant is not a short duration at all. Name it with `fire_at` rather than reaching for `{1, :seconds}` as a stand-in for "no offset". `AshWorkflow.Verifiers.ValidateTimeoutPrecision` skips a `fire_at` timeout, because it promises no duration for the floor to be compared against.
 
 ### Forgetting to define the timeout action
 
@@ -262,6 +262,25 @@ end
 
 The field must exist and must be a datetime type — both are checked at compile
 time.
+
+## Firing at an instant a field already holds with `fire_at`
+
+`fire_after` is an offset from `field`. When the field holds the deadline itself, `fire_at` names it and no offset applies:
+
+```elixir
+timeout :dormant do
+  fire_at :next_check_at
+  transition_to :dormant_review
+end
+```
+
+The timeout fires once `next_check_at` has passed, at whatever resolution the selected scheduler polls with. `fire_at` takes a datetime attribute or an expression calculation, checked at compile time the same way `field` is.
+
+`fire_at` and `fire_after` are mutually exclusive, and exactly one of them is required. `field` is the anchor `fire_after` measures from, so declaring it alongside `fire_at` is a compile error too.
+
+Do not write `fire_after: {1, :seconds}` against a deadline-carrying field. That was the only way to say "no offset" before `fire_at` existed, and it hands `AshWorkflow.Verifiers.ValidateTimeoutPrecision` a duration that means nothing.
+
+`AshWorkflow.Scheduler.due_at/2` reads the field with `Map.get/2`, so a `fire_at` calculation has to be loaded before it holds a value. `AshWorkflow.Scheduler.Precise.Timeline` loads it with the records it arms timers from; a caller computing `due_at/2` from its own record loads it itself, which is [issue #70](https://github.com/team-alembic/ash_workflow/issues/70).
 
 ### `repeat: true` is rejected with a custom `field`
 

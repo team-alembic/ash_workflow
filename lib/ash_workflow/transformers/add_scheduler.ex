@@ -25,6 +25,7 @@ defmodule AshWorkflow.Transformers.AddScheduler do
 
   alias AshWorkflow.Entities.Retry
   alias AshWorkflow.Entities.Step
+  alias AshWorkflow.Entities.Timeout
   alias AshWorkflow.Scheduler.Work
   alias AshWorkflow.Transformers.AddActions
   alias Spark.Dsl.Transformer
@@ -93,9 +94,7 @@ defmodule AshWorkflow.Transformers.AddScheduler do
 
   defp timeout_work(step, timeout, resource, state_attribute) do
     step_name = step.name
-    {duration_value, duration_unit} = timeout.fire_after
-    ago_unit = singular_unit(duration_unit)
-    field = timeout.field
+    field = Timeout.deadline_field(timeout)
 
     action =
       if timeout.transition_to do
@@ -112,11 +111,7 @@ defmodule AshWorkflow.Transformers.AddScheduler do
       step: step_name,
       timeout: timeout.name,
       action: action,
-      match:
-        Ash.Expr.expr(
-          ^in_step(state_attribute, step_name) and
-            ^ref(field) <= ago(^duration_value, ^ago_unit)
-        ),
+      match: Ash.Expr.expr(^in_step(state_attribute, step_name) and ^due(timeout, field)),
       deadline: %{field: field, fire_after: timeout.fire_after},
       repeat?: timeout.repeat,
       # An action timeout does not change state, so nothing stops it matching
@@ -127,6 +122,19 @@ defmodule AshWorkflow.Transformers.AddScheduler do
       retry: timeout.retry || %Retry{},
       opts: [check_interval: timeout.check_interval]
     }
+  end
+
+  # A `fire_after` timeout is due once its anchor is older than the duration. A
+  # `fire_at` timeout names the deadline instant itself, so it is due once that
+  # instant has passed, with no arithmetic.
+  defp due(%Timeout{fire_after: nil}, field) do
+    Ash.Expr.expr(^ref(field) <= now())
+  end
+
+  defp due(%Timeout{fire_after: {value, unit}}, field) do
+    ago_unit = singular_unit(unit)
+
+    Ash.Expr.expr(^ref(field) <= ago(^value, ^ago_unit))
   end
 
   # ago/2 expects singular duration names (:day, :hour, :minute, :second)

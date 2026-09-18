@@ -1,10 +1,15 @@
 defmodule AshWorkflow.Verifiers.ValidateTimeoutFields do
   @moduledoc """
-  Verifies that timeout `field` options are valid.
+  Verifies that timeout `field` and `fire_at` options are valid.
 
   Checks:
   - Custom fields reference existing attributes or calculations on the resource
-  - `repeat: true` is not combined with a custom field (see `Entities.Timeout` for rationale)
+  - `repeat: true` is not combined with a custom field or with `fire_at` (see
+    `AshWorkflow.Entities.Timeout` for rationale)
+
+  A `fire_at` field is checked exactly as a `field` is: it is read from the
+  trigger's `where` clause the same way, so it must be a datetime attribute or an
+  expression calculation.
 
   Runs after all transformers have added attributes and calculations to the resource.
   Skips field existence validation for the default `:state_entered_at` since it is always present.
@@ -13,6 +18,7 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutFields do
 
   alias Ash.Resource.Info, as: ResourceInfo
   alias AshWorkflow.Entities.Step
+  alias AshWorkflow.Entities.Timeout
   alias Spark.Dsl.Verifier
   alias Spark.Error.DslError
 
@@ -34,13 +40,13 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutFields do
   end
 
   defp validate_no_repeat_with_custom_field(step, timeout) do
-    if timeout.repeat and timeout.field != :state_entered_at do
+    if timeout.repeat and Timeout.deadline_field(timeout) != :state_entered_at do
       {:halt,
        {:error,
         DslError.exception(
           path: [:workflow, :step, step.name],
           message:
-            "Timeout :#{timeout.name} on step :#{step.name} has repeat: true with field: :#{timeout.field}. " <>
+            "Timeout :#{timeout.name} on step :#{step.name} has repeat: true with field: :#{Timeout.deadline_field(timeout)}. " <>
               "Repeating timeouts are not supported with custom fields because the repeat mechanism " <>
               "resets state_entered_at, not the custom field. Use the default field or remove repeat: true."
         )}}
@@ -49,7 +55,12 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutFields do
     end
   end
 
-  defp validate_field_exists(_dsl, _step, %{field: :state_entered_at}), do: {:cont, :ok}
+  defp validate_field_exists(dsl, step, timeout) do
+    case Timeout.deadline_field(timeout) do
+      :state_entered_at -> {:cont, :ok}
+      field -> validate_field_exists(dsl, step, timeout, field)
+    end
+  end
 
   @datetime_storage_types [
     :utc_datetime,
@@ -58,17 +69,17 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutFields do
     :naive_datetime_usec
   ]
 
-  defp validate_field_exists(dsl, step, timeout) do
-    attribute = ResourceInfo.attribute(dsl, timeout.field)
-    calculation = ResourceInfo.calculation(dsl, timeout.field)
+  defp validate_field_exists(dsl, step, timeout, field) do
+    attribute = ResourceInfo.attribute(dsl, field)
+    calculation = ResourceInfo.calculation(dsl, field)
 
     cond do
       attribute != nil ->
-        validate_field_type(attribute.type, step, timeout)
+        validate_field_type(attribute.type, step, timeout, field)
 
       calculation != nil ->
-        with {:cont, :ok} <- validate_calculation_is_expression(calculation, step, timeout) do
-          validate_field_type(calculation.type, step, timeout)
+        with {:cont, :ok} <- validate_calculation_is_expression(calculation, step, timeout, field) do
+          validate_field_type(calculation.type, step, timeout, field)
         end
 
       true ->
@@ -77,7 +88,7 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutFields do
           DslError.exception(
             path: [:workflow, :step, step.name],
             message:
-              "Timeout :#{timeout.name} on step :#{step.name} references field :#{timeout.field}, " <>
+              "Timeout :#{timeout.name} on step :#{step.name} references field :#{field}, " <>
                 "but no attribute or calculation with that name exists on the resource."
           )}}
     end
@@ -90,7 +101,8 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutFields do
   defp validate_calculation_is_expression(
          %{calculation: {module, _opts}} = _calculation,
          step,
-         timeout
+         timeout,
+         field
        ) do
     Code.ensure_compiled(module)
 
@@ -102,18 +114,18 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutFields do
         DslError.exception(
           path: [:workflow, :step, step.name],
           message:
-            "Timeout :#{timeout.name} on step :#{step.name} references calculation :#{timeout.field}, " <>
+            "Timeout :#{timeout.name} on step :#{step.name} references calculation :#{field}, " <>
               "which is a module calculation and so cannot be evaluated by the data layer. " <>
               "Timeout fields are used in the trigger's filter, so a calculation must be " <>
-              "expression-based (`calculate :#{timeout.field}, :utc_datetime_usec, expr(...)`) " <>
+              "expression-based (`calculate :#{field}, :utc_datetime_usec, expr(...)`) " <>
               "or you must use a plain attribute."
         )}}
     end
   end
 
-  defp validate_calculation_is_expression(_calculation, _step, _timeout), do: {:cont, :ok}
+  defp validate_calculation_is_expression(_calculation, _step, _timeout, _field), do: {:cont, :ok}
 
-  defp validate_field_type(type, step, timeout) do
+  defp validate_field_type(type, step, timeout, field) do
     storage_type = Ash.Type.storage_type(type)
 
     if storage_type in @datetime_storage_types do
@@ -124,7 +136,7 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutFields do
         DslError.exception(
           path: [:workflow, :step, step.name],
           message:
-            "Timeout :#{timeout.name} on step :#{step.name} references field :#{timeout.field} " <>
+            "Timeout :#{timeout.name} on step :#{step.name} references field :#{field} " <>
               "which has type #{inspect(type)}, but timeout fields must be a datetime type."
         )}}
     end
@@ -135,7 +147,7 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutFields do
         DslError.exception(
           path: [:workflow, :step, step.name],
           message:
-            "Timeout :#{timeout.name} on step :#{step.name} references field :#{timeout.field} " <>
+            "Timeout :#{timeout.name} on step :#{step.name} references field :#{field} " <>
               "which has type #{inspect(type)} that could not be resolved. " <>
               "Timeout fields must be a datetime type."
         )}}

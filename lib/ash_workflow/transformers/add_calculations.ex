@@ -15,6 +15,7 @@ defmodule AshWorkflow.Transformers.AddCalculations do
 
   alias Ash.Resource.Builder
   alias AshWorkflow.Entities.Step
+  alias AshWorkflow.Entities.Timeout
   alias Spark.Dsl.Transformer
 
   def transform(dsl) do
@@ -81,7 +82,7 @@ defmodule AshWorkflow.Transformers.AddCalculations do
        Enum.map(step.timeouts, fn timeout ->
          %{
            name: timeout.name,
-           field: timeout.field,
+           field: Timeout.deadline_field(timeout),
            fire_after: timeout.fire_after,
            kind: if(timeout.transition_to, do: :transition, else: :action),
            target: timeout.transition_to

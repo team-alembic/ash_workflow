@@ -18,6 +18,20 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutPrecision do
 
   `AshWorkflow.Scheduler.Precise` arms a timer per deadline, so its floor is a
   millisecond and a sub-minute timeout needs no flag.
+
+  ## A `fire_at` timeout is skipped
+
+  This check reads `AshWorkflow.Duration.to_milliseconds(timeout.fire_after)`, and
+  a `fire_at` timeout has no `fire_after` to read. It makes no duration promise:
+  it says "once this instant has passed", and the polling interval decides how
+  soon after. There is no promised precision to compare against the floor, so
+  there is nothing to reject.
+
+  Before `fire_at` existed, the same outcome was reached by writing
+  `fire_after: {1, :seconds}` against a field holding the deadline instant. That
+  sentinel handed this verifier a number that meant nothing, and the verifier
+  checked it anyway. `fire_at` says the thing directly, and skipping it is
+  correct by construction.
   """
   use Spark.Dsl.Verifier
 
@@ -46,6 +60,9 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutPrecision do
   end
 
   defp validate(_step, %{self_scheduled?: true}, _scheduler, _floor_ms), do: :ok
+
+  defp validate(_step, %{fire_at: fire_at}, _scheduler, _floor_ms) when not is_nil(fire_at),
+    do: :ok
 
   defp validate(step, timeout, {module, _opts}, floor_ms) do
     if AshWorkflow.Duration.to_milliseconds(timeout.fire_after) < floor_ms do
@@ -83,9 +100,11 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutPrecision do
 
         timeout :#{timeout.name}, fire_after: {#{value}, :#{unit}}, self_scheduled?: true, ...
 
-    If you are using a custom field to carry the deadline, {1, :minutes} behaves \
-    the same as a sub-minute duration — both mean "once that instant has passed", \
-    and the polling interval decides how soon after.
+    If the field already holds the deadline instant rather than an anchor to \
+    measure from, name it with fire_at instead. A fire_at timeout promises no \
+    duration, so this check does not apply to it:
+
+        timeout :#{timeout.name}, fire_at: :your_deadline_field, ...
     """
   end
 

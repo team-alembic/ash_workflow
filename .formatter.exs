@@ -7,6 +7,7 @@ spark_locals_without_parens = [
   check_interval: 1,
   field: 1,
   fire_after: 1,
+  fire_at: 1,
   generate_indexes?: 1,
   initial: 1,
   max_attempts: 1,
