@@ -1,8 +1,8 @@
 defmodule SubscriptionDunning.SubscriptionTest do
   @moduledoc """
-  Exercises the two kinds of deadline that look alike and behave differently: a
-  repeating timeout measured from when the state was entered, and a one-shot
-  timeout measured against a date stored on the record.
+  Exercises the two kinds of deadline that look alike and behave differently: an
+  `every` measured from when the state was entered, and a one-shot timeout
+  measured against a date stored on the record.
   """
   use SubscriptionDunning.DataCase
 
@@ -40,7 +40,7 @@ defmodule SubscriptionDunning.SubscriptionTest do
     end
   end
 
-  describe "repeating dunning email" do
+  describe "dunning email every" do
     setup do
       %{sub: subscribe() |> fail_payment(30)}
     end

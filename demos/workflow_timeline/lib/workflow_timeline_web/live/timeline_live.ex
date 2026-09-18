@@ -6,7 +6,7 @@ defmodule WorkflowTimelineWeb.TimelineLive do
   Each band is built from `Incident.history/1` — a list of transition-log
   rows — rather than from the incident's current `state`. A segment starts
   wherever `from_state != to_state`; a row where `from_state == to_state`
-  (the repeating `:status_reminder` timeout) does not start a new segment,
+  (the recurring `:status_reminder` every) does not start a new segment,
   it is drawn as a tick mark on top of the segment it fired inside. That is
   the one thing this feature makes visible that `state_entered_at` alone
   never could: "three reminders fired, nothing changed."
@@ -254,7 +254,7 @@ defmodule WorkflowTimelineWeb.TimelineLive do
                   <div
                     class="absolute inset-y-0 w-0.5 bg-white/80"
                     style={tick_style(tick, @window_start, @window_end)}
-                    title="repeat timeout fired"
+                    title="every fired"
                   >
                   </div>
                 <% end %>

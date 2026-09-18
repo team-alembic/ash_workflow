@@ -1,11 +1,11 @@
 defmodule AshWorkflow.Calculations.PendingDeadlines do
   @moduledoc """
-  Ash calculation listing the timeouts still ahead of a record in its current
-  step, soonest first.
+  Ash calculation listing the timeouts and `every` entries still ahead of a
+  record in its current step, soonest first.
 
-  Each entry is a map with `:name`, `:due_at`, `:kind` (`:action` or
-  `:transition`) and `:target` (the destination step for transition timeouts,
-  `nil` for action timeouts).
+  Each entry is a map with `:name`, `:due_at`, `:kind` (`:action`,
+  `:transition` or `:every`) and `:target` (the destination step for
+  transition timeouts, `nil` otherwise).
 
   ## What this is not
 
@@ -18,6 +18,10 @@ defmodule AshWorkflow.Calculations.PendingDeadlines do
   does not change state, so its deadline keeps being derivable after it has
   fired, and it will still appear here with a `due_at` in the past. Read a past
   `due_at` as "was due", not "will fire".
+
+  An `every` entry does not have this problem: firing an `every`'s action
+  resets `state_entered_at`, so its `due_at` is always the next instant it will
+  run, never a stale past one.
 
   A timeout whose `field` is `nil` on the record has no derivable deadline and
   is omitted.

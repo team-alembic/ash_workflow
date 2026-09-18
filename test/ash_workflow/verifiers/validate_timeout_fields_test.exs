@@ -37,46 +37,6 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutFieldsTest do
       )
     end
 
-    test "rejects repeat: true combined with a custom field" do
-      assert_dsl_error(
-        """
-        defmodule RepeatWithFieldWorkflow do
-          use Ash.Resource,
-            domain: AshWorkflowTest.Domain,
-            data_layer: Ash.DataLayer.Ets,
-            extensions: [AshWorkflow, AshOban]
-
-          workflow do
-            step :active do
-              transition :deactivate, to: :inactive
-
-              timeout :bad_repeat,
-                fire_after: {3, :days},
-                field: :last_session_date,
-                action: :send_reminder,
-                repeat: true
-            end
-
-            step :inactive, terminal: true
-          end
-
-          actions do
-            update :send_reminder do
-              accept []
-            end
-          end
-
-          attributes do
-            uuid_v7_primary_key :id
-            attribute :title, :string, allow_nil?: false, public?: true
-            attribute :last_session_date, :utc_datetime_usec, public?: true
-          end
-        end
-        """,
-        ~r/repeat: true with field:/
-      )
-    end
-
     test "rejects a timeout field that is not a datetime type" do
       assert_dsl_error(
         """
@@ -153,11 +113,6 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutFieldsTest do
     test "accepts a timeout field referencing an expression calculation" do
       assert AshWorkflowTest.ExprCalcTimeoutWorkflow.__info__(:module) ==
                AshWorkflowTest.ExprCalcTimeoutWorkflow
-    end
-
-    test "accepts repeat: true with default state_entered_at field" do
-      assert AshWorkflowTest.RepeatingTimeoutWorkflow.__info__(:module) ==
-               AshWorkflowTest.RepeatingTimeoutWorkflow
     end
 
     test "accepts field referencing an existing attribute" do

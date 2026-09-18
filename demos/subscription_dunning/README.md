@@ -3,16 +3,15 @@
 A subscription falls into arrears, gets chased for payment, and is eventually
 cancelled if nobody pays.
 
-This is the demo for **timeouts**, and specifically for two kinds of deadline
-that look alike in the DSL and behave quite differently.
+This is the demo for **timeouts and `every`**, and specifically for two kinds
+of deadline that look alike and behave quite differently.
 
-## Repeating: measured from when the state was entered
+## `every`: measured from when the state was entered
 
 ```elixir
-timeout :dunning_email do
-  fire_after {3, :days}
+every :dunning_email do
+  interval {3, :days}
   action :send_dunning_email
-  repeat true
 end
 ```
 
@@ -36,9 +35,9 @@ customers in the same state can therefore have different deadlines, which a
 "N days since entering this state" timeout cannot express. Durations must be
 positive, so `{1, :seconds}` is the idiom for "as soon as this date has passed".
 
-The two cannot be combined, and AshWorkflow rejects it at compile time: a
-repeating timeout resets its field to now, and resetting `grace_period_ends_at`
-would claim the grace period restarted when it did not.
+`every` has no `field` option, so it cannot express this deadline: an `every`
+resets its field to now, and resetting `grace_period_ends_at` would claim the
+grace period restarted when it did not.
 
 ## The flow
 
@@ -56,7 +55,7 @@ active ──(payment_failed)──▶ grace_period ──(payment_received)─�
 
 | Feature | Where |
 |---|---|
-| `repeat: true` | the dunning email, firing once per interval |
+| `every` | the dunning email, firing once per interval |
 | `field:` on a timeout | the per-customer grace deadline |
 | One-shot action timeout | the final notice, which does not repeat |
 | Transition timeout | giving up after thirty days suspended |

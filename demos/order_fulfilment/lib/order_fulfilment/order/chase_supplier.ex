@@ -2,7 +2,7 @@ defmodule OrderFulfilment.Order.ChaseSupplier do
   @moduledoc """
   Stands in for nagging the supplier about a backordered item.
 
-  Counting the chases is what lets a test prove the repeating timeout fires more
+  Counting the chases is what lets a test prove the every fires more
   than once while the order stays backordered.
   """
   use Ash.Resource.Change

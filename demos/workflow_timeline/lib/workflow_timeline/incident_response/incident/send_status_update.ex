@@ -1,6 +1,6 @@
 defmodule WorkflowTimeline.IncidentResponse.Incident.SendStatusUpdate do
   @moduledoc """
-  The `:status_reminder` timeout's action. Fires repeatedly while an incident
+  The `:status_reminder` every's action. Fires repeatedly while an incident
   sits in `:investigating`, so it never changes state — it just counts how
   many reminders have gone out. `AshWorkflow.Changes.RecordEvent` still
   appends a `from_state == to_state` row for every firing.

@@ -74,10 +74,9 @@ defmodule SupportTicketSla.Ticket do
       # rather than going to a manager — the same verb, a different meaning.
       transition :escalate, to: :standard_queue
 
-      timeout :stale do
-        fire_after {30, :days}
+      every :stale do
+        interval {30, :days}
         action :flag_stale
-        repeat true
       end
     end
 

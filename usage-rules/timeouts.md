@@ -106,21 +106,18 @@ Use for:
 
 Transition timeouts generate a hidden `__timeout_<step>_<name>` action — you do not need to define anything. The name is scoped to the step, so two steps may each declare a timeout with the same name.
 
-## Repeating Timeouts
+## Recurring Actions with `every`
 
-Set `repeat: true` to fire a timeout repeatedly on the same interval:
+Use `every`, a sibling entity to `timeout` declared inside the same `step` block, to fire an action repeatedly on an interval:
 
 ```elixir
-timeout :follow_up do
-  fire_after {3, :days}
+every :follow_up do
+  interval {3, :days}
   action :send_follow_up
-  repeat true
 end
 ```
 
-Without `repeat`, an action timeout fires once after the deadline and then stops. With `repeat`, it fires every interval (e.g., every 3 days) as long as the workflow remains in that step.
-
-Transition timeouts ignore `repeat` — once the state changes, the timeout is no longer relevant.
+An action timeout fires once after the deadline and then stops. `every` fires every interval (e.g., every 3 days) as long as the workflow remains in that step. `every` always requires `action` and has no `transition_to`, since firing never leaves the step — a repeating action that also left the step would never come round to repeat.
 
 ## Combining Multiple Timeouts
 
@@ -263,16 +260,15 @@ end
 The field must exist and must be a datetime type — both are checked at compile
 time.
 
-### `repeat: true` is rejected with a custom `field`
+### `every` has no `field` option
 
-Repeating timeouts work by resetting `state_entered_at` after each firing. With a
+`every` works by resetting `state_entered_at` after each firing. With a
 custom field, that would mean writing "now" to a field representing a real-world
-event that did not happen — so the combination is a compile-time error rather
-than silently-wrong data.
+event that did not happen — so `every` always measures against
+`state_entered_at` and offers no `field` option at all.
 
-For periodic checks against a custom field, use a non-repeating timeout with a
-short `check_interval`; it keeps matching on every poll while the condition
-holds.
+For periodic checks against a custom field, use a timeout with a short
+`check_interval`; it keeps matching on every poll while the condition holds.
 
 ```elixir
 timeout :dormant_check do

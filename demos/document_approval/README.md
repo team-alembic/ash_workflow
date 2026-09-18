@@ -26,7 +26,7 @@ drafting ──(submit)──▶ validating ──▶ in_review ──(approve)�
                             │             ├─(approve)──▶ approved
                             │             │          (second signature)
                             │             ├─(reject)───▶ rejected
-                            │             ├─ 2 days ──▶ nudge (repeating)
+                            │             ├─ every 2 days ──▶ nudge
                             │             ╰─ 14 days ─▶ expired
                             ╰──on_error──▶ validation_failed
 ```

@@ -2,6 +2,8 @@
 
 Timeouts let you react to a workflow being stuck in a state. They're useful for reminders, escalations, SLA enforcement, and offer expirations.
 
+For a recurring action that runs on an interval for as long as a record stays in a step, see [Recurring actions with `every`](#recurring-actions-with-every) below — it is a separate entity from `timeout`, not an option on it.
+
 ## How timeouts work
 
 Each timeout becomes an Oban trigger that polls on a cron schedule (default: every minute). The trigger's `where` clause checks both the state and a datetime field (default: `state_entered_at`):
@@ -51,9 +53,9 @@ step :escalated, terminal: true
 
 The extension generates a hidden update action (`:__timeout_review_escalation` — `__timeout_<step>_<name>`) that performs the state transition. You don't need to define this action yourself. Because the name includes the step, several steps can each declare an `:escalation` timeout of their own.
 
-## Repeating timeouts
+## Recurring actions with `every`
 
-By default, action timeouts fire once. Set `repeat: true` to keep firing on every scheduler cycle while the workflow remains in that state:
+A timeout fires once. For an action that keeps firing on an interval for as long as the workflow remains in a step, use `every` instead — it is a sibling entity to `timeout`, declared inside the same `step` block:
 
 ```elixir
 step :awaiting_response do
@@ -62,20 +64,21 @@ step :awaiting_response do
   # Fires once after 3 days
   timeout :reminder, fire_after: {3, :days}, action: :send_reminder
 
-  # Fires after 3 days, then on every check_interval while still waiting
-  timeout :follow_up do
-    fire_after {3, :days}
+  # Fires after 3 days, then every 3 days while still waiting
+  every :follow_up do
+    interval {3, :days}
     action :send_follow_up
-    repeat true
   end
 end
 ```
 
-When a repeating timeout fires, the extension resets `state_entered_at` to the current time. This restarts the duration window — so `fire_after: {3, :days}` means the action fires every 3 days, not every scheduler cycle.
+`every` always requires `action` — there is no `transition_to`, because firing never leaves the step. That is the reason it exists as its own entity rather than a `repeat: true` flag on `timeout`: a timeout with both `repeat: true` and `transition_to` would be meaningless, since leaving the step stops the repeat before it ever comes round.
 
-This reset is why `state_entered_at` is a timer anchor rather than a reliable "when did we enter this state" fact — a workflow that's been waiting for nine days with reminders every two reports `state_entered_at` as two days ago. If you need the honest answer, see [Workflow history](workflow-history.md), which adds an `entered_current_state_at` calculation that ignores repeat resets.
+Each time `every`'s action runs, the extension resets `state_entered_at` to the current time. This restarts the interval — so `interval: {3, :days}` means the action fires every 3 days, not on every scheduler cycle.
 
-Non-repeating timeouts (the default) use Oban's `trigger_once?` to prevent re-firing after the action completes, and they leave `state_entered_at` alone. Resetting it would push every other deadline on the same step back by the same amount, so a `timeout :warn, fire_after: {30, :minutes}, action: :warn` cannot delay the `timeout :breach, fire_after: {1, :hours}, transition_to: :escalated` beside it. Transition timeouts (with `transition_to`) don't need either mechanism since the state change naturally prevents re-firing.
+This reset is why `state_entered_at` is a timer anchor rather than a reliable "when did we enter this state" fact — a workflow that's been waiting for nine days with reminders every two reports `state_entered_at` as two days ago. If you need the honest answer, see [Workflow history](workflow-history.md), which adds an `entered_current_state_at` calculation that ignores these resets.
+
+A timeout never resets `state_entered_at` and uses Oban's `trigger_once?` to prevent re-firing after the action completes. Resetting it would push every other deadline on the same step back by the same amount, so a `timeout :warn, fire_after: {30, :minutes}, action: :warn` cannot delay the `timeout :breach, fire_after: {1, :hours}, transition_to: :escalated` beside it. A transition timeout (with `transition_to`) doesn't need either mechanism, since the state change naturally prevents re-firing.
 
 ## Data-driven deadlines with `field`
 
@@ -101,11 +104,11 @@ Use cases include:
 - **Document expiry**: `field: :earliest_cert_expiry` — notify before certs expire
 - **SLA tracking**: `field: :committed_by_date` — alert when a deadline approaches
 
-> #### `repeat: true` is not supported with custom fields {: .warning}
+> #### `every` has no `field` option {: .warning}
 >
-> Repeating timeouts reset `state_entered_at` to restart the duration window. With a custom field, this reset would need to update that field to "now" — but that's semantically wrong. If `field: :last_session_date`, resetting it to "now" would falsely claim a session occurred. The extension rejects this combination at compile time.
+> `every` resets `state_entered_at` to restart the interval. With a custom field, this reset would need to update that field to "now" — but that's semantically wrong. If `field: :last_session_date`, resetting it to "now" would falsely claim a session occurred. So `every` always measures against `state_entered_at`, and cannot be pointed at a custom field the way `timeout` can.
 >
-> A non-repeating timeout against a custom field is not a periodic check. Its trigger keeps matching while the condition holds, but `trigger_once?` stops the action running a second time for the same record, so the reminder fires once. For a genuinely periodic check, add the cadence to the field itself — advance `:next_check_at` in the timeout action — so the condition stops matching until the next window opens.
+> A timeout against a custom field is not a periodic check. Its trigger keeps matching while the condition holds, but `trigger_once?` stops the action running a second time for the same record, so the reminder fires once. For a genuinely periodic check, add the cadence to the field itself — advance `:next_check_at` in the timeout action — so the condition stops matching until the next window opens.
 
 ## Duration units
 
@@ -200,9 +203,10 @@ end
 
 ### What polling costs
 
-The workflow-level `check_interval` applies to **automatic step triggers as
-well as timeouts**, and every trigger gets its own scheduler. That means the
-cost multiplies with the size of the workflow, not with the number of records:
+The workflow-level `check_interval` applies to **automatic step triggers,
+timeouts and `every` entities alike**, and each one gets its own scheduler.
+That means the cost multiplies with the size of the workflow, not with the
+number of records:
 
 | Triggers on the resource | Default interval | Scheduler queries per hour |
 |---|---|---|

@@ -74,10 +74,9 @@ defmodule OrderFulfilment.Order do
       transition :restocked, to: :reserving_stock
       transition :cancel, to: :cancelled, accept: [:cancellation_reason]
 
-      timeout :chase_supplier do
-        fire_after {2, :days}
+      every :chase_supplier do
+        interval {2, :days}
         action :chase_supplier
-        repeat true
       end
     end
 

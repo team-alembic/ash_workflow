@@ -11,6 +11,7 @@ defmodule AshWorkflow.Entities.Step do
     terminal: false,
     transitions: [],
     timeouts: [],
+    everys: [],
     on_success: [],
     retry: nil
   ]
@@ -25,6 +26,7 @@ defmodule AshWorkflow.Entities.Step do
           terminal: boolean(),
           transitions: [AshWorkflow.Entities.Transition.t()],
           timeouts: [AshWorkflow.Entities.Timeout.t()],
+          everys: [AshWorkflow.Entities.Every.t()],
           retry: AshWorkflow.Entities.Retry.t() | nil
         }
 
@@ -69,10 +71,10 @@ defmodule AshWorkflow.Entities.Step do
   leaves it.
 
   Derived from the fields of the step. A step with no action, no transitions, no
-  timeouts, no `on_success` and no `on_error` has no way out, so it is terminal
-  whether or not it says so. `terminal: true` is an assertion on top of that:
-  `AshWorkflow.Verifiers.ValidateWorkflow` rejects a step that declares it and
-  then declares something outgoing.
+  timeouts, no `every`, no `on_success` and no `on_error` has no way out, so it
+  is terminal whether or not it says so. `terminal: true` is an assertion on top
+  of that: `AshWorkflow.Verifiers.ValidateWorkflow` rejects a step that declares
+  it and then declares something outgoing.
 
   A step that is terminal by mistake — a name typo'd in one place and not the
   other — is caught by the reachability check rather than here, since an end
@@ -84,6 +86,7 @@ defmodule AshWorkflow.Entities.Step do
         action: nil,
         transitions: [],
         timeouts: [],
+        everys: [],
         on_success: [],
         on_error: nil
       }),
@@ -101,11 +104,15 @@ defmodule AshWorkflow.Entities.Step do
 
   A step with neither transitions nor an action, whose only exit is a
   timeout, is a *wait state* — it is manual in the sense that nothing runs
-  on entry, even though no caller can move it along either.
+  on entry, even though no caller can move it along either. A step whose
+  only declarations are `every` entries is also manual in this sense: `every`
+  never leaves the step, so such a step still needs a timeout with
+  `transition_to` (or transitions) to have any way out at all.
   """
   def manual?(%__MODULE__{terminal: true}), do: false
   def manual?(%__MODULE__{transitions: [_ | _]}), do: true
   def manual?(%__MODULE__{action: nil, timeouts: [_ | _]}), do: true
+  def manual?(%__MODULE__{action: nil, everys: [_ | _]}), do: true
   def manual?(%__MODULE__{}), do: false
 
   @doc """
@@ -114,6 +121,7 @@ defmodule AshWorkflow.Entities.Step do
   """
   def wait_state?(%__MODULE__{terminal: true}), do: false
   def wait_state?(%__MODULE__{action: nil, transitions: [], timeouts: [_ | _]}), do: true
+  def wait_state?(%__MODULE__{action: nil, transitions: [], everys: [_ | _]}), do: true
   def wait_state?(%__MODULE__{}), do: false
 
   @doc """
