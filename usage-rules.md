@@ -297,7 +297,16 @@ end
 
 - `action`: References a user-defined update action. The workflow stays in the current state.
 - `repeat: true`: Re-fires on the same interval. Useful for recurring reminders.
-- `repeat_until: {8, :days}`: Bounds a `repeat: true` timeout to that much wall-clock time since the step was entered, measured against `repeat_started_at` (an attribute this extension adds), never against the anchor `repeat` itself resets. See `usage-rules/timeouts.md` for the full explanation.
+- `repeat` also takes a block, whose `until` bounds the repeat to that much wall-clock time and whose optional `field` says what to measure it from:
+
+```elixir
+repeat true do
+  until {8, :days}
+  field :signed_up_at   # optional; defaults to the repeat_started_at this extension adds
+end
+```
+
+  The bound is never measured against the timeout's own `field`, which repeating keeps resetting. `until` must be strictly longer than `fire_after`. See `usage-rules/timeouts.md` for the full explanation.
 
 ### Transition Timeout (force state change)
 

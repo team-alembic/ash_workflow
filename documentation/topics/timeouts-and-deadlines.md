@@ -77,49 +77,76 @@ This reset is why `state_entered_at` is a timer anchor rather than a reliable "w
 
 Non-repeating timeouts (the default) use Oban's `trigger_once?` to prevent re-firing after the action completes, and they leave `state_entered_at` alone. Resetting it would push every other deadline on the same step back by the same amount, so a `timeout :warn, fire_after: {30, :minutes}, action: :warn` cannot delay the `timeout :breach, fire_after: {1, :hours}, transition_to: :escalated` beside it. Transition timeouts (with `transition_to`) don't need either mechanism since the state change naturally prevents re-firing.
 
-## Bounding a repeat with `repeat_until`
+## Bounding a repeat with `until`
 
-`repeat: true` alone repeats forever. `repeat_until` stops it after a fixed amount of wall-clock time:
+`repeat true` alone repeats forever. Give `repeat` a block, and `until` stops it after a fixed amount of wall-clock time:
 
 ```elixir
 timeout :reminder do
   fire_after {2, :days}
   action :send_review_reminder
-  repeat_until {8, :days}
+
+  repeat true do
+    until {8, :days}
+  end
 end
 ```
 
-This fires roughly at day 2, day 4 and day 6, then stops before day 8 — three reminders, then silence, not four: the last fire has to land strictly before `repeat_until`, and polling lag pushes each one slightly later than its nominal day. `repeat_until` implies `repeat: true` (`AshWorkflow.Entities.Timeout.normalize/1` sets it before any verifier runs), so it never needs to be declared alongside it. `AshWorkflow.Verifiers.ValidateTimeoutFields` rejects a `repeat_until` that is not strictly longer than `fire_after`, since anything shorter or equal leaves no room for even one fire.
+This fires roughly at day 2, day 4 and day 6, then stops before day 8. Three reminders, then silence, not four: the last fire has to land strictly before `until`, and polling lag pushes each one slightly later than its nominal day. `AshWorkflow.Verifiers.ValidateTimeoutFields` rejects an `until` that is not strictly longer than `fire_after`, since anything shorter or equal leaves no room for even one fire.
 
-### Why `repeat_until` cannot be measured against `state_entered_at`
+### Why the bound cannot be measured against `state_entered_at`
 
-A repeating timeout works by resetting `state_entered_at` to now on every firing — that reset is the whole mechanism, and it is why `state_entered_at` keeps matching every `fire_after` interval. A bound checked against the same moving timestamp would never be reached: every firing pushes it further from "now", by construction.
+A repeating timeout works by resetting `state_entered_at` to now on every firing. That reset is the whole mechanism, and it is why `state_entered_at` keeps matching every `fire_after` interval. A bound checked against the same moving timestamp would never be reached: every firing pushes it further from "now", by construction.
 
-So `repeat_until` is measured against a different attribute, `repeat_started_at`, which the extension adds only when some timeout in the workflow declares `repeat_until`. Every genuine step entry — a manual transition, an automatic step completing, a transition timeout, an undo, or the initial create — writes `repeat_started_at` to the same instant as `state_entered_at`. A repeating timeout's own firing resets `state_entered_at` to re-arm itself, but never touches `repeat_started_at`. So it answers "when did the record truly enter this step", immune to the resets `state_entered_at` cannot avoid, and `repeat_until` bounds the repeat against that fixed instant.
+So `until` is measured against `field` on the `repeat` block, which defaults to `repeat_started_at`. The extension adds that attribute when some timeout bounds its repeat and names no anchor of its own. Every genuine step entry writes it to the same instant as `state_entered_at`: a manual transition, an automatic step completing, a transition timeout, an undo, or the initial create. A repeating timeout's own firing resets `state_entered_at` to re-arm itself, and never touches `repeat_started_at`. So it answers "when did the record enter this step", immune to the resets `state_entered_at` cannot avoid.
 
-This is deliberately a second attribute rather than the `entered_current_state_at` calculation from [Workflow history](workflow-history.md), even though that calculation answers the same question. `entered_current_state_at` reads the transition log to compute its value, which means it cannot be pushed into the trigger's `where` clause — `AshWorkflow.Verifiers.ValidateTimeoutFields` already rejects any module calculation used as a timeout field, for exactly that reason. `repeat_started_at` is a plain column, so both schedulers can filter on it directly.
+This is deliberately a second attribute rather than the `entered_current_state_at` calculation from [Workflow history](workflow-history.md), even though that calculation answers the same question. `entered_current_state_at` reads the transition log to compute its value, which means it cannot be pushed into the trigger's `where` clause. `AshWorkflow.Verifiers.ValidateTimeoutFields` already rejects any module calculation used as a timeout field, for exactly that reason. `repeat_started_at` is a plain column, so both schedulers can filter on it directly.
+
+### Anchoring the bound on the record instead
+
+`field` inside `repeat` names a different timestamp to measure `until` from, for a bound that is about the record rather than about this step:
+
+```elixir
+# Nag while the record sits here, but give up a year after signup
+timeout :reminder do
+  fire_after {2, :days}
+  action :send_review_reminder
+
+  repeat true do
+    until {365, :days}
+    field :signed_up_at
+  end
+end
+```
+
+A workflow whose every bounded repeat names an anchor this way never needs `repeat_started_at`, and does not get it. The anchor must be a datetime attribute or expression calculation that the repeat does not itself reset, so naming `state_entered_at` is a compile error: the bound would never be reached.
+
+Note that `field` on the `repeat` block and `field` on the timeout are different anchors. The timeout's `field` is what `fire_after` measures from and what a repeat resets. The repeat's `field` is what `until` measures from and what nothing resets.
 
 ### What happens when the bound is reached
 
-Reaching `repeat_until` only stops the repeat — it does not transition state, and it fires no notification of its own. The record stays in the step, silent, until something else moves it.
+Reaching `until` only stops the repeat. It does not transition state, and it fires no notification of its own. The record stays in the step, silent, until something else moves it.
 
-If you also want a transition once reminders run out, declare it as a second, ordinary timeout rather than looking for a `repeat_until`-triggered transition:
+If you also want a transition once reminders run out, declare it as a second, ordinary timeout rather than looking for a bound-triggered transition:
 
 ```elixir
 step :awaiting_response do
   timeout :reminder do
     fire_after {2, :days}
     action :send_review_reminder
-    repeat_until {8, :days}
+
+    repeat true do
+      until {8, :days}
+    end
   end
 
   timeout :give_up, fire_after: {8, :days}, transition_to: :escalated
 end
 ```
 
-`repeat_until` and `give_up` share nothing at runtime — `give_up` is exactly the transition timeout described in [Transition timeouts](#transition-timeouts) above, just given a `fire_after` equal to the bound. Composing two timeouts this way keeps `repeat_until` doing one thing (bounding a repeat count implied by wall-clock time) rather than growing a second, transition-shaped meaning.
+The two share nothing at runtime. `give_up` is exactly the transition timeout described in [Transition timeouts](#transition-timeouts) above, just given a `fire_after` equal to the bound. Composing two timeouts this way keeps `until` doing one thing rather than growing a second, transition-shaped meaning.
 
-`repeat_until` bounds wall-clock time, not a count of firings. A workflow that wants to say "at most 4 reminders" rather than "for at most 8 days" needs a firing counter, which is a different feature — nothing here tracks how many times a timeout has fired, only when it started.
+`until` bounds wall-clock time, not a count of firings. A workflow that wants to say "at most 4 reminders" rather than "for at most 8 days" needs a firing counter, which is a different feature. Nothing here tracks how many times a timeout has fired, only when it started.
 
 ## Data-driven deadlines with `field`
 
@@ -150,6 +177,32 @@ Use cases include:
 > Repeating timeouts reset `state_entered_at` to restart the duration window. With a custom field, this reset would need to update that field to "now" — but that's semantically wrong. If `field: :last_session_date`, resetting it to "now" would falsely claim a session occurred. The extension rejects this combination at compile time.
 >
 > A non-repeating timeout against a custom field is not a periodic check. Its trigger keeps matching while the condition holds, but `trigger_once?` stops the action running a second time for the same record, so the reminder fires once. For a genuinely periodic check, add the cadence to the field itself — advance `:next_check_at` in the timeout action — so the condition stops matching until the next window opens.
+
+### Durations are constants, anchors are not
+
+`fire_after` and `until` take a literal duration tuple. Neither takes an Ash expression, so there is no way to write "fire a number of days that this record carries in a column". The dynamism goes in the anchor instead: point `field` at an attribute or an expression calculation, and leave the duration fixed.
+
+```elixir
+# Each record carries its own delay, folded into the anchor
+calculate :respond_by, :utc_datetime_usec,
+          expr(datetime_add(state_entered_at, response_sla_seconds, :second))
+
+timeout :chase do
+  fire_after {1, :minutes}   # "once respond_by has passed"
+  field :respond_by
+  action :chase_response
+end
+```
+
+Two things break if the duration itself becomes an expression, and only one of them is about speed.
+
+`AshWorkflow.Verifiers.ValidateTimeoutPrecision` compares the duration against the selected scheduler's floor at compile time, and rejects a deadline the scheduler cannot honour. An expression has no value to compare, so that check stops existing and the DSL can promise a precision cron cannot keep.
+
+A literal also reaches Postgres as a bind parameter, so a timeout's `where` clause is `state = $1 AND state_entered_at <= $2`, which the `(state, field)` index from `AshWorkflow.Transformers.AddIndexes` serves as a range scan. `AshWorkflow.Scheduler.Precise.Timeline` computes its horizon bound in Elixir for the same reason. A per-row duration turns both into a computed comparison, and the index stops helping.
+
+`AshWorkflow.Scheduler.due_at/2` and the `pending_deadlines` calculation would also have to evaluate the expression per record to produce an instant, rather than doing the arithmetic directly.
+
+The anchor pays none of that. It is a column or an expression the data layer already knows how to compute, the duration beside it stays checkable and indexable, and the two compose to the same deadline.
 
 ## Duration units
 

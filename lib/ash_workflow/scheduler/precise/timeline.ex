@@ -273,10 +273,10 @@ defmodule AshWorkflow.Scheduler.Precise.Timeline do
   # bound-exceeded, not one that merely will be by the time the horizon closes.
   defp repeat_until_filter(filter, %Work{repeat_until: nil}), do: filter
 
-  defp repeat_until_filter(filter, %Work{repeat_until: {value, unit}}) do
+  defp repeat_until_filter(filter, %Work{repeat_until: {value, unit}, repeat_until_field: anchor}) do
     bound = DateTime.add(DateTime.utc_now(), -value, singular(unit))
 
-    Ash.Expr.expr(^filter and (is_nil(repeat_started_at) or repeat_started_at > ^bound))
+    Ash.Expr.expr(^filter and (is_nil(^ref(anchor)) or ^ref(anchor) > ^bound))
   end
 
   defp read(resource, filter, state) do

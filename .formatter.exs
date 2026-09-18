@@ -16,7 +16,7 @@ spark_locals_without_parens = [
   policy: 1,
   queue: 1,
   repeat: 1,
-  repeat_until: 1,
+  repeat: 2,
   retry: 0,
   retry: 1,
   route: 1,
@@ -39,6 +39,7 @@ spark_locals_without_parens = [
   undo: 0,
   undo: 1,
   undoable?: 1,
+  until: 1,
   when: 1,
   within: 1
 ]

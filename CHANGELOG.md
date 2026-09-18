@@ -9,7 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **`repeat_until` on a timeout.** Bounds a repeating timeout to a fixed amount of wall-clock time: `timeout :reminder, fire_after: {2, :days}, action: :send_review_reminder, repeat_until: {8, :days}` fires every 2 days and stops after 8. `repeat_until` implies `repeat: true`, so it does not need to be declared alongside it. It is measured against a new `repeat_started_at` attribute rather than `field` (`state_entered_at` by default), because a repeating timeout's own firing is what keeps moving `field` forward — a bound checked against its own moving target would never be reached. `repeat_started_at` is added only when some timeout declares `repeat_until`, and is written to the same instant as `state_entered_at` on every genuine step entry, left alone by every repeat firing. `AshWorkflow.Verifiers.ValidateTimeoutFields` rejects a `repeat_until` that is not strictly longer than `fire_after`, since anything shorter or equal leaves no room to fire even once. Both `AshWorkflow.Scheduler.Oban` and `AshWorkflow.Scheduler.Precise` honour the bound through the same `Work.match` expression every other check already goes through, so a bound-exceeded timeout is not resurrected by `Precise`'s recovery sweep either. Reaching the bound only stops the repeat; compose a second, non-repeating `transition_to` timeout with a longer `fire_after` on the same step for "give up and move on".
+- **A bound on repeating timeouts.** `repeat` is now an entity as well as a boolean, so a repeat can say when to stop:
+
+      timeout :reminder do
+        fire_after {2, :days}
+        action :send_review_reminder
+
+        repeat true do
+          until {8, :days}
+          field :signed_up_at   # optional
+        end
+      end
+
+  `repeat true` and the inline `repeat: true` keep working unchanged. `until` bounds the repeat to that much wall-clock time, and `AshWorkflow.Verifiers.ValidateTimeoutFields` rejects one that is not strictly longer than `fire_after`, since anything shorter or equal leaves no room to fire even once.
+
+  The bound is not measured against the timeout's `field` (`state_entered_at` by default), because a repeating timeout's own firing is what keeps moving that timestamp forward, so a bound checked against it would never be reached. It is measured against `field` on the `repeat` block, which defaults to a new `repeat_started_at` attribute. `AshWorkflow.Transformers.AddAttributes` adds that attribute only when some timeout bounds its repeat without naming an anchor of its own, and `AshWorkflow.Changes.RecordEvent` writes it to the same instant as `state_entered_at` on every genuine step entry while leaving it alone on every repeat firing. Naming `field` anchors the bound on the record instead, such as `field :signed_up_at` for "give up a year after signup"; the anchor must be a timestamp the repeat does not reset, so `state_entered_at` is rejected.
+
+  Both `AshWorkflow.Scheduler.Oban` and `AshWorkflow.Scheduler.Precise` honour the bound through the same `Work.match` expression every other check already goes through, and `AshWorkflow.Scheduler.Precise.Timeline`'s recovery sweep filters on it too, so a bound-exceeded record neither fires nor keeps costing a query per sweep. Reaching the bound only stops the repeat; compose a second, non-repeating `transition_to` timeout with a `fire_after` equal to the bound for "give up and move on".
 
 ## [0.6.0] - 2026-09-17
 

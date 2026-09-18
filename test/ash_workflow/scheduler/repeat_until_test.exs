@@ -11,6 +11,7 @@ defmodule AshWorkflow.Scheduler.RepeatUntilTest do
   use ExUnit.Case, async: false
 
   alias Ash.DataLayer.Ets
+  alias Ash.Resource.Info, as: ResourceInfo
   alias AshWorkflow.Scheduler.Precise
   alias AshWorkflowTest.RepeatUntilWorkflow, as: Workflow
 
@@ -109,6 +110,63 @@ defmodule AshWorkflow.Scheduler.RepeatUntilTest do
 
     reloaded = reload(aged)
     assert reloaded.reminder_count == 1
+  end
+
+  describe "a repeat anchored on the record rather than the step" do
+    alias AshWorkflowTest.RepeatAnchorWorkflow, as: Anchored
+
+    @anchored_table_manager Module.concat(Anchored, Ash.DataLayer.Ets.TableManager)
+
+    setup do
+      on_exit(fn ->
+        Ets.stop(Anchored)
+        await_stopped(@anchored_table_manager)
+      end)
+
+      :ok
+    end
+
+    defp anchored!(signed_up_at) do
+      Anchored.create!(%{title: "one", signed_up_at: signed_up_at})
+    end
+
+    defp set_anchored_clock(record, attrs) do
+      record
+      |> Ash.Changeset.for_update(:set_clock, attrs)
+      |> Ash.update!()
+    end
+
+    test "needs no repeat_started_at attribute, since the bound has an anchor of its own" do
+      refute ResourceInfo.attribute(Anchored, :repeat_started_at)
+      assert ResourceInfo.attribute(Workflow, :repeat_started_at)
+    end
+
+    test "fires while the anchor is within the bound" do
+      record = anchored!(ago(1, :hour))
+      set_anchored_clock(record, %{state_entered_at: ago(1, :hour)})
+
+      assert Precise.run_due(Anchored) == 1
+      assert Ash.get!(Anchored, record.id).reminder_count == 1
+    end
+
+    test "stops once the anchor is past the bound, however recently the step was entered" do
+      # Entered the step a moment ago, so state_entered_at says nothing is
+      # stale. The bound is measured against signed_up_at, which is four hours
+      # back, so the repeat is over regardless.
+      record = anchored!(ago(4, :hour))
+      set_anchored_clock(record, %{state_entered_at: ago(1, :hour)})
+
+      assert Precise.run_due(Anchored) == 0
+      assert Ash.get!(Anchored, record.id).reminder_count == 0
+    end
+
+    test "a nil anchor is treated as bound-not-reached" do
+      record = anchored!(nil)
+      set_anchored_clock(record, %{state_entered_at: ago(1, :hour)})
+
+      assert Precise.run_due(Anchored) == 1
+      assert Ash.get!(Anchored, record.id).reminder_count == 1
+    end
   end
 
   test "a repeat fire backfills a nil repeat_started_at from the pre-firing state_entered_at, once" do

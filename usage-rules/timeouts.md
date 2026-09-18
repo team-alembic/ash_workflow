@@ -122,47 +122,78 @@ Without `repeat`, an action timeout fires once after the deadline and then stops
 
 Transition timeouts ignore `repeat` — once the state changes, the timeout is no longer relevant.
 
-### Bounding a repeat with `repeat_until`
+### Bounding a repeat with `until`
 
-`repeat: true` alone repeats forever. `repeat_until` stops it after a fixed
-amount of wall-clock time:
+`repeat true` alone repeats forever. Give `repeat` a block, and `until` stops
+it after a fixed amount of wall-clock time:
 
 ```elixir
 timeout :reminder do
   fire_after {2, :days}
   action :send_review_reminder
-  repeat_until {8, :days}
+
+  repeat true do
+    until {8, :days}
+  end
 end
 ```
 
-This fires roughly at day 2, day 4 and day 6, then stops before day 8 — three
+This fires roughly at day 2, day 4 and day 6, then stops before day 8. Three
 reminders, then silence, not four: the last fire has to land strictly before
-`repeat_until`. `repeat_until` implies `repeat: true`, so it does not need to
-be set separately, and `repeat_until` must be strictly longer than
-`fire_after` (equal to it leaves no room for even one fire).
+`until`, which must be strictly longer than `fire_after` (equal to it leaves no
+room for even one fire).
 
-`repeat_until` is **not** measured against `fire_after`'s own anchor
-(`state_entered_at` by default). Repeating is what resets that anchor on every
-firing, so a bound checked against it would never be reached. Instead, the
-extension adds a second attribute, `repeat_started_at`, set once when the
-record genuinely enters the step and left untouched by every repeat firing
-after that. `repeat_until` is measured from there.
+`until` is not measured against `fire_after`'s own anchor (`state_entered_at`
+by default). Repeating is what resets that anchor on every firing, so a bound
+checked against it would never be reached. It is measured against `field` on
+the `repeat` block instead, which defaults to `repeat_started_at`: an attribute
+the extension adds, set when the record genuinely enters the step and left
+untouched by every repeat firing after that.
 
-Reaching the bound only stops the repeat — it does not transition state. To
-also force a transition once reminders run out, declare a second, non-repeating
-timeout with a longer `fire_after`:
+Name `field` to anchor the bound on the record rather than the step:
+
+```elixir
+# Nag while the record sits here, but give up a year after signup
+repeat true do
+  until {365, :days}
+  field :signed_up_at
+end
+```
+
+The anchor must be a timestamp the repeat does not itself reset, so
+`state_entered_at` is a compile error. A workflow whose every bounded repeat
+names an anchor never needs `repeat_started_at` and does not get it.
+
+Reaching the bound only stops the repeat. It does not transition state. To also
+force a transition once reminders run out, declare a second, non-repeating
+timeout with a `fire_after` equal to the bound:
 
 ```elixir
 step :awaiting_response do
   timeout :reminder do
     fire_after {2, :days}
     action :send_review_reminder
-    repeat_until {8, :days}
+
+    repeat true do
+      until {8, :days}
+    end
   end
 
   timeout :give_up, fire_after: {8, :days}, transition_to: :escalated
 end
 ```
+
+### Durations are constants
+
+`fire_after` and `until` take literal duration tuples, never expressions. A
+per-record deadline goes in the anchor instead: point `field` at an attribute
+or an expression calculation and leave the duration fixed.
+
+An expression duration would defeat
+`AshWorkflow.Verifiers.ValidateTimeoutPrecision`, which compares the duration
+against the scheduler's floor at compile time, and it would turn an indexed
+range scan into a per-row computed comparison. See
+`documentation/topics/timeouts-and-deadlines.md` for the full reasoning.
 
 ## Combining Multiple Timeouts
 

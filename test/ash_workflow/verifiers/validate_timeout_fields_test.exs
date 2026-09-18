@@ -73,7 +73,7 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutFieldsTest do
           end
         end
         """,
-        ~r/repeat: true with field:/
+        ~r/repeats with field:/
       )
     end
 
@@ -160,7 +160,7 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutFieldsTest do
                AshWorkflowTest.RepeatingTimeoutWorkflow
     end
 
-    test "accepts repeat_until with no explicit repeat: true, and treats it as repeating" do
+    test "accepts a repeat block with a bound, and reports it as repeating" do
       assert AshWorkflowTest.RepeatUntilWorkflow.__info__(:module) ==
                AshWorkflowTest.RepeatUntilWorkflow
 
@@ -175,7 +175,137 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutFieldsTest do
       assert timeout.repeat_until == {3, :hours}
     end
 
-    test "rejects repeat_until shorter than fire_after" do
+    test "accepts a repeat bound anchored on an attribute of the record" do
+      assert AshWorkflowTest.RepeatAnchorWorkflow.__info__(:module) ==
+               AshWorkflowTest.RepeatAnchorWorkflow
+    end
+
+    test "rejects a repeat bound anchored on state_entered_at, which the repeat resets" do
+      assert_dsl_error(
+        """
+        defmodule SelfDefeatingAnchorWorkflow do
+          use Ash.Resource,
+            domain: AshWorkflowTest.Domain,
+            data_layer: Ash.DataLayer.Ets,
+            extensions: [AshWorkflow, AshOban]
+
+          workflow do
+            step :waiting do
+              transition :resolve, to: :done
+
+              timeout :reminder do
+                fire_after {1, :days}
+                action :send_reminder
+                repeat true do
+                  until {8, :days}
+                  field :state_entered_at
+                end
+              end
+            end
+
+            step :done, terminal: true
+          end
+
+          actions do
+            update :send_reminder do
+              accept []
+            end
+          end
+
+          attributes do
+            uuid_v7_primary_key :id
+            attribute :title, :string, allow_nil?: false, public?: true
+          end
+        end
+        """,
+        ~r/anchors its repeat bound on :state_entered_at, which the repeat resets/
+      )
+    end
+
+    test "rejects a repeat bound anchored on a field that does not exist" do
+      assert_dsl_error(
+        """
+        defmodule MissingAnchorWorkflow do
+          use Ash.Resource,
+            domain: AshWorkflowTest.Domain,
+            data_layer: Ash.DataLayer.Ets,
+            extensions: [AshWorkflow, AshOban]
+
+          workflow do
+            step :waiting do
+              transition :resolve, to: :done
+
+              timeout :reminder do
+                fire_after {1, :days}
+                action :send_reminder
+                repeat true do
+                  until {8, :days}
+                  field :nonexistent_anchor
+                end
+              end
+            end
+
+            step :done, terminal: true
+          end
+
+          actions do
+            update :send_reminder do
+              accept []
+            end
+          end
+
+          attributes do
+            uuid_v7_primary_key :id
+            attribute :title, :string, allow_nil?: false, public?: true
+          end
+        end
+        """,
+        ~r/anchors its repeat bound on :nonexistent_anchor, but no attribute or calculation/
+      )
+    end
+
+    test "rejects a bound declared on a repeat that is switched off" do
+      assert_dsl_error(
+        """
+        defmodule DisabledRepeatBoundWorkflow do
+          use Ash.Resource,
+            domain: AshWorkflowTest.Domain,
+            data_layer: Ash.DataLayer.Ets,
+            extensions: [AshWorkflow, AshOban]
+
+          workflow do
+            step :waiting do
+              transition :resolve, to: :done
+
+              timeout :reminder do
+                fire_after {1, :days}
+                action :send_reminder
+                repeat false do
+                  until {8, :days}
+                end
+              end
+            end
+
+            step :done, terminal: true
+          end
+
+          actions do
+            update :send_reminder do
+              accept []
+            end
+          end
+
+          attributes do
+            uuid_v7_primary_key :id
+            attribute :title, :string, allow_nil?: false, public?: true
+          end
+        end
+        """,
+        ~r/declares `repeat false` with `until \{8, :days\}`/
+      )
+    end
+
+    test "rejects a repeat bound shorter than fire_after" do
       assert_dsl_error(
         """
         defmodule TooShortRepeatUntilWorkflow do
@@ -191,7 +321,9 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutFieldsTest do
               timeout :reminder do
                 fire_after {3, :days}
                 action :send_reminder
-                repeat_until {1, :days}
+                repeat true do
+                  until {1, :days}
+                end
               end
             end
 
@@ -210,11 +342,11 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutFieldsTest do
           end
         end
         """,
-        ~r/repeat_until: \{1, :days\}, which is not longer than fire_after/
+        ~r/until: \{1, :days\} in its repeat, which is not longer than fire_after/
       )
     end
 
-    test "rejects repeat_until equal to fire_after, since that leaves no room to fire even once" do
+    test "rejects a repeat bound equal to fire_after, since that leaves no room to fire even once" do
       assert_dsl_error(
         """
         defmodule EqualRepeatUntilWorkflow do
@@ -230,7 +362,9 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutFieldsTest do
               timeout :reminder do
                 fire_after {3, :days}
                 action :send_reminder
-                repeat_until {3, :days}
+                repeat true do
+                  until {3, :days}
+                end
               end
             end
 
@@ -249,11 +383,11 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutFieldsTest do
           end
         end
         """,
-        ~r/repeat_until: \{3, :days\}, which is not longer than fire_after/
+        ~r/until: \{3, :days\} in its repeat, which is not longer than fire_after/
       )
     end
 
-    test "rejects repeat_until combined with a custom field, since it implies repeat: true" do
+    test "rejects a bounded repeat combined with a custom field" do
       assert_dsl_error(
         """
         defmodule RepeatUntilWithFieldWorkflow do
@@ -270,7 +404,9 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutFieldsTest do
                 fire_after {3, :days}
                 field :last_session_date
                 action :send_reminder
-                repeat_until {9, :days}
+                repeat true do
+                  until {9, :days}
+                end
               end
             end
 
@@ -290,7 +426,7 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutFieldsTest do
           end
         end
         """,
-        ~r/repeat: true with field:/
+        ~r/repeats with field:/
       )
     end
 

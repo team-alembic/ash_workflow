@@ -11,34 +11,41 @@ measured against. The second turned out to be the whole problem.
 
 ## The DSL spelling
 
-Two shapes were on the table:
+Three shapes were on the table:
 
 ```elixir
-# A. A separate option
-timeout :reminder, fire_after: {2, :days}, repeat_until: {8, :days}, ...
+# A. Flat options beside `repeat`
+timeout :reminder, fire_after: {2, :days}, repeat: true, repeat_until: {8, :days}, ...
 
 # B. `repeat` grows from a boolean into a boolean-or-keyword
 timeout :reminder, fire_after: {2, :days}, repeat: [until: {8, :days}], ...
+
+# C. `repeat` becomes an entity with a block
+repeat true do
+  until {8, :days}
+  field :signed_up_at
+end
 ```
 
-(A) won. `repeat` stays a plain boolean, which is what every existing
-workflow already declares and what `AshWorkflow.Transformers.AddActions`
-already reads to decide whether an action resets `state_entered_at`. Growing
-it into `{:or, [:boolean, :keyword]}` would mean every reader of `timeout.repeat`
-gaining a second shape to match on, for a feature only some timeouts use.
-`repeat_until` sits next to `repeat` the same way `check_interval` sits next
-to `fire_after` — a separate, optional duration.
+(C) won, after (A) shipped first and was reshaped.
 
-`repeat_until` implies `repeat: true`
-(`AshWorkflow.Entities.Timeout.normalize/1`, run as the entity's `transform`
-at DSL-build time, before any transformer or verifier reads `repeat`), so
-`repeat_until` alone is enough — it does not need to be declared alongside
-`repeat: true`. The alternative, requiring both and rejecting `repeat_until`
-without `repeat: true` as a compile error, was tried first: it kept `repeat`
-as a single source of truth for whether the timeout loops, at the cost of one
-extra line on every use. Implying it removes the boilerplate; `repeat_until`
-has no meaning without repeating, so there is nothing ambiguous being
-inferred, only a redundant declaration being made optional.
+(B) was rejected outright. Growing `repeat` into `{:or, [:boolean, :keyword]}` means every reader of `timeout.repeat` gains a second shape to match on, for a feature only some timeouts use.
+
+(A) works, and is what the first version of this did. It falls down once the bound needs an anchor of its own. `field` on the timeout anchors `fire_after`, and the bound needs a different anchor that repeating does not reset, so (A) ends with `field` and `repeat_until_field` side by side on one entity, meaning two different things, distinguished only by a prefix.
+
+(C) puts the bound and its anchor inside the thing they belong to, so `field` inside `repeat` is unambiguously the bound's anchor. It follows `retry`, already a singleton entity on the same `timeout`.
+
+### What Spark allows, and what that costs
+
+`repeat true do ... end` reads redundantly. `repeat do ... end` would be better, and Spark cannot express both it and the inline `repeat: true`.
+
+`Spark.Dsl.Entity.fetch_single_argument_entities_from_opts/4` is what expands an inline `repeat: true` into a nested entity. It only considers entities whose `args` holds exactly one element, and it uses that element verbatim as a keyword key. So the inline form requires `args: [:enabled?]`, one plain atom. An optional arg (`{:optional, :enabled?, true}`) crashes it, and an empty `args` makes it skip the entity entirely, which drops the inline form.
+
+Meanwhile a required positional arg is what forces the block form to carry it: with `args: []` the block would be `repeat do ... end`, but then `repeat: true` no longer compiles anywhere.
+
+Two entity definitions under the same `repeat` key, one per shape, was tried. The inline path accepts it, and the generated macros then collide: a block-position `repeat true` reaches the zero-arg macro and fails in `Access.get/3`.
+
+So the choice was between `repeat do ... end` and keeping `repeat: true`. Keeping it won: `repeat: true` appears 35 times across this repository alone, including a demo application, and the inline one-liner is the common case while the bound is the rare one. Making the common case worse to make the rare case prettier is the wrong trade.
 
 ## What the bound is measured against
 
@@ -52,10 +59,10 @@ documented in `AshWorkflow.Entities.Timeout`'s moduledoc and
 firing rather than never matching again.
 
 A bound checked against that same field can never be reached. Every firing
-pushes `field` back to "now", so `field <= ago(repeat_until)` is exactly as
+pushes `field` back to "now", so `field <= ago(until)` is exactly as
 false immediately after a repeat as it is right after the record first
 entered the step. The bound would need the record to sit still for
-`repeat_until` — the one thing a repeating timeout never lets it do.
+the whole bound, the one thing a repeating timeout never lets it do.
 
 Three candidates were considered for a fixed anchor instead:
 
@@ -80,11 +87,11 @@ an expression calculation, because the trigger's `where` clause is evaluated
 by the data layer and a module calculation is computed in Elixir after the
 read. `EnteredCurrentStateAt` is a module calculation — it queries the
 transition log — so it hits exactly that rule. It would also make
-`repeat_until` depend on `transition_log` being configured, which the ask
+the bound depend on `transition_log` being configured, which the ask
 does not call for.
 
 A second attribute, `repeat_started_at`, is what was built. Added only when
-some timeout in the workflow declares `repeat_until`
+some timeout bounds its repeat without naming an anchor of its own
 (`AshWorkflow.Transformers.AddAttributes.add_repeat_started_at/1`), it is
 written to the same instant as `state_entered_at` on every genuine step entry
 — a manual transition, an automatic step completing, a transition timeout, an
@@ -99,8 +106,8 @@ directly, the same way they already filter on `state_entered_at`.
 
 `AshWorkflow.Transformers.AddScheduler.repeat_until_match/2` folds the check
 into `Work.match` as an extra clause:
-`is_nil(repeat_started_at) or repeat_started_at > ago(repeat_until)`. Once
-`repeat_started_at` is further in the past than `repeat_until`, this clause is
+`is_nil(anchor) or anchor > ago(until)`. Once
+the anchor is further in the past than the bound, this clause is
 false forever for the current step visit — the record never matches again
 until it leaves and re-enters the step. Because both schedulers execute
 through the same `Work.match`, correctness lives in exactly one place: even
@@ -114,7 +121,7 @@ Left there, though, a bound-exceeded record would keep matching the sweep's
 narrower filter forever, arming a timer on every `look_ahead_ms` tick that
 `fire/4` immediately discards — one wasted read and one wasted timer per
 record per tick, indefinitely, for every record that has run out its
-reminders. `due_records/3` also filters on `repeat_until` now, checked
+reminders. `due_records/3` also filters on the bound now, checked
 against "now" rather than the horizon's `cutoff`: a record already
 bound-exceeded is excluded from the sweep outright, rather than merely from
 running once armed.
@@ -129,7 +136,7 @@ repeat reset, which is precisely the fact this attribute exists because
 `state_entered_at` cannot be trusted to report. Leaving it permanently `nil`
 was also rejected, once it was pointed out that "bound not yet reached"
 would then mean "never bounded" for every record already repeating when
-`repeat_until` was added to its timeout — the opposite of what enabling the
+a bound was added to its timeout, the opposite of what enabling the
 option asks for. `AshWorkflow.Changes.RecordEvent` instead backfills lazily:
 a repeat fire that finds `repeat_started_at` still `nil` sets it to the
 pre-firing `state_entered_at` — the last instant this repeat actually reset
@@ -148,23 +155,31 @@ exists at all. It was not taken because it changes the existing, released
 `repeat` mechanism rather than adding beside it: every workflow already using
 `repeat: true` measures `fire_after` against `state_entered_at`, and moving
 that to a new column is a breaking change to a feature this PR was not asked
-to touch. `repeat_until` adding a second attribute, rather than `repeat`
+to touch. The bound adding a second attribute, rather than `repeat`
 changing which attribute it uses, keeps this PR additive: a workflow that
-declares no `repeat_until` gets no new column and no behavior change at all.
+declares no bound gets no new column and no behavior change at all.
 
 ## What happens when the bound is reached
 
-Reaching `repeat_until` stops the repeat. It does not transition state, and it
+Reaching the bound stops the repeat. It does not transition state, and it
 runs no additional action.
 
-A second option was considered: let `repeat_until` itself carry a
+A second option was considered: let the `repeat` block itself carry a
 `transition_to`, so reaching the bound both stops the reminders and moves the
 workflow along in one declaration. Rejected, because it duplicates a
 mechanism that already exists and composes cleanly:
 
 ```elixir
 step :awaiting_response do
-  timeout :reminder, fire_after: {2, :days}, action: :send_review_reminder, repeat_until: {8, :days}
+  timeout :reminder do
+    fire_after {2, :days}
+    action :send_review_reminder
+
+    repeat true do
+      until {8, :days}
+    end
+  end
+
   timeout :give_up, fire_after: {8, :days}, transition_to: :escalated
 end
 ```
@@ -180,8 +195,8 @@ one number, the same way `:warn` and `:breach` in the existing multi-timeout
 example agree on nothing at all except both watching the same step.
 
 The cost of this choice is that a workflow author writes the bound twice —
-once on `repeat_until`, once on `give_up`'s `fire_after` — rather than once.
+once on `until`, once on `give_up`'s `fire_after` — rather than once.
 That is judged cheaper than a second, transition-shaped meaning for
-`repeat_until`, and cheaper than teaching `AshWorkflow.Verifiers.ValidateTimeoutFields`
-to reconcile `repeat_until`'s bound against a `transition_to` that lives on
+the bound, and cheaper than teaching `AshWorkflow.Verifiers.ValidateTimeoutFields`
+to reconcile the bound against a `transition_to` that lives on
 the same entity.

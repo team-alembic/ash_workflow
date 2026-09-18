@@ -25,6 +25,7 @@ defmodule AshWorkflow.Transformers.AddScheduler do
 
   alias AshWorkflow.Entities.Retry
   alias AshWorkflow.Entities.Step
+  alias AshWorkflow.Entities.Timeout
   alias AshWorkflow.Scheduler.Work
   alias AshWorkflow.Transformers.AddActions
   alias Spark.Dsl.Transformer
@@ -120,35 +121,40 @@ defmodule AshWorkflow.Transformers.AddScheduler do
       action: action,
       match: repeat_until_match(base_match, timeout),
       deadline: %{field: field, fire_after: timeout.fire_after},
-      repeat?: timeout.repeat,
-      repeat_until: timeout.repeat_until,
+      repeat?: Timeout.repeats?(timeout),
+      repeat_until: Timeout.repeat_until(timeout),
+      repeat_until_field: Timeout.repeat_anchor_field(timeout),
       # An action timeout does not change state, so nothing stops it matching
       # again on the next poll. A transition timeout leaves the step it matched
       # on, which is a durable record that it fired.
-      once?: not timeout.repeat and timeout.action != nil,
+      once?: not Timeout.repeats?(timeout) and timeout.action != nil,
       self_scheduled?: timeout.self_scheduled?,
       retry: timeout.retry || %Retry{},
       opts: [check_interval: timeout.check_interval]
     }
   end
 
-  # `repeat_until` cannot be checked against `field`, because repeating is what
-  # keeps moving it forward — see `AshWorkflow.Entities.Timeout`. It is checked
-  # against `repeat_started_at` instead, which every genuine step entry sets
-  # and no repeat firing touches. Once that instant is more than `repeat_until`
-  # in the past, this clause is false forever for this step visit — the record
-  # never matches again until it leaves and re-enters the step, which is
-  # exactly "the timeout stops repeating".
-  defp repeat_until_match(match, %{repeat_until: nil}), do: match
+  # A repeat's bound cannot be checked against the timeout's own `field`,
+  # because repeating is what keeps moving it forward. See
+  # `AshWorkflow.Entities.Repeat`. It is checked against the repeat's anchor
+  # instead, `repeat_started_at` by default, which every genuine step entry
+  # sets and no repeat firing touches. Once that instant is further in the past
+  # than the bound, this clause is false for the rest of the step visit, so the
+  # record never matches again until it leaves and re-enters. That is exactly
+  # "the timeout stops repeating".
+  defp repeat_until_match(match, timeout) do
+    case {Timeout.repeat_until(timeout), Timeout.repeat_anchor_field(timeout)} do
+      {nil, _anchor} ->
+        match
 
-  defp repeat_until_match(match, %{repeat_until: {until_value, until_unit}}) do
-    until_ago_unit = singular_unit(until_unit)
+      {{until_value, until_unit}, anchor} ->
+        until_ago_unit = singular_unit(until_unit)
 
-    Ash.Expr.expr(
-      ^match and
-        (is_nil(^ref(:repeat_started_at)) or
-           ^ref(:repeat_started_at) > ago(^until_value, ^until_ago_unit))
-    )
+        Ash.Expr.expr(
+          ^match and
+            (is_nil(^ref(anchor)) or ^ref(anchor) > ago(^until_value, ^until_ago_unit))
+        )
+    end
   end
 
   # ago/2 expects singular duration names (:day, :hour, :minute, :second)

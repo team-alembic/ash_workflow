@@ -26,7 +26,10 @@ defmodule AshWorkflowTest.Postgres.RepeatUntilWorkflow do
       timeout :reminder do
         fire_after {1, :hours}
         action :send_reminder
-        repeat_until {3, :hours}
+
+        repeat true do
+          until {3, :hours}
+        end
       end
     end
 

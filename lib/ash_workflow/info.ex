@@ -5,6 +5,7 @@ defmodule AshWorkflow.Info do
 
   alias Ash.Resource.Info, as: ResourceInfo
   alias AshWorkflow.Entities.Step
+  alias AshWorkflow.Entities.Timeout
   alias AshWorkflow.Entities.Transition
   alias AshWorkflow.Entities.TransitionLog
   alias AshWorkflow.Entities.Undo
@@ -342,9 +343,10 @@ defmodule AshWorkflow.Info do
     condition:}`.
   * `:on_error` — the step an automatic step falls to on failure, or `nil`.
   * `:timeouts` — one entry per timeout, as `%{name:, to:, fire_after:, field:,
-    action:, repeat:, repeat_until:, retry:}`. A timeout that runs an action
-    rather than moving the workflow has a `nil` `:to` and a non-`nil`
-    `:action`. `:repeat_until` is `nil` unless the timeout bounds its repeat.
+    action:, repeat:, repeat_until:, repeat_until_field:, retry:}`. A timeout
+    that runs an action rather than moving the workflow has a `nil` `:to` and a
+    non-`nil` `:action`. `:repeat_until` and `:repeat_until_field` are `nil`
+    unless the timeout bounds its repeat.
 
   ## Example
 
@@ -366,7 +368,7 @@ defmodule AshWorkflow.Info do
       #=>     on_success: [],
       #=>     on_error: nil,
       #=>     timeouts: [
-      #=>       %{name: :chase, to: nil, fire_after: {3, :days}, field: :state_entered_at, action: :send_reminder, repeat: true, repeat_until: {8, :days}, retry: nil}
+      #=>       %{name: :chase, to: nil, fire_after: {3, :days}, field: :state_entered_at, action: :send_reminder, repeat: true, repeat_until: {8, :days}, repeat_until_field: :repeat_started_at, retry: nil}
       #=>     ]
       #=>   },
       #=>   ...
@@ -424,8 +426,9 @@ defmodule AshWorkflow.Info do
       fire_after: timeout.fire_after,
       field: timeout.field,
       action: timeout.action,
-      repeat: timeout.repeat,
-      repeat_until: timeout.repeat_until,
+      repeat: Timeout.repeats?(timeout),
+      repeat_until: Timeout.repeat_until(timeout),
+      repeat_until_field: Timeout.repeat_anchor_field(timeout),
       retry: timeout.retry
     }
   end

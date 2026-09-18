@@ -46,6 +46,7 @@ defmodule AshWorkflow.Transformers.AddActions do
   alias AshWorkflow.Changes.UndoTransition
   alias AshWorkflow.Entities.Route
   alias AshWorkflow.Entities.Step
+  alias AshWorkflow.Entities.Timeout
   alias AshWorkflow.Entities.Transition
   alias AshWorkflow.Info
   alias Spark.Dsl.Transformer
@@ -413,7 +414,7 @@ defmodule AshWorkflow.Transformers.AddActions do
     |> Enum.group_by(fn {_step, timeout} -> timeout.action end)
     |> Enum.map(fn {_action, pairs} ->
       {step, timeout} = hd(pairs)
-      {step, timeout, Enum.any?(pairs, fn {_step, timeout} -> timeout.repeat end)}
+      {step, timeout, Enum.any?(pairs, fn {_step, timeout} -> Timeout.repeats?(timeout) end)}
     end)
     |> Enum.reduce(dsl, fn {step, timeout, repeats?}, dsl ->
       actions = Transformer.get_entities(dsl, [:actions])

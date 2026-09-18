@@ -19,6 +19,7 @@ Define a workflow by declaring steps, transitions, and timeouts.
      * route
    * timeout
      * retry
+     * repeat
    * on_success
    * retry
  * [transition_log](#workflow-transition_log)
@@ -54,6 +55,7 @@ Declares a step in the workflow. Each step becomes a state in the generated stat
    * route
  * [timeout](#workflow-step-timeout)
    * retry
+   * repeat
  * [on_success](#workflow-step-on_success)
  * [retry](#workflow-step-retry)
 
@@ -152,6 +154,7 @@ Declares a time-based action or forced transition if the workflow stays in this 
 
 ### Nested DSLs
  * [retry](#workflow-step-timeout-retry)
+ * [repeat](#workflow-step-timeout-repeat)
 
 
 
@@ -169,8 +172,6 @@ Declares a time-based action or forced transition if the workflow stays in this 
 | [`field`](#workflow-step-timeout-field){: #workflow-step-timeout-field } | `atom` | `:state_entered_at` | The datetime attribute or calculation to measure `fire_after` against. Defaults to `:state_entered_at`. |
 | [`action`](#workflow-step-timeout-action){: #workflow-step-timeout-action } | `atom` |  | Action to run when the timeout fires. Does not change state. |
 | [`transition_to`](#workflow-step-timeout-transition_to){: #workflow-step-timeout-transition_to } | `atom` |  | Step to force-transition to when the timeout fires. |
-| [`repeat`](#workflow-step-timeout-repeat){: #workflow-step-timeout-repeat } | `boolean` | `false` | If true, re-fire the timeout on the same interval. |
-| [`repeat_until`](#workflow-step-timeout-repeat_until){: #workflow-step-timeout-repeat_until } | `any` |  | Stop repeating once this much wall-clock time has passed since the record entered the step — measured against `repeat_started_at`, not against `field`, because a repeating timeout keeps moving `field` forward. See the moduledoc for why. Implies `repeat: true`, and must be strictly longer than `fire_after` — equal to it leaves no room for even one fire. |
 | [`self_scheduled?`](#workflow-step-timeout-self_scheduled?){: #workflow-step-timeout-self_scheduled? } | `boolean` | `false` | Declares that you run this timeout's trigger yourself, more often than a cron expression can ask for. Cron cannot poll more often than once a minute, so a sub-minute `fire_after` is normally a compile error — the deadline would fire up to 60 seconds late. Setting this asserts that something else drives the trigger at the resolution the deadline needs, and permits the shorter duration. This changes nothing about what is generated: the scheduler module and its cron are still created, so `AshOban.schedule/2` and `AshOban.schedule_and_run_triggers/1` keep working. It only records the claim, and silences the check that would otherwise reject the duration. |
 | [`check_interval`](#workflow-step-timeout-check_interval){: #workflow-step-timeout-check_interval } | `String.t` |  | Oban cron expression for how often to check this timeout, overriding the workflow-level `check_interval`. Defaults to the workflow's setting, which itself defaults to every minute. |
 
@@ -204,6 +205,41 @@ way, `on_error` runs only after the final attempt fails.
 ### Introspection
 
 Target: `AshWorkflow.Entities.Retry`
+
+### workflow.step.timeout.repeat
+```elixir
+repeat enabled?
+```
+
+
+Declares that this timeout re-fires on its interval rather than once, and
+optionally when it should stop. `repeat true` is the unbounded form;
+`repeat do until {8, :days} end` bounds it. See `AshWorkflow.Entities.Repeat`.
+
+
+
+
+
+
+### Arguments
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`enabled?`](#workflow-step-timeout-repeat-enabled?){: #workflow-step-timeout-repeat-enabled? } | `boolean` | `true` | Whether the timeout repeats. Defaults to `true`, since declaring `repeat` at all is the point. `repeat false` is the same as declaring no `repeat`, and exists so that turning one off is a one-word edit. |
+### Options
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`until`](#workflow-step-timeout-repeat-until){: #workflow-step-timeout-repeat-until } | `any` |  | Stop repeating once this much wall-clock time has passed since `field`. Measured against `field` on this entity, never against the timeout's own `field`, which repeating keeps moving forward. Must be strictly longer than the timeout's `fire_after`, since equal to it leaves no room to fire even once. |
+| [`field`](#workflow-step-timeout-repeat-field){: #workflow-step-timeout-repeat-field } | `atom` |  | The datetime attribute or expression calculation to measure `until` against. Defaults to `repeat_started_at`, which the extension adds and maintains. Name another to bound the repeat against a fact about the record, such as `:created_at`. |
+
+
+
+
+
+### Introspection
+
+Target: `AshWorkflow.Entities.Repeat`
 
 
 

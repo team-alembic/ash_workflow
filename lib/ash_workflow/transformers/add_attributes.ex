@@ -17,20 +17,27 @@ defmodule AshWorkflow.Transformers.AddAttributes do
 
   ## `repeat_started_at`
 
-  Also adds `repeat_started_at` (`:utc_datetime_usec`, nilable) when some timeout
-  in the workflow declares `repeat_until`. Unlike `state_entered_at`, a
-  repeating timeout's own firing never touches it — see
-  `AshWorkflow.Entities.Timeout` for why `repeat_until` needs an anchor that
-  repeating cannot move. Nilable because it is a new column on what may be an
-  existing table: an in-flight record written before this attribute existed has
-  no value for it until it next enters a step, and `repeat_until` treats that
-  as "bound not yet reached" rather than raising.
+  Also adds `repeat_started_at` (`:utc_datetime_usec`, nilable) when some
+  timeout bounds its repeat with `until` and names no anchor of its own. Unlike
+  `state_entered_at`, a repeating timeout's own firing never touches it. See
+  `AshWorkflow.Entities.Repeat` for why the bound needs an anchor repeating
+  cannot move.
+
+  A workflow whose every bounded repeat names its own `field` never needs this
+  attribute, and does not get it.
+
+  Nilable because it is a new column on what may be an existing table: an
+  in-flight record written before this attribute existed has no value for it
+  until it next enters a step, and the bound treats that as "not yet reached"
+  rather than raising.
   """
   use Spark.Dsl.Transformer
 
   alias Ash.Resource.Builder
   alias Ash.Resource.Info, as: ResourceInfo
+  alias AshWorkflow.Entities.Repeat
   alias AshWorkflow.Entities.Step
+  alias AshWorkflow.Entities.Timeout
   alias Spark.Dsl.Transformer, as: DslTransformer
 
   def transform(dsl) do
@@ -55,7 +62,7 @@ defmodule AshWorkflow.Transformers.AddAttributes do
   end
 
   defp add_repeat_started_at(dsl) do
-    if any_repeat_until?(dsl) and ResourceInfo.attribute(dsl, :repeat_started_at) == nil do
+    if needs_repeat_started_at?(dsl) and ResourceInfo.attribute(dsl, :repeat_started_at) == nil do
       Builder.add_attribute(dsl, :repeat_started_at, :utc_datetime_usec,
         allow_nil?: true,
         writable?: true,
@@ -66,11 +73,14 @@ defmodule AshWorkflow.Transformers.AddAttributes do
     end
   end
 
-  defp any_repeat_until?(dsl) do
+  defp needs_repeat_started_at?(dsl) do
+    default_field = Repeat.default_field()
+
     dsl
     |> DslTransformer.get_entities([:workflow])
     |> Enum.filter(&match?(%Step{}, &1))
-    |> Enum.any?(fn step -> Enum.any?(step.timeouts, & &1.repeat_until) end)
+    |> Enum.flat_map(& &1.timeouts)
+    |> Enum.any?(&(Timeout.repeat_anchor_field(&1) == default_field))
   end
 
   def before?(AshStateMachine.Transformers.AddState), do: true

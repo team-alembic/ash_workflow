@@ -70,6 +70,27 @@ defmodule AshWorkflow do
     schema: Entities.Retry.attribute_schema()
   }
 
+  @repeat_describe """
+  Declares that this timeout re-fires on its interval rather than once, and
+  optionally when it should stop. `repeat true` is the unbounded form;
+  `repeat do until {8, :days} end` bounds it. See `AshWorkflow.Entities.Repeat`.
+  """
+
+  # `args` is one plain atom rather than `{:optional, :enabled?, true}`, which
+  # is what lets all three spellings work. `Spark.Dsl.Entity.fetch_single_argument_entities_from_opts/4`
+  # serves the inline `repeat: true` form, and only for an entity whose `args`
+  # holds exactly one plain atom, which it uses verbatim as a keyword key. An
+  # optional arg crashes that path, and an empty `args` breaks the inline form
+  # altogether. The cost is that the block form carries the argument too, as
+  # `repeat true do ... end`.
+  @repeat %Spark.Dsl.Entity{
+    name: :repeat,
+    describe: @repeat_describe,
+    target: Entities.Repeat,
+    args: [:enabled?],
+    schema: Entities.Repeat.attribute_schema()
+  }
+
   @timeout %Spark.Dsl.Entity{
     name: :timeout,
     describe:
@@ -77,11 +98,11 @@ defmodule AshWorkflow do
     target: Entities.Timeout,
     args: [:name],
     schema: Entities.Timeout.attribute_schema(),
-    transform: {Entities.Timeout, :normalize, []},
     entities: [
-      retry: [@retry]
+      retry: [@retry],
+      repeat: [@repeat]
     ],
-    singleton_entity_keys: [:retry]
+    singleton_entity_keys: [:retry, :repeat]
   }
 
   @belongs_to_actor %Spark.Dsl.Entity{

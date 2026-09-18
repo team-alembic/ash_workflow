@@ -25,37 +25,23 @@ defmodule AshWorkflow.Entities.Timeout do
   with a short `check_interval` — the trigger will keep matching on every poll cycle
   as long as the condition holds.
 
-  ## `repeat_until` implies `repeat: true`
+  ## Repeating
 
-  `repeat_until` only means something on a repeating timeout, so declaring it
-  turns `repeat` on — `timeout :x, fire_after: {2, :days}, repeat_until: {8, :days}`
-  needs no separate `repeat: true`. `normalize/1` does this at entity-build
-  time, before any transformer or verifier reads `repeat`, so every later stage
-  sees a timeout that already repeats.
+  `repeat` is an entity rather than an option, so a bound and its anchor have
+  somewhere to live:
 
-  ## `repeat_until` measures against the step entry, not `field`
+      repeat true
 
-  `repeat_until` bounds how long a repeating timeout keeps firing. It cannot be
-  measured against `field` (`state_entered_at` by default), because repeating is
-  what keeps pushing `field` forward — a bound checked against its own moving
-  target would never be reached.
+      repeat do
+        until {8, :days}
+        field :created_at
+      end
 
-  Instead, `repeat_until` is measured against `repeat_started_at`, a second
-  attribute the extension adds only when some timeout in the workflow declares
-  `repeat_until`. Every genuine step entry — a manual transition, an automatic
-  step completing, a timeout transitioning to a new step, an undo, or the
-  initial create — writes both `state_entered_at` and `repeat_started_at` to the
-  same instant. A repeating timeout's own firing resets `state_entered_at` to
-  re-arm itself, but leaves `repeat_started_at` alone. So `repeat_started_at`
-  answers "when did the record truly enter this step", immune to the resets
-  that `field` cannot avoid.
-
-  This is a second, always-real attribute rather than the
-  `entered_current_state_at` calculation from `transition_log`, because that
-  calculation reads the transition log to compute its value and so cannot be
-  pushed into the trigger's `where` clause — `AshWorkflow.Verifiers.ValidateTimeoutFields`
-  already rejects any module calculation used as a timeout field for exactly
-  that reason.
+  See `AshWorkflow.Entities.Repeat` for what the bound is measured against and
+  why it cannot be measured against this timeout's own `field`. Read it here
+  through `repeats?/1`, `repeat_until/1` and `repeat_anchor_field/1` rather
+  than reaching into the struct, since a timeout that declares no `repeat`
+  holds `nil`.
   """
 
   defstruct [
@@ -67,8 +53,7 @@ defmodule AshWorkflow.Entities.Timeout do
     self_scheduled?: false,
     __spark_metadata__: nil,
     field: :state_entered_at,
-    repeat: false,
-    repeat_until: nil,
+    repeat: nil,
     retry: nil
   ]
 
@@ -81,8 +66,7 @@ defmodule AshWorkflow.Entities.Timeout do
           check_interval: String.t() | nil,
           self_scheduled?: boolean(),
           field: atom(),
-          repeat: boolean(),
-          repeat_until: {pos_integer(), duration_unit()} | nil,
+          repeat: AshWorkflow.Entities.Repeat.t() | nil,
           retry: AshWorkflow.Entities.Retry.t() | nil
         }
 
@@ -110,21 +94,6 @@ defmodule AshWorkflow.Entities.Timeout do
     transition_to: [
       type: :atom,
       doc: "Step to force-transition to when the timeout fires."
-    ],
-    repeat: [
-      type: :boolean,
-      default: false,
-      doc: "If true, re-fire the timeout on the same interval."
-    ],
-    repeat_until: [
-      type: {:custom, __MODULE__, :validate_duration, []},
-      doc: """
-      Stop repeating once this much wall-clock time has passed since the record
-      entered the step — measured against `repeat_started_at`, not against
-      `field`, because a repeating timeout keeps moving `field` forward. See
-      the moduledoc for why. Implies `repeat: true`, and must be strictly
-      longer than `fire_after` — equal to it leaves no room for even one fire.
-      """
     ],
     self_scheduled?: [
       type: :boolean,
@@ -158,13 +127,35 @@ defmodule AshWorkflow.Entities.Timeout do
 
   def validate_duration(value), do: AshWorkflow.Duration.validate(value)
 
-  @doc """
-  Entity-build transform: `repeat_until` implies `repeat: true`.
+  alias AshWorkflow.Entities.Repeat
 
-  Runs before every transformer and verifier, so nothing downstream needs to
-  treat "has `repeat_until`" and "has `repeat: true`" as two cases.
+  @doc """
+  Whether this timeout re-fires on its interval.
+
+  `repeat false` and no `repeat` at all are the same answer, which is why every
+  reader asks this rather than testing the struct for `nil`.
   """
-  @spec normalize(t()) :: {:ok, t()}
-  def normalize(%__MODULE__{repeat_until: nil} = timeout), do: {:ok, timeout}
-  def normalize(%__MODULE__{} = timeout), do: {:ok, %{timeout | repeat: true}}
+  @spec repeats?(t()) :: boolean()
+  def repeats?(%__MODULE__{repeat: %Repeat{enabled?: enabled?}}), do: enabled?
+  def repeats?(%__MODULE__{}), do: false
+
+  @doc """
+  The wall-clock bound on repeating, or `nil` for a repeat with no bound.
+  """
+  @spec repeat_until(t()) :: AshWorkflow.Duration.t() | nil
+  def repeat_until(%__MODULE__{repeat: %Repeat{enabled?: true, until: until}}), do: until
+  def repeat_until(%__MODULE__{}), do: nil
+
+  @doc """
+  The attribute `repeat_until/1` is measured against, or `nil` when unbounded.
+
+  Defaults to `AshWorkflow.Entities.Repeat.default_field/0` when the repeat
+  declares a bound without naming an anchor of its own.
+  """
+  @spec repeat_anchor_field(t()) :: atom() | nil
+  def repeat_anchor_field(%__MODULE__{repeat: %Repeat{enabled?: true, until: until} = repeat})
+      when not is_nil(until),
+      do: Repeat.anchor_field(repeat)
+
+  def repeat_anchor_field(%__MODULE__{}), do: nil
 end

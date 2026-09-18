@@ -1,16 +1,18 @@
-defmodule AshWorkflowTest.RepeatUntilWorkflow do
+defmodule AshWorkflowTest.RepeatAnchorWorkflow do
   @moduledoc """
-  A repeating timeout bounded by `repeat_until`: reminders fire every hour and
-  stop once the record has been in the step for 3 hours.
+  A repeating timeout whose bound is anchored on the record rather than on the
+  step: reminders fire every hour and stop 3 hours after `signed_up_at`,
+  wherever the record has been in between.
 
-  Uses `AshWorkflow.Scheduler.Precise` so `Precise.run_due/2` can drive the
-  timeout synchronously, and `set_clock` (a plain update action outside the
-  workflow) so a test can move `state_entered_at` and `repeat_started_at`
-  independently — the same distinction `repeat_until` itself depends on.
+  The anchor is what distinguishes this from
+  `AshWorkflowTest.RepeatUntilWorkflow`, which leaves `field` unset and so
+  measures its bound against the `repeat_started_at` the extension maintains.
+  Naming an anchor means this resource needs no `repeat_started_at` attribute
+  at all, which one of its tests asserts.
 
       waiting ──(resolve)──▶ resolved
               │
-              └─ 1 hour ──▶ (send_reminder, repeat every hour, until 3 hours)
+              └─ 1 hour ──▶ (send_reminder, repeat hourly, until 3h after signup)
   """
 
   use Ash.Resource,
@@ -30,6 +32,7 @@ defmodule AshWorkflowTest.RepeatUntilWorkflow do
 
         repeat true do
           until {3, :hours}
+          field :signed_up_at
         end
       end
     end
@@ -46,7 +49,7 @@ defmodule AshWorkflowTest.RepeatUntilWorkflow do
 
     create :create do
       primary? true
-      accept [:title]
+      accept [:title, :signed_up_at]
     end
 
     update :send_reminder do
@@ -63,13 +66,14 @@ defmodule AshWorkflowTest.RepeatUntilWorkflow do
     end
 
     update :set_clock do
-      accept [:state_entered_at, :repeat_started_at]
+      accept [:state_entered_at, :signed_up_at]
     end
   end
 
   attributes do
     uuid_v7_primary_key :id
     attribute :title, :string, allow_nil?: false, public?: true
+    attribute :signed_up_at, :utc_datetime_usec, public?: true
     attribute :reminder_count, :integer, allow_nil?: false, default: 0, public?: true
   end
 end
