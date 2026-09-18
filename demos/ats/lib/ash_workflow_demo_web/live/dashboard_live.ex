@@ -6,15 +6,9 @@ defmodule AshWorkflowDemoWeb.DashboardLive do
   alias AshWorkflowDemo.ATS
   alias AshWorkflowDemo.ATS.Candidate.Deadlines
   alias AshWorkflowDemo.TunnelUrl
+  alias AshWorkflowDemoWeb.Palette
 
-  @columns [
-    {:hr_screen, "HR screen", "bg-amber-100"},
-    {:background_check, "DBS check", "bg-purple-100"},
-    {:lead_interview, "Lead interview", "bg-indigo-100"},
-    {:final_approval, "El Jefe", "bg-teal-100"},
-    {:hired, "Hired", "bg-emerald-100"},
-    {:rejected, "Rejected", "bg-stone-100"}
-  ]
+  @columns [:hr_screen, :background_check, :lead_interview, :final_approval, :hired, :rejected]
 
   @random_names ~w(Lola Mateo Paco Rosa Diego Carmen Joaquín Isabella Rafa Sofía)
   @random_pitches [
@@ -261,40 +255,29 @@ defmodule AshWorkflowDemoWeb.DashboardLive do
     }
   end
 
-  defp state_label(:hr_screen), do: {"HR screen", "bg-amber-500"}
-  defp state_label(:hr_decision), do: {"HR screen", "bg-amber-500"}
-  defp state_label(:background_check), do: {"DBS check", "bg-purple-600"}
-  defp state_label(:bureau_result), do: {"DBS check", "bg-purple-600"}
-  defp state_label(:lead_interview), do: {"Lead interview", "bg-indigo-600"}
-  defp state_label(:lead_decision), do: {"Lead interview", "bg-indigo-600"}
-  defp state_label(:final_approval), do: {"Awaiting El Jefe", "bg-teal-600"}
-  defp state_label(:hired), do: {"Hired", "bg-emerald-600"}
-  defp state_label(:rejected), do: {"Rejected", "bg-stone-600"}
-  defp state_label(_), do: {"—", "bg-stone-400"}
-
   @impl true
   def render(assigns) do
     assigns = assign(assigns, columns: @columns)
 
     ~H"""
-    <div class="min-h-screen bg-stone-900 text-stone-100 p-6">
+    <div class="min-h-screen bg-ink text-paper p-6">
       <header class="flex items-start justify-between mb-6 gap-6">
         <div class="flex-1">
           <h1 class="text-4xl font-black">🤠 El Jefe's Kanban</h1>
-          <p class="text-stone-400">
+          <p class="text-paper-muted">
             Janine, the bureau and Steve work it on their own. You only decide at the end.
           </p>
           <div class="mt-4 flex gap-3">
             <button
               phx-click="insert_random"
-              class="bg-amber-600 hover:bg-amber-700 px-4 py-2 rounded font-bold"
+              class="bg-accent hover:bg-accent/85 text-ink px-4 py-2 rounded font-bold"
             >
               Insert Random Candidate
             </button>
             <button
               phx-click="reset"
               data-confirm="Reset the req? This clears in-flight candidates."
-              class="bg-red-700 hover:bg-red-800 px-4 py-2 rounded font-bold"
+              class="bg-rose-600 hover:bg-rose-500 text-ink px-4 py-2 rounded font-bold"
             >
               Reset the Req
             </button>
@@ -302,19 +285,20 @@ defmodule AshWorkflowDemoWeb.DashboardLive do
         </div>
         <div class="text-center shrink-0">
           <%= if @tunnel_url do %>
+            <%!-- White, not bg-paper: a phone camera wants the full contrast. --%>
             <div
               phx-click="maximise_qr"
-              class="bg-white p-3 rounded inline-block cursor-pointer hover:ring-2 hover:ring-amber-500 transition"
+              class="bg-white p-3 rounded inline-block cursor-pointer hover:ring-2 hover:ring-accent transition"
             >
               {qr_svg(@tunnel_url <> "/apply")}
             </div>
-            <div class="text-xs mt-2 text-stone-400">{@tunnel_url}/apply</div>
+            <div class="text-xs mt-2 text-paper-muted">{@tunnel_url}/apply</div>
           <% else %>
-            <form phx-submit="set_tunnel" class="bg-stone-800 p-4 rounded">
+            <form phx-submit="set_tunnel" class="bg-ink-raised border border-ink-line p-4 rounded">
               <div class="text-sm mb-2 font-bold">Paste tunnel URL</div>
               <input
                 name="url"
-                class="text-stone-900 px-2 py-1 rounded w-72"
+                class="bg-ink text-paper border border-ink-line px-2 py-1 rounded w-72"
                 placeholder="https://xxx.trycloudflare.com"
               />
               <button class="ml-2 bg-amber-600 px-3 py-1 rounded font-bold">Set</button>
@@ -324,8 +308,11 @@ defmodule AshWorkflowDemoWeb.DashboardLive do
       </header>
 
       <div class="grid grid-cols-6 gap-4 w-full">
-        <%= for {state, title, bg} <- @columns do %>
-          <div class={"rounded-xl p-4 min-h-[70vh] " <> bg <> " text-stone-900"}>
+        <%= for state <- @columns do %>
+          <div
+            class="rounded-xl p-4 min-h-[70vh] bg-ink-raised text-paper border-t-4 border-ink-line"
+            style={"border-top-color: #{Palette.hex(state)}"}
+          >
             <div
               phx-click="maximise"
               phx-value-state={state}
@@ -339,15 +326,15 @@ defmodule AshWorkflowDemoWeb.DashboardLive do
                     class="w-8 h-8 rounded-full object-cover shrink-0"
                   />
                 <% end %>
-                <h2 class="font-bold text-lg whitespace-nowrap">{title}</h2>
+                <h2 class="font-bold text-lg whitespace-nowrap">{Palette.label(state)}</h2>
                 <span
-                  class="text-stone-500 group-hover:text-stone-900 text-sm shrink-0"
+                  class="text-paper-muted group-hover:text-paper text-sm shrink-0"
                   title="Maximise"
                 >
                   ⤢
                 </span>
               </div>
-              <span class="text-sm bg-stone-900 text-stone-100 rounded-full px-2.5 py-0.5 font-semibold shrink-0">
+              <span class="text-sm bg-ink text-paper rounded-full px-2.5 py-0.5 font-semibold shrink-0">
                 {length(Map.get(@by_state, state, []))}
               </span>
             </div>
@@ -361,7 +348,7 @@ defmodule AshWorkflowDemoWeb.DashboardLive do
       </div>
 
       <%= if @selected do %>
-        <% {label, color} = state_label(@selected.state) %>
+        <% {label, color} = {Palette.label(@selected.state), Palette.hex(@selected.state)} %>
         <div
           phx-window-keydown="close_card"
           phx-key="Escape"
@@ -369,11 +356,11 @@ defmodule AshWorkflowDemoWeb.DashboardLive do
         >
           <div
             phx-click-away="close_card"
-            class="bg-white text-stone-900 rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden"
+            class="bg-ink-raised text-paper border border-ink-line rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden"
           >
-            <div class={"p-6 text-white " <> color}>
+            <div class="p-6 text-ink" style={"background: #{color}"}>
               <div class="flex items-center gap-4">
-                <img src={@selected.avatar_url} class="w-20 h-20 rounded-full bg-white p-1 shadow" />
+                <img src={@selected.avatar_url} class="w-20 h-20 rounded-full bg-paper p-1 shadow" />
                 <div class="flex-1 min-w-0">
                   <div class="text-2xl font-extrabold truncate">{@selected.name}</div>
                   <div class="text-sm opacity-90">{label}</div>
@@ -388,8 +375,8 @@ defmodule AshWorkflowDemoWeb.DashboardLive do
             </div>
             <div class="p-6 space-y-4">
               <%= if @selected.dbs_offence do %>
-                <div class="border-2 border-red-700 bg-red-50 rounded-xl p-4">
-                  <div class="text-xs uppercase tracking-wider font-bold text-red-700">
+                <div class="border-2 border-bubble-alarm bg-bubble-alarm/15 rounded-xl p-4">
+                  <div class="text-xs uppercase tracking-wider font-bold text-bubble-alarm">
                     Disclosure on file
                   </div>
                   <div class="text-sm text-red-900 mt-1">{@selected.dbs_offence}</div>
@@ -397,70 +384,69 @@ defmodule AshWorkflowDemoWeb.DashboardLive do
               <% end %>
 
               <div>
-                <div class="text-xs uppercase tracking-wider text-stone-500">Pitch</div>
+                <div class="text-xs uppercase tracking-wider text-paper-muted">Pitch</div>
                 <div class="mt-1 italic">"{@selected.pitch}"</div>
               </div>
 
               <%= if @selected.score do %>
-                <div class="bg-stone-100 rounded-xl p-4">
+                <div class="bg-ink border border-ink-line rounded-xl p-4">
                   <div class="flex items-center gap-2">
                     <img
                       src={reviewer_avatar(:hr_screen)}
                       alt={reviewer_alt(:hr_screen)}
                       class="w-10 h-10 rounded-full object-cover"
                     />
-                    <div class="text-xs uppercase tracking-wider text-stone-500">
+                    <div class="text-xs uppercase tracking-wider text-paper-muted">
                       Janine's score
                     </div>
                   </div>
                   <div class="flex items-baseline gap-2 mt-1">
                     <div class="text-4xl font-black">
-                      {@selected.score}<span class="text-lg text-stone-400">/10</span>
+                      {@selected.score}<span class="text-lg text-paper-muted">/10</span>
                     </div>
-                    <div class="text-sm text-stone-600 italic">"{@selected.score_reason}"</div>
+                    <div class="text-sm text-paper-muted italic">"{@selected.score_reason}"</div>
                   </div>
                 </div>
               <% end %>
 
               <%= if @selected.lead_score do %>
-                <div class="bg-stone-100 rounded-xl p-4">
+                <div class="bg-ink border border-ink-line rounded-xl p-4">
                   <div class="flex items-center gap-2">
                     <img
                       src={reviewer_avatar(:lead_interview)}
                       alt={reviewer_alt(:lead_interview)}
                       class="w-10 h-10 rounded-full object-cover"
                     />
-                    <div class="text-xs uppercase tracking-wider text-stone-500">
+                    <div class="text-xs uppercase tracking-wider text-paper-muted">
                       Steve's score
                     </div>
                   </div>
                   <div class="flex items-baseline gap-2 mt-1">
                     <div class="text-4xl font-black">
-                      {@selected.lead_score}<span class="text-lg text-stone-400">/10</span>
+                      {@selected.lead_score}<span class="text-lg text-paper-muted">/10</span>
                     </div>
-                    <div class="text-sm text-stone-600 italic">"{@selected.lead_note}"</div>
+                    <div class="text-sm text-paper-muted italic">"{@selected.lead_note}"</div>
                   </div>
                 </div>
               <% end %>
 
               <%= if @selected.dbs_reference do %>
-                <div class="text-xs text-stone-500">
-                  DBS reference
-                  <span class="font-mono text-stone-700">{@selected.dbs_reference}</span>
+                <div class="text-xs text-paper-muted">
+                  DBS reference <span class="font-mono text-paper">{@selected.dbs_reference}</span>
                 </div>
               <% end %>
 
               <%= if waiting_on(@selected.state) do %>
                 <% {timeout, who} = waiting_on(@selected.state) %>
-                <div class="bg-stone-100 rounded-xl p-4 text-center">
-                  <div class="text-xs uppercase tracking-wider text-stone-500">{who}</div>
-                  <div class="text-3xl font-black text-stone-800">
+                <div class="bg-ink border border-ink-line rounded-xl p-4 text-center">
+                  <div class="text-xs uppercase tracking-wider text-paper-muted">{who}</div>
+                  <div class="text-3xl font-black text-paper">
                     {Deadlines.seconds_until(Deadlines.due_at(@selected, timeout), @now)}s
                   </div>
                 </div>
               <% end %>
 
-              <div class="text-xs text-stone-500">
+              <div class="text-xs text-paper-muted">
                 Submitted {Calendar.strftime(@selected.inserted_at, "%H:%M:%S")} &middot; In state since {Calendar.strftime(
                   @selected.state_entered_at,
                   "%H:%M:%S"
@@ -479,7 +465,7 @@ defmodule AshWorkflowDemoWeb.DashboardLive do
                   <button
                     phx-click="veto"
                     phx-value-id={@selected.id}
-                    class="flex-1 bg-red-700 hover:bg-red-800 text-white font-bold py-3 rounded-lg"
+                    class="flex-1 bg-rose-600 hover:bg-rose-500 text-ink font-bold py-3 rounded-lg"
                   >
                     Veto
                   </button>
@@ -497,10 +483,7 @@ defmodule AshWorkflowDemoWeb.DashboardLive do
           phx-key="Escape"
           class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 overflow-y-auto"
         >
-          <div
-            phx-click-away="close_maximised"
-            class="min-h-full text-stone-100 p-10 max-w-6xl mx-auto"
-          >
+          <div phx-click-away="close_maximised" class="min-h-full text-paper p-10 max-w-6xl mx-auto">
             <div class="flex justify-end">
               <button
                 phx-click="close_maximised"
@@ -516,7 +499,7 @@ defmodule AshWorkflowDemoWeb.DashboardLive do
                   src={char.portrait}
                   alt={char.alt}
                   class={
-                    "w-80 h-80 object-cover shrink-0 bg-white " <>
+                    "w-80 h-80 object-cover shrink-0 bg-paper " <>
                       if(@maximised == :background_check,
                         do: "p-8",
                         else: "rounded-full ring-8 ring-amber-500"
@@ -528,15 +511,15 @@ defmodule AshWorkflowDemoWeb.DashboardLive do
               <% end %>
               <div class="min-w-0">
                 <h2 class="text-7xl font-black">{char.name}</h2>
-                <div class="text-2xl uppercase tracking-widest text-stone-400 mt-2">
+                <div class="text-2xl uppercase tracking-widest text-paper-muted mt-2">
                   {char.role}
                 </div>
-                <p class="text-2xl text-stone-200 mt-6 max-w-3xl">{char.bio}</p>
+                <p class="text-2xl text-paper mt-6 max-w-3xl">{char.bio}</p>
               </div>
             </div>
 
             <%= if Map.get(@by_state, @maximised, []) == [] do %>
-              <div class="text-3xl text-stone-400 italic text-center py-20">{char.empty}</div>
+              <div class="text-3xl text-paper-muted italic text-center py-20">{char.empty}</div>
             <% else %>
               <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
                 <%= for c <- Map.get(@by_state, @maximised, []) do %>
@@ -560,12 +543,12 @@ defmodule AshWorkflowDemoWeb.DashboardLive do
           >
             <button
               phx-click="close_maximised_qr"
-              class="absolute top-4 right-4 text-stone-500 hover:text-stone-900 text-3xl leading-none"
+              class="absolute top-4 right-4 text-paper-muted hover:text-paper text-3xl leading-none"
             >
               &times;
             </button>
             {qr_svg(@tunnel_url <> "/apply", 700)}
-            <div class="text-2xl font-mono text-stone-900">{@tunnel_url}/apply</div>
+            <div class="text-2xl font-mono text-ink">{@tunnel_url}/apply</div>
           </div>
         </div>
       <% end %>
@@ -582,10 +565,10 @@ defmodule AshWorkflowDemoWeb.DashboardLive do
     <div
       phx-click="open_card"
       phx-value-id={@c.id}
-      class="bg-white rounded-lg overflow-hidden shadow cursor-pointer hover:shadow-lg hover:-translate-y-0.5 transition"
+      class="bg-ink border border-ink-line rounded-lg overflow-hidden shadow cursor-pointer hover:border-paper-muted/50 hover:-translate-y-0.5 transition"
     >
       <%= if @c.dbs_offence do %>
-        <div class="bg-red-700 text-white text-xs font-bold px-3 py-2">
+        <div class="bg-bubble-alarm text-paper text-xs font-bold px-3 py-2">
           ⚠️ {@c.dbs_offence}
         </div>
       <% end %>
@@ -595,22 +578,22 @@ defmodule AshWorkflowDemoWeb.DashboardLive do
           <img
             src={@c.avatar_url}
             alt={"#{@c.name}'s avatar"}
-            class="w-12 h-12 rounded-full bg-stone-200 shrink-0"
+            class="w-12 h-12 rounded-full bg-paper shrink-0"
           />
           <div class="min-w-0 flex-1">
             <div class="font-bold text-sm truncate">{@c.name}</div>
             <%= if @c.score do %>
-              <div class="text-xs text-stone-500">Janine: {@c.score}/10</div>
+              <div class="text-xs text-paper-muted">Janine: {@c.score}/10</div>
             <% end %>
             <%= if @c.lead_score do %>
-              <div class="text-xs text-stone-500">Steve: {@c.lead_score}/10</div>
+              <div class="text-xs text-paper-muted">Steve: {@c.lead_score}/10</div>
             <% end %>
           </div>
         </div>
-        <div class="text-xs text-stone-600 mt-2 italic line-clamp-2">"{@c.pitch}"</div>
+        <div class="text-xs text-paper-muted mt-2 italic line-clamp-2">"{@c.pitch}"</div>
 
         <%= if @state == :hr_screen do %>
-          <div class="text-xs text-red-700 font-bold mt-2">
+          <div class="text-xs text-accent font-bold mt-2">
             Waiting on Janine &middot; {Deadlines.seconds_until(
               Deadlines.due_at(@c, :janine_responds),
               @now
@@ -619,14 +602,14 @@ defmodule AshWorkflowDemoWeb.DashboardLive do
         <% end %>
 
         <%= if @state == :background_check do %>
-          <div class="text-xs font-mono text-stone-500 mt-2">{@c.dbs_reference}</div>
-          <div class="text-xs text-red-700 font-bold mt-1">
+          <div class="text-xs font-mono text-paper-muted mt-2">{@c.dbs_reference}</div>
+          <div class="text-xs text-accent font-bold mt-1">
             {Deadlines.seconds_until(Deadlines.due_at(@c, :bureau_responds), @now)}s left
           </div>
         <% end %>
 
         <%= if @state == :lead_interview do %>
-          <div class="text-xs text-red-700 font-bold mt-2">
+          <div class="text-xs text-accent font-bold mt-2">
             Waiting on Steve &middot; {Deadlines.seconds_until(
               Deadlines.due_at(@c, :steve_responds),
               @now
@@ -635,21 +618,21 @@ defmodule AshWorkflowDemoWeb.DashboardLive do
         <% end %>
 
         <%= if @state == :final_approval do %>
-          <div class="text-xs text-red-700 font-bold mt-2">
+          <div class="text-xs text-accent font-bold mt-2">
             {Deadlines.seconds_until(Deadlines.due_at(@c, :jefe_rubber_stamp), @now)}s left
           </div>
           <div class="flex gap-1 mt-2">
             <button
               phx-click="offer"
               phx-value-id={@c.id}
-              class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-1.5 rounded"
+              class="flex-1 bg-emerald-500 hover:bg-emerald-400 text-ink text-xs font-bold py-1.5 rounded"
             >
               Make the offer
             </button>
             <button
               phx-click="veto"
               phx-value-id={@c.id}
-              class="flex-1 bg-red-700 hover:bg-red-800 text-white text-xs font-bold py-1.5 rounded"
+              class="flex-1 bg-rose-600 hover:bg-rose-500 text-ink text-xs font-bold py-1.5 rounded"
             >
               Veto
             </button>

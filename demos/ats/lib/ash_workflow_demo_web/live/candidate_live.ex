@@ -1,5 +1,23 @@
 defmodule AshWorkflowDemoWeb.CandidateLive do
+  @moduledoc """
+  The candidate's own view of where they are, sized to sit on one projected
+  slide without scrolling.
+
+  The three people who judge a candidate read left to right in one row:
+  Janine, then Steve, then El Jefe. A reviewer who has not answered yet holds
+  their column rather than collapsing it, so the row keeps its shape as the
+  candidate moves and the audience is not watching cards jump about.
+
+  El Jefe's column comes from the transition log rather than from `state`.
+  `:rejected` alone cannot say whether El Jefe vetoed the candidate, whether
+  the cascade beat them to the slot, or whether they never reached him at
+  all — only the row leaving `:final_approval` knows.
+  """
+
   use AshWorkflowDemoWeb, :live_view
+
+  alias AshWorkflowDemo.ATS.Candidate
+  alias AshWorkflowDemoWeb.Palette
 
   @impl true
   def mount(%{"id" => id}, _session, socket) do
@@ -19,132 +37,193 @@ defmodule AshWorkflowDemoWeb.CandidateLive do
     {:noreply, assign(socket, candidate: c)}
   end
 
-  defp state_copy(:hr_screen),
-    do: {"HR screen", "Janine is reading your pitch.", "bg-amber-500"}
+  defp state_copy(state) when state in [:hr_screen, :hr_decision],
+    do: {"HR screen", "Janine is reading your pitch."}
 
-  defp state_copy(:hr_decision),
-    do: {"HR screen", "Janine is reading your pitch.", "bg-amber-500"}
+  defp state_copy(state) when state in [:background_check, :bureau_result],
+    do: {"Background check", "The bureau is running your history. Try not to think about it."}
 
-  defp state_copy(:background_check),
-    do:
-      {"Background check", "The bureau is running your history. Try not to think about it.",
-       "bg-purple-600"}
+  defp state_copy(state) when state in [:lead_interview, :lead_decision],
+    do: {"Lead interview", "Steve is deciding whether you're the one."}
 
-  defp state_copy(:bureau_result),
-    do:
-      {"Background check", "The bureau is running your history. Try not to think about it.",
-       "bg-purple-600"}
+  defp state_copy(:final_approval), do: {"El Jefe is deciding", "It's his call now."}
+  defp state_copy(:hired), do: {"¡HIRED!", "You are El Jefe's new hire. Felicidades."}
+  defp state_copy(:rejected), do: {"Rejected", "No dice. Better luck next time."}
+  defp state_copy(_), do: {"—", ""}
 
-  defp state_copy(:lead_interview),
-    do: {"Lead interview", "Steve is deciding whether you're the one.", "bg-indigo-600"}
+  defp stage_label(state) when state in [:hr_screen, :hr_decision], do: "Stage 1 of 4"
+  defp stage_label(state) when state in [:background_check, :bureau_result], do: "Stage 2 of 4"
+  defp stage_label(state) when state in [:lead_interview, :lead_decision], do: "Stage 3 of 4"
+  defp stage_label(:final_approval), do: "Stage 4 of 4"
+  defp stage_label(:hired), do: "Hired"
+  defp stage_label(:rejected), do: "Closed"
+  defp stage_label(_), do: "—"
 
-  defp state_copy(:lead_decision),
-    do: {"Lead interview", "Steve is deciding whether you're the one.", "bg-indigo-600"}
+  defp janine_column(%{score: score, score_reason: reason}) when not is_nil(score) do
+    %{value: "#{score}/10", note: reason, tone: if(score >= 4, do: :good, else: :bad)}
+  end
 
-  defp state_copy(:final_approval),
-    do: {"El Jefe is deciding", "It's his call now.", "bg-teal-600"}
+  defp janine_column(_candidate),
+    do: %{value: "—", note: "Reading your pitch.", tone: :pending}
 
-  defp state_copy(:hired),
-    do: {"¡HIRED!", "You are El Jefe's new hire. Felicidades.", "bg-emerald-600"}
+  defp steve_column(%{lead_score: score, lead_note: note}) when not is_nil(score) do
+    %{value: "#{score}/10", note: note, tone: if(score >= 4, do: :good, else: :bad)}
+  end
 
-  defp state_copy(:rejected), do: {"Rejected", "No dice. Better luck next time.", "bg-stone-600"}
+  defp steve_column(candidate) do
+    if reached?(candidate, :lead_interview) do
+      %{value: "—", note: "Writing up the interview.", tone: :pending}
+    else
+      %{value: "—", note: "Never got this far.", tone: :never}
+    end
+  end
 
-  defp state_copy(_), do: {"—", "", "bg-stone-400"}
+  # `:rejected` on its own cannot name who did it. The row that left
+  # `:final_approval` can: `:veto` is El Jefe turning this candidate down,
+  # `:slot_taken` is the cascade off somebody else's offer.
+  defp jefe_column(%{state: :final_approval}),
+    do: %{value: "Deciding", note: "The only two buttons on the board.", tone: :pending}
 
-  # Whoever is holding the candidate up right now. The bureau, :hired and
-  # :rejected show no face — the bureau is faceless on purpose, and by hired
-  # or rejected nobody is left to wait on.
-  defp reviewer_avatar(state) when state in [:hr_screen, :hr_decision],
-    do: "/images/janine-hr.png"
+  defp jefe_column(candidate) do
+    case Enum.find(Candidate.history(candidate), &(&1.from_state == :final_approval)) do
+      %{transition_name: :offer} ->
+        %{value: "Offer", note: "He picked you.", tone: :good}
 
-  defp reviewer_avatar(state) when state in [:lead_interview, :lead_decision],
-    do: "/images/steve-tech.png"
+      %{transition_name: :veto} ->
+        %{value: "Veto", note: "He turned you down himself.", tone: :bad}
 
-  defp reviewer_avatar(:final_approval), do: "/images/conor.png"
-  defp reviewer_avatar(_state), do: nil
+      %{transition_name: :slot_taken} ->
+        %{value: "Too late", note: "Somebody else took the slot.", tone: :bad}
 
-  defp reviewer_alt(state) when state in [:hr_screen, :hr_decision], do: "Janine, HR manager"
+      _ ->
+        %{value: "—", note: "Never reached his desk.", tone: :never}
+    end
+  end
 
-  defp reviewer_alt(state) when state in [:lead_interview, :lead_decision],
-    do: "Steve, engineering lead"
+  defp reached?(candidate, state) do
+    Enum.any?(Candidate.history(candidate), &(&1.to_state == state))
+  end
 
-  defp reviewer_alt(:final_approval), do: "El Jefe, the boss"
-  defp reviewer_alt(_state), do: nil
+  defp tone_color(:good), do: "#10b981"
+  defp tone_color(:bad), do: "#f43f5e"
+  defp tone_color(:pending), do: "#9aa4b2"
+  defp tone_color(:never), do: "#4b5563"
+
+  attr :portrait, :string, required: true
+  attr :who, :string, required: true
+  attr :column, :map, required: true
+
+  defp verdict_card(assigns) do
+    ~H"""
+    <div class={
+      "flex min-h-0 flex-col items-center rounded-2xl border px-[1vw] py-[1.6vh] text-center " <>
+        if(@column.tone == :never,
+          do: "border-ink-line/60 bg-ink-raised/40",
+          else: "border-ink-line bg-ink-raised"
+        )
+    }>
+      <div class="flex shrink-0 items-center gap-[0.5vw]">
+        <img
+          src={@portrait}
+          alt={@who}
+          class={
+            "h-[4.4vh] w-[4.4vh] rounded-full object-cover object-top bg-paper/10 " <>
+              if(@column.tone == :never, do: "opacity-30 grayscale", else: "")
+          }
+        />
+        <span class="text-[clamp(0.6rem,1.5vh,0.95rem)] font-bold uppercase tracking-[0.12em] text-paper-muted">
+          {@who}
+        </span>
+      </div>
+
+      <div
+        class="mt-[0.8vh] shrink-0 font-black leading-none text-[clamp(1.6rem,6vh,4.5rem)]"
+        style={"color: #{tone_color(@column.tone)}"}
+      >
+        {@column.value}
+      </div>
+
+      <p class="mt-[0.8vh] min-h-0 overflow-hidden text-[clamp(0.7rem,1.7vh,1.05rem)] italic leading-snug text-paper-muted">
+        {@column.note}
+      </p>
+    </div>
+    """
+  end
 
   @impl true
   def render(assigns) do
-    {heading, sub, color} = state_copy(assigns.candidate.state)
+    {heading, sub} = state_copy(assigns.candidate.state)
 
     assigns =
       assign(assigns,
         heading: heading,
         sub: sub,
-        color: color,
-        reviewer_avatar: reviewer_avatar(assigns.candidate.state),
-        reviewer_alt: reviewer_alt(assigns.candidate.state)
+        accent: Palette.hex(assigns.candidate.state),
+        stage: stage_label(assigns.candidate.state),
+        janine: janine_column(assigns.candidate),
+        steve: steve_column(assigns.candidate),
+        jefe: jefe_column(assigns.candidate)
       )
 
     ~H"""
-    <div class={"min-h-screen flex flex-col items-center justify-center p-6 text-white " <> @color}>
-      <img src={@candidate.avatar_url} class="w-48 h-48 rounded-full bg-white p-2 shadow-2xl mb-6" />
-      <h1 class="text-4xl font-extrabold">{@candidate.name}</h1>
-      <%= if @reviewer_avatar do %>
+    <div class="flex h-screen w-screen flex-col overflow-hidden bg-ink px-[3.5vw] py-[3vh] text-paper">
+      <header class="flex shrink-0 items-center gap-[1.4vw]">
         <img
-          src={@reviewer_avatar}
-          alt={@reviewer_alt}
-          class="mt-6 w-24 h-24 rounded-full object-cover ring-4 ring-white/70 shadow-xl"
+          src={@candidate.avatar_url}
+          alt={@candidate.name}
+          class="h-[9vh] w-[9vh] shrink-0 rounded-full bg-paper p-[0.5vh] shadow-2xl"
         />
-      <% end %>
-      <div class="mt-6 text-5xl font-black tracking-tight text-center">{@heading}</div>
-      <p class="mt-3 text-lg opacity-90 text-center max-w-sm">{@sub}</p>
-
-      <%= if @candidate.dbs_offence do %>
-        <div class="mt-8 w-full max-w-sm bg-red-700 border-4 border-white/80 rounded-xl p-5 text-center shadow-2xl">
-          <div class="text-2xl font-black">⚠️ DISCLOSURE ON FILE</div>
-          <div class="text-xl font-bold mt-3 leading-snug">{@candidate.dbs_offence}</div>
-          <div class="text-sm mt-3 opacity-90">
-            It's on the record. It has not sunk you — nobody's judging you for this one.
-          </div>
+        <div class="min-w-0 flex-1">
+          <h1 class="truncate text-[clamp(1.4rem,3.6vh,3rem)] font-black leading-tight">
+            {@candidate.name}
+          </h1>
+          <p class="truncate text-[clamp(0.65rem,1.6vh,1rem)] italic text-paper-muted">
+            "{@candidate.pitch}"
+          </p>
         </div>
-      <% end %>
+        <span
+          class="shrink-0 rounded-full px-[1.1vw] py-[0.7vh] text-[clamp(0.6rem,1.5vh,0.95rem)] font-bold uppercase tracking-[0.12em] text-ink"
+          style={"background: #{@accent}"}
+        >
+          {@stage}
+        </span>
+      </header>
 
-      <%= if @candidate.score do %>
-        <div class="mt-6 bg-white/20 backdrop-blur rounded-xl p-4 max-w-sm text-center">
-          <div class="flex items-center justify-center gap-2">
-            <img
-              src="/images/janine-hr.png"
-              alt="Janine, HR manager"
-              class="w-8 h-8 rounded-full object-cover"
-            />
-            <div class="text-sm uppercase tracking-wider opacity-80">Janine's score</div>
-          </div>
-          <div class="text-6xl font-black">{@candidate.score}/10</div>
-          <div class="text-sm italic mt-2">"{@candidate.score_reason}"</div>
-        </div>
-      <% end %>
+      <div class="mt-[1.6vh] h-[0.5vh] shrink-0 rounded-full" style={"background: #{@accent}"}></div>
 
-      <%= if @candidate.lead_score do %>
-        <div class="mt-6 bg-white/20 backdrop-blur rounded-xl p-4 max-w-sm text-center">
-          <div class="flex items-center justify-center gap-2">
-            <img
-              src="/images/steve-tech.png"
-              alt="Steve, engineering lead"
-              class="w-8 h-8 rounded-full object-cover"
-            />
-            <div class="text-sm uppercase tracking-wider opacity-80">Steve's score</div>
-          </div>
-          <div class="text-6xl font-black">{@candidate.lead_score}/10</div>
-          <%= if @candidate.lead_note do %>
-            <div class="text-sm italic mt-2">"{@candidate.lead_note}"</div>
-          <% end %>
-        </div>
-      <% end %>
+      <section class="mt-[1.8vh] flex shrink-0 items-baseline gap-[1.4vw]">
+        <h2
+          class="font-black uppercase leading-none tracking-tight text-[clamp(2rem,8vh,6rem)]"
+          style={"color: #{@accent}"}
+        >
+          {@heading}
+        </h2>
+        <p class="min-w-0 flex-1 text-[clamp(0.8rem,2vh,1.3rem)] leading-snug text-paper-muted">
+          {@sub}
+        </p>
+        <div :if={@candidate.state == :hired} class="shrink-0 animate-bounce text-[6vh]">🎉</div>
+      </section>
 
-      <%= if @candidate.state == :hired do %>
-        <div class="mt-8 text-7xl animate-bounce">🎉</div>
-      <% end %>
+      <div
+        :if={@candidate.dbs_offence}
+        class="mt-[1.8vh] flex shrink-0 items-center gap-[1.2vw] rounded-2xl border-4 border-black bg-bubble px-[1.4vw] py-[1.4vh] text-bubble-ink"
+      >
+        <span class="shrink-0 text-[clamp(0.6rem,1.5vh,0.95rem)] font-bold uppercase tracking-[0.1em] text-bubble-who">
+          ⚠️ Disclosure on file
+        </span>
+        <span class="min-w-0 flex-1 text-[clamp(0.8rem,2.1vh,1.35rem)] font-bold leading-snug">
+          {@candidate.dbs_offence}
+        </span>
+        <span class="shrink-0 text-[clamp(0.6rem,1.4vh,0.9rem)] opacity-70">
+          Nobody's judging you for this one.
+        </span>
+      </div>
 
-      <div class="mt-12 text-xs opacity-70">Pitch: "{@candidate.pitch}"</div>
+      <div class="mt-[2vh] grid min-h-0 flex-1 grid-cols-3 gap-[1.4vw]">
+        <.verdict_card portrait="/images/janine-hr.png" who="Janine" column={@janine} />
+        <.verdict_card portrait="/images/steve-tech.png" who="Steve" column={@steve} />
+        <.verdict_card portrait="/images/conor.png" who="El Jefe" column={@jefe} />
+      </div>
     </div>
     """
   end

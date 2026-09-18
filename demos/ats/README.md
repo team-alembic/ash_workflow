@@ -111,18 +111,25 @@ Covering: initial state, verify→review transition, hire cascade, cascade leave
 - `lib/ash_workflow_demo/ats/candidate/set_response_delays.ex` and `start_lead_clock.ex` — where each reviewer's deadline is stamped.
 - `lib/ash_workflow_demo/ats/dbs_bureau.ex` — the caller-side half of an external event, correlating on `dbs_reference`.
 - `lib/ash_workflow_demo/ats/candidate/dbs_offences.ex` — the disclosures. Crimes against a codebase, never real offences: the candidate on the projector is a real person in the room.
-- `lib/ash_workflow_demo_web/live/dbs_bureau_live.ex` — the portal, deliberately styled as a different application.
+- `lib/ash_workflow_demo_web/live/dbs_bureau_live.ex` — the portal, deliberately styled as a different application. It is the one page that does not take the dark theme: it stays a paper form, on the same stock as the deck's speech bubbles.
+- `lib/ash_workflow_demo_web/palette.ex` — the per-step hues and labels the kanban, the candidate page and `/timeline` all read, in both the Tailwind and raw-hex forms those three need.
 - `lib/ash_workflow_demo/ats/candidate/notifier.ex` — Ash notifier that broadcasts changes to Phoenix.PubSub.
 - `AshWorkflow.Scheduler.Precise` — declared in the resource's `workflow` block. Arms a timer per deadline rather than polling cron, which is how deadlines of a few seconds are expressible at all. This replaced a hand-rolled 1-second ticker.
 
   One caveat found while building this. `Timeout`'s `field` option documents support for a calculation, and the two reviewer deadlines read far better as `state_entered_at` plus the candidate's delay than as stamped columns. The scheduler builds the right SQL filter for such a calculation, then arms its timer from the unloaded value on the record and crashes `AshWorkflow.Scheduler.Precise.Timeline` with a `FunctionClauseError` in `as_datetime/1`. The deadlines here are real columns because of it.
 - `lib/ash_workflow_demo/tunnel_url.ex` — Agent storing the public tunnel URL for the QR code.
 - `lib/ash_workflow_demo_web/live/dashboard_live.ex` — El Jefe's kanban.
-- `lib/ash_workflow_demo_web/live/candidate_live.ex` — candidate's mobile self-view.
+- `lib/ash_workflow_demo_web/live/candidate_live.ex` — the candidate's own view, sized to one projected slide. Janine, Steve and El Jefe read left to right in one row, and a reviewer who has not answered holds their column rather than collapsing it. El Jefe's column comes from the transition log, because `:rejected` alone cannot say whether he vetoed the candidate, whether the cascade beat them to the slot, or whether they never reached him.
 - `lib/ash_workflow_demo_web/live/apply_live.ex` — public submission form.
 - `lib/ash_workflow_demo/ats/candidate_transition.ex` — the transition log, scaffolded by `mix ash_workflow.gen.transition_log AshWorkflowDemo.ATS.Candidate` and hand-adjusted (the generated `:workflow` relationship renamed to `:candidate`). No `belongs_to_actor`: this demo has no actor/auth resource, and `triggered_by` alone is enough to say who or what moved a candidate.
 - `lib/ash_workflow_demo_web/live/timeline_live.ex` — the `/timeline` page: the all-candidates playhead, with each candidate's log and undo/redo folded behind its band. Built from `demos/workflow_timeline`'s `timeline_live.ex` and `undo_live.ex`, which are still two pages there.
 - `lib/ash_workflow_demo_web/controllers/timeline_redirect_controller.ex` — sends `/history` and `/rewind` to `/timeline`.
+
+## Theme
+
+The demo and the talk deck share a palette. The base tokens live in `assets/tailwind.config.js` as `ink`, `paper`, `accent` and `bubble`, taken from `slides/theme/alembic.css` on the slides branch, and Inter is loaded in `root.html.heex`. Change a value in one place and change it in the other.
+
+The per-step hues are `AshWorkflowDemoWeb.Palette`. Every page reads them from there rather than keeping its own copy.
 
 ## Why it's flashy
 

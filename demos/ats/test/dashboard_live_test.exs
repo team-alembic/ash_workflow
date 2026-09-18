@@ -193,7 +193,7 @@ defmodule AshWorkflowDemoWeb.DashboardLiveTest do
       end)
 
     {:ok, view, html} = live(conn, "/")
-    assert html =~ "bg-red-700"
+    assert html =~ "bg-bubble-alarm"
     assert html =~ html_escape(winner.dbs_offence)
 
     html = render_click(view, "offer", %{"id" => winner.id})

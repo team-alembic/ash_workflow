@@ -13,9 +13,34 @@ module.exports = {
   ],
   theme: {
     extend: {
+      // The talk deck's palette, kept in step with slides/theme/alembic.css so
+      // the demo on the projector and the slides around it read as one thing.
       colors: {
         brand: "#FD4F00",
-      }
+        ink: {
+          DEFAULT: "#0e1116", // --bg
+          raised: "#161b22",  // --code-bg, used for cards
+          line: "#232a33",    // the deck's pre border
+        },
+        paper: {
+          DEFAULT: "#e8eaed", // --fg
+          muted: "#9aa4b2",   // --muted
+        },
+        accent: {
+          DEFAULT: "#f97316", // --accent
+          alt: "#38bdf8",     // --accent-2
+        },
+        // The deck's speech bubble, which the disclosure notice borrows.
+        bubble: {
+          DEFAULT: "#fdf6e8",
+          ink: "#12100a",
+          who: "#b4520a",
+          alarm: "#c1121f",
+        },
+      },
+      fontFamily: {
+        sans: ["Inter", "Helvetica Neue", "system-ui", "sans-serif"],
+      },
     },
   },
   plugins: [

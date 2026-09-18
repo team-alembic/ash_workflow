@@ -46,55 +46,55 @@ defmodule AshWorkflowDemoWeb.ApplyLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="min-h-screen bg-gradient-to-br from-amber-500 to-red-700 flex items-center justify-center p-6">
-      <div class="w-full max-w-md bg-white rounded-2xl shadow-2xl p-8 space-y-6">
+    <div class="min-h-screen bg-ink flex items-center justify-center p-6">
+      <div class="w-full max-w-md bg-ink-raised border border-ink-line rounded-2xl shadow-2xl p-8 space-y-6">
         <div class="text-center">
           <div class="text-5xl mb-2">🤠</div>
-          <h1 class="text-3xl font-extrabold">¿Y usted quién es?</h1>
-          <p class="text-stone-600 mt-2">El Jefe is hiring. One slot. Make it count.</p>
+          <h1 class="text-3xl font-extrabold text-paper">¿Y usted quién es?</h1>
+          <p class="text-paper-muted mt-2">El Jefe is hiring. One slot. Make it count.</p>
         </div>
 
         <form phx-submit="submit" class="space-y-4">
           <div>
-            <label class="block text-sm font-semibold text-stone-700">Your name</label>
+            <label class="block text-sm font-semibold text-paper">Your name</label>
             <input
               type="text"
               name="candidate[name]"
               value={@form["name"]}
               autocomplete="off"
-              class="mt-1 w-full rounded-lg border-stone-300 shadow-sm focus:border-amber-500 focus:ring-amber-500"
+              class="mt-1 w-full rounded-lg bg-ink border-ink-line text-paper placeholder:text-paper-muted/60 shadow-sm focus:border-accent focus:ring-accent"
               placeholder="e.g. Lola"
               required
             />
           </div>
 
           <div>
-            <label class="block text-sm font-semibold text-stone-700">
+            <label class="block text-sm font-semibold text-paper">
               Your pitch (max 200 chars)
             </label>
             <textarea
               name="candidate[pitch]"
               rows="4"
               maxlength="200"
-              class="mt-1 w-full rounded-lg border-stone-300 shadow-sm focus:border-amber-500 focus:ring-amber-500"
+              class="mt-1 w-full rounded-lg bg-ink border-ink-line text-paper placeholder:text-paper-muted/60 shadow-sm focus:border-accent focus:ring-accent"
               placeholder="Why should El Jefe hire you?"
               required
             ><%= @form["pitch"] %></textarea>
           </div>
 
           <%= if @error do %>
-            <div class="text-red-600 text-sm">{@error}</div>
+            <div class="text-bubble-alarm text-sm">{@error}</div>
           <% end %>
 
           <button
             type="submit"
-            class="w-full bg-red-700 text-white font-bold py-3 rounded-lg hover:bg-red-800 transition"
+            class="w-full bg-accent text-ink font-black py-3 rounded-lg hover:bg-accent/85 transition"
           >
             Apply
           </button>
         </form>
 
-        <p class="text-xs text-stone-500 text-center">
+        <p class="text-xs text-paper-muted text-center">
           Warning: Janine has {Deadlines.seconds(:janine_responds)} seconds to get to your pitch.
         </p>
       </div>
