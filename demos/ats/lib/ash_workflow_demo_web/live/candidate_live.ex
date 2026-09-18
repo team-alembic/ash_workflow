@@ -78,9 +78,13 @@ defmodule AshWorkflowDemoWeb.CandidateLive do
     end
   end
 
-  # `:rejected` on its own cannot name who did it. The row that left
-  # `:final_approval` can: `:veto` is El Jefe turning this candidate down,
-  # `:slot_taken` is the cascade off somebody else's offer.
+  # El Jefe's column is always on the page and stays grey until he has
+  # actually answered. Only `:offer` and `:veto` are his answer: `:slot_taken`
+  # is the cascade off somebody else's offer, and a candidate at
+  # `:final_approval` is still waiting on him.
+  #
+  # `:rejected` on its own cannot tell these apart. The row that left
+  # `:final_approval` can, which is why this reads the log rather than `state`.
   defp jefe_column(%{state: :final_approval}),
     do: %{value: "Deciding", note: "The only two buttons on the board.", tone: :pending}
 
@@ -93,7 +97,7 @@ defmodule AshWorkflowDemoWeb.CandidateLive do
         %{value: "Veto", note: "He turned you down himself.", tone: :bad}
 
       %{transition_name: :slot_taken} ->
-        %{value: "Too late", note: "Somebody else took the slot.", tone: :bad}
+        %{value: "Too late", note: "Somebody else took the slot.", tone: :never}
 
       _ ->
         %{value: "—", note: "Never reached his desk.", tone: :never}
@@ -109,6 +113,19 @@ defmodule AshWorkflowDemoWeb.CandidateLive do
   defp tone_color(:pending), do: "#9aa4b2"
   defp tone_color(:never), do: "#4b5563"
 
+  # A card only comes up to full strength once its reviewer has answered.
+  # Everything else is a column holding its place.
+  defp answered?(tone), do: tone in [:good, :bad]
+
+  defp panel_class(tone) do
+    if answered?(tone),
+      do: "border-ink-line bg-ink-raised",
+      else: "border-ink-line/50 bg-ink-raised/40"
+  end
+
+  defp portrait_class(:never), do: "opacity-25 grayscale"
+  defp portrait_class(tone), do: if(answered?(tone), do: "", else: "opacity-60")
+
   attr :portrait, :string, required: true
   attr :who, :string, required: true
   attr :column, :map, required: true
@@ -117,10 +134,7 @@ defmodule AshWorkflowDemoWeb.CandidateLive do
     ~H"""
     <div class={
       "flex min-h-0 flex-col items-center rounded-2xl border px-[1vw] py-[1.6vh] text-center " <>
-        if(@column.tone == :never,
-          do: "border-ink-line/60 bg-ink-raised/40",
-          else: "border-ink-line bg-ink-raised"
-        )
+        panel_class(@column.tone)
     }>
       <div class="flex shrink-0 items-center gap-[0.5vw]">
         <img
@@ -128,7 +142,7 @@ defmodule AshWorkflowDemoWeb.CandidateLive do
           alt={@who}
           class={
             "h-[4.4vh] w-[4.4vh] rounded-full object-cover object-top bg-paper/10 " <>
-              if(@column.tone == :never, do: "opacity-30 grayscale", else: "")
+              portrait_class(@column.tone)
           }
         />
         <span class="text-[clamp(0.6rem,1.5vh,0.95rem)] font-bold uppercase tracking-[0.12em] text-paper-muted">
