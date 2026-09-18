@@ -147,11 +147,14 @@ defmodule AshWorkflowDemoWeb.DashboardLiveTest do
     assert html =~ "<svg"
   end
 
-  test "dashboard renders tunnel-paste form when tunnel_url is nil", %{conn: conn} do
+  test "dashboard says how to get a QR code when tunnel_url is nil", %{conn: conn} do
     Agent.update(AshWorkflowDemo.TunnelUrl, fn _ -> nil end)
 
     {:ok, _view, html} = live(conn, "/")
-    assert html =~ "Paste tunnel URL"
+    assert html =~ "No QR code"
+    assert html =~ "TUNNEL_URL"
+    # The runtime paste form is gone; the URL is known before boot.
+    refute html =~ "phx-submit=\"set_tunnel\""
   end
 
   test "clicking a card opens a modal with its detail", %{conn: conn} do

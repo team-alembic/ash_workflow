@@ -44,7 +44,7 @@ Open http://localhost:4000/ — that's El Jefe's kanban. Project it. The QR in t
 
 Open `<tunnel>/dbs` on a second screen or a phone. That's the Disclosure & Background Bureau portal, and it is the only way a candidate leaves `:background_check` before the check lapses.
 
-If you forget to set `TUNNEL_URL`, the dashboard shows a text input where you can paste the URL at runtime.
+Without `TUNNEL_URL` the dashboard says so where the QR code would be. There is no runtime paste field: the URL is known before the server starts, and a form for it would be one more unauthenticated write on a page the tunnel publishes.
 
 ## What the room can reach
 
@@ -165,7 +165,7 @@ Covering: initial state, verify→review transition, hire cascade, cascade leave
 - `AshWorkflow.Scheduler.Precise` — declared in the resource's `workflow` block. Arms a timer per deadline rather than polling cron, which is how deadlines of a few seconds are expressible at all. This replaced a hand-rolled 1-second ticker.
 
   One caveat found while building this. `Timeout`'s `field` option documents support for a calculation, and the two reviewer deadlines read far better as `state_entered_at` plus the candidate's delay than as stamped columns. The scheduler builds the right SQL filter for such a calculation, then arms its timer from the unloaded value on the record and crashes `AshWorkflow.Scheduler.Precise.Timeline` with a `FunctionClauseError` in `as_datetime/1`. The deadlines here are real columns because of it.
-- `lib/ash_workflow_demo/tunnel_url.ex` — Agent storing the public tunnel URL for the QR code.
+- `lib/ash_workflow_demo/tunnel_url.ex` — Agent holding the public tunnel URL for the QR code, seeded from `TUNNEL_URL` at boot.
 - `lib/ash_workflow_demo_web/live/dashboard_live.ex` — El Jefe's kanban.
 - `lib/ash_workflow_demo_web/live/candidate_live.ex` — the candidate's own view, sized to one projected slide. Janine, Steve and El Jefe read left to right in one row, and a reviewer who has not answered holds their column rather than collapsing it.
 

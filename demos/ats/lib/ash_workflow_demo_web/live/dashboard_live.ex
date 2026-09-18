@@ -26,7 +26,6 @@ defmodule AshWorkflowDemoWeb.DashboardLive do
   def mount(_params, _session, socket) do
     if connected?(socket) do
       Phoenix.PubSub.subscribe(AshWorkflowDemo.PubSub, "candidates:all")
-      Phoenix.PubSub.subscribe(AshWorkflowDemo.PubSub, "tunnel_url")
       :timer.send_interval(1000, :tick)
     end
 
@@ -60,10 +59,6 @@ defmodule AshWorkflowDemoWeb.DashboardLive do
 
     {:noreply, socket}
   end
-
-  @impl true
-  def handle_info({:tunnel_url_changed, url}, socket),
-    do: {:noreply, assign(socket, tunnel_url: url)}
 
   @impl true
   def handle_info(:tick, socket), do: {:noreply, assign(socket, now: DateTime.utc_now())}
@@ -103,12 +98,6 @@ defmodule AshWorkflowDemoWeb.DashboardLive do
     avatar = "https://api.dicebear.com/7.x/avataaars/svg?seed=#{URI.encode(name)}"
     {:ok, _} = ATS.start(name, pitch, avatar)
     {:noreply, load_candidates(socket)}
-  end
-
-  @impl true
-  def handle_event("set_tunnel", %{"url" => url}, socket) do
-    TunnelUrl.set(url)
-    {:noreply, socket}
   end
 
   @impl true
@@ -302,15 +291,11 @@ defmodule AshWorkflowDemoWeb.DashboardLive do
             </div>
             <div class="text-xs mt-2 text-paper-muted">{@tunnel_url}/apply</div>
           <% else %>
-            <form phx-submit="set_tunnel" class="bg-ink-raised border border-ink-line p-4 rounded">
-              <div class="text-sm mb-2 font-bold">Paste tunnel URL</div>
-              <input
-                name="url"
-                class="bg-ink text-paper border border-ink-line px-2 py-1 rounded w-72"
-                placeholder="https://xxx.trycloudflare.com"
-              />
-              <button class="ml-2 bg-amber-600 px-3 py-1 rounded font-bold">Set</button>
-            </form>
+            <div class="rounded border border-ink-line bg-ink-raised p-4 text-sm text-paper-muted">
+              <div class="font-bold text-paper">No QR code</div>
+              Start the server with <code class="text-accent">TUNNEL_URL</code>
+              set and it appears here.
+            </div>
           <% end %>
         </div>
       </header>
