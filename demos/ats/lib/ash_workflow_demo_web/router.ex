@@ -21,8 +21,12 @@ defmodule AshWorkflowDemoWeb.Router do
     live "/apply", ApplyLive
     live "/c/:id", CandidateLive
     live "/dbs", DbsBureauLive
-    live "/history", HistoryLive
-    live "/rewind", RewindLive
+    live "/timeline", TimelineLive
+
+    # `/history` and `/rewind` were two pages before the log and the playhead
+    # became one. Kept so the README's links and anyone's muscle memory land.
+    get "/history", TimelineRedirectController, :show
+    get "/rewind", TimelineRedirectController, :show
   end
 
   scope "/webhooks", AshWorkflowDemoWeb do

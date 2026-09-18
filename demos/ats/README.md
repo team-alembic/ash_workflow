@@ -29,34 +29,34 @@ Open `<tunnel>/dbs` on a second screen or a phone. That's the Disclosure & Backg
 
 If you forget to set `TUNNEL_URL`, the dashboard shows a text input where you can paste the URL at runtime.
 
-Two more pages, both reading the same `transition_log` and neither touching the kanban's own look or behaviour:
+One more page, `/timeline`, reading the same `transition_log` and touching neither the kanban's look nor its behaviour. `/history` and `/rewind` were two pages during development and now redirect here.
 
-| Page | Shows |
-|---|---|
-| `/history` | Every candidate's transition log — where they came from, where they went, which transition ran, when, and what triggered it — plus undo/redo. |
-| `/rewind` | A single playhead dragged across every candidate at once, resolving each one's state at that instant from the log via `state_at/2`. |
+### The playhead
 
-### `/history`
+Open it after a few candidates have moved. Each candidate gets a band spanning the same window, which starts at the earliest row any candidate logged — the first submission — and ends at now.
 
-Open it after a few candidates have moved. Each candidate gets a band (drawn from `Candidate.history/1`) and a table of every logged row: `#`, `when`, `from → to`, `transition`, `triggered by` (`submitted`, `automatic step`, `person`, `timeout`, `error path`, or `undo`), and `undoes` — a pointer to the row an undo row reverses.
+Drag the slider: the yellow playhead sweeps across every band at once, and each candidate's "state at playhead" readout updates to whatever the log says was true at that instant, not the candidate's current `state` column. This is log-backed and live (PubSub-driven, like every other page here), deliberately not built on Ash temporal resources / Postgres 19 — that is a separate, later piece of this talk.
+
+Clicking a candidate's name opens their own `/c/:id` page.
+
+### The log behind each band
+
+Click a band, or the ▸ beside it, to unfold the rows it was drawn from: `#`, `when`, `from → to`, `transition`, `triggered by` (`submitted`, `automatic step`, `person`, `timeout`, `error path`, or `undo`), and `undoes` — a pointer to the row an undo row reverses.
+
+The unfolded list is cut at the playhead. Scrub left and the rows after it leave the list, with a count of what is hidden; scrub right and they come back. The `#` column keeps counting from the first row, so a row's number does not change as the playhead moves and an `↩ row N` pointer stays readable.
 
 `:offer`, `:veto`, and the bureau's `:dbs_clear` / `:dbs_flag` are undoable for 30 minutes (`undo do within({30, :minutes}) end`). Click **undo → \<state\>** on a candidate that has one:
 
 1. The candidate rewinds to the state the log says it actually came from.
 2. A *new* row appears, `triggered by: undo`, marked `↩ row N` — pointing at the row it reverses. That row is still there, struck through. Nothing was edited or deleted.
-3. The **Showing: what happened / corrected history** toggle changes the band. The literal reading still contains the segment undo rewound out of, because the candidate really was in that state for a while. The corrected reading (`history(effective: true)`) drops it.
 
-Both readings come out of the same rows — the whole argument for recording an undo as a pointer rather than a flag on the row it reverses.
+That struck-through row is the whole argument for recording an undo as a pointer rather than a flag on the row it reverses. `AshWorkflow.TransitionLog.effective/1` reads the same rows and drops the reversed one, which is where the strike-through comes from.
 
 A few things worth clicking:
 
 - **Undo twice.** The second undo is a redo — it reverses the undo row, landing back where the first undo rewound out of.
 - **A freshly screened candidate says "nothing to undo".** Its most recent state change came from Janine's automatic `:record_hr_screen`, which is not an undoable transition.
 - **A bystander swept by `:offer`'s cascade from `:final_approval` still shows an undo button.** Undo resolves by `(from_state, to_state)` edge, not by which named transition wrote the row, and `:veto` shares that exact edge (`:final_approval -> :rejected`) with the `:slot_taken` cascade. A bystander swept from any *other* step stays correctly non-undoable, since no undoable transition shares that edge. See the comment on the `:final_approval` step in `candidate.ex`.
-
-### `/rewind`
-
-Drag the slider: the yellow playhead sweeps across every candidate's band at once, and each one's "state at playhead" readout updates to whatever the log says was true at that instant — not the candidate's current `state` column. This is log-backed and live (PubSub-driven, like every other page here), deliberately not built on Ash temporal resources / Postgres 19 — that is a separate, later piece of this talk.
 
 ## Demo flow
 
@@ -99,9 +99,7 @@ Covering: initial state, verify→review transition, hire cascade, cascade leave
 
 `test/candidate_transition_test.exs` covers the transition log itself: every `triggered_by` value (`:initial`, `:automatic`, `:error_path`, `:manual`, `:timeout`), `history/1` ordered by `occurred_at`, `state_at/2` before the first row / between two rows / after the last, undo leaving the reversed row in place with a pointer to it, undoing an undo as a redo, the 30-minute undo window expiring, and the `:final_approval` edge-sharing nuance between `:veto` and `:slot_taken`.
 
-`test/history_live_test.exs` covers the `/history` page: the log render, undo and redo through the LiveView, the effective/what-happened toggle, and a candidate whose last change was automatic offering nothing to undo.
-
-`test/rewind_live_test.exs` covers `/rewind`: the band render, the slider actually tracking the playhead via `render_change/3`, and a new candidate appearing on the next PubSub broadcast.
+`test/timeline_live_test.exs` covers the `/timeline` page: the band render, the slider tracking the playhead via `render_change/3`, the window starting at the earliest logged row, a new candidate appearing on the next PubSub broadcast, unfolding and folding a candidate's log, the name linking to `/c/:id`, rows leaving and rejoining the list as the playhead moves, row numbers counting from the first row rather than the first shown one, undo and redo through the LiveView, a candidate whose last change was automatic offering nothing to undo, and the `/history` and `/rewind` redirects.
 
 ## Architecture
 
@@ -121,8 +119,8 @@ Covering: initial state, verify→review transition, hire cascade, cascade leave
 - `lib/ash_workflow_demo_web/live/candidate_live.ex` — candidate's mobile self-view.
 - `lib/ash_workflow_demo_web/live/apply_live.ex` — public submission form.
 - `lib/ash_workflow_demo/ats/candidate_transition.ex` — the transition log, scaffolded by `mix ash_workflow.gen.transition_log AshWorkflowDemo.ATS.Candidate` and hand-adjusted (the generated `:workflow` relationship renamed to `:candidate`). No `belongs_to_actor`: this demo has no actor/auth resource, and `triggered_by` alone is enough to say who or what moved a candidate.
-- `lib/ash_workflow_demo_web/live/history_live.ex` — the `/history` page: per-candidate log and undo/redo, built the same way as `demos/workflow_timeline`'s `undo_live.ex`.
-- `lib/ash_workflow_demo_web/live/rewind_live.ex` — the `/rewind` page: the all-candidates playhead, built the same way as `demos/workflow_timeline`'s `timeline_live.ex`.
+- `lib/ash_workflow_demo_web/live/timeline_live.ex` — the `/timeline` page: the all-candidates playhead, with each candidate's log and undo/redo folded behind its band. Built from `demos/workflow_timeline`'s `timeline_live.ex` and `undo_live.ex`, which are still two pages there.
+- `lib/ash_workflow_demo_web/controllers/timeline_redirect_controller.ex` — sends `/history` and `/rewind` to `/timeline`.
 
 ## Why it's flashy
 

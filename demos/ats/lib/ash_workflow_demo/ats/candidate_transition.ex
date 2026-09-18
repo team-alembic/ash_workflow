@@ -4,8 +4,8 @@ defmodule AshWorkflowDemo.ATS.CandidateTransition do
 
   One row per workflow event — every automatic step, manual transition,
   timeout, error path, and the `:initial` row a candidate is created with.
-  This is what `/history` and `/rewind` read instead of the candidate's
-  current `state` column.
+  This is what `/timeline` reads instead of the candidate's current `state`
+  column.
 
   Scaffolded by `mix ash_workflow.gen.transition_log` and hand-adjusted: the
   generated `:workflow` relationship is renamed to `:candidate` to match this
