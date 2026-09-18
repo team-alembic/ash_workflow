@@ -160,6 +160,101 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutFieldsTest do
                AshWorkflowTest.RepeatingTimeoutWorkflow
     end
 
+    test "accepts repeat_until with no explicit repeat: true, and treats it as repeating" do
+      assert AshWorkflowTest.RepeatUntilWorkflow.__info__(:module) ==
+               AshWorkflowTest.RepeatUntilWorkflow
+
+      timeout =
+        AshWorkflowTest.RepeatUntilWorkflow
+        |> AshWorkflow.Info.workflow_graph()
+        |> Map.fetch!(:waiting)
+        |> Map.fetch!(:timeouts)
+        |> Enum.find(&(&1.name == :reminder))
+
+      assert timeout.repeat == true
+      assert timeout.repeat_until == {3, :hours}
+    end
+
+    test "rejects repeat_until shorter than fire_after" do
+      assert_dsl_error(
+        """
+        defmodule TooShortRepeatUntilWorkflow do
+          use Ash.Resource,
+            domain: AshWorkflowTest.Domain,
+            data_layer: Ash.DataLayer.Ets,
+            extensions: [AshWorkflow, AshOban]
+
+          workflow do
+            step :waiting do
+              transition :resolve, to: :done
+
+              timeout :reminder do
+                fire_after {3, :days}
+                action :send_reminder
+                repeat_until {1, :days}
+              end
+            end
+
+            step :done, terminal: true
+          end
+
+          actions do
+            update :send_reminder do
+              accept []
+            end
+          end
+
+          attributes do
+            uuid_v7_primary_key :id
+            attribute :title, :string, allow_nil?: false, public?: true
+          end
+        end
+        """,
+        ~r/repeat_until: \{1, :days\}, which is shorter than fire_after/
+      )
+    end
+
+    test "rejects repeat_until combined with a custom field, since it implies repeat: true" do
+      assert_dsl_error(
+        """
+        defmodule RepeatUntilWithFieldWorkflow do
+          use Ash.Resource,
+            domain: AshWorkflowTest.Domain,
+            data_layer: Ash.DataLayer.Ets,
+            extensions: [AshWorkflow, AshOban]
+
+          workflow do
+            step :active do
+              transition :deactivate, to: :inactive
+
+              timeout :bad_repeat_until do
+                fire_after {3, :days}
+                field :last_session_date
+                action :send_reminder
+                repeat_until {9, :days}
+              end
+            end
+
+            step :inactive, terminal: true
+          end
+
+          actions do
+            update :send_reminder do
+              accept []
+            end
+          end
+
+          attributes do
+            uuid_v7_primary_key :id
+            attribute :title, :string, allow_nil?: false, public?: true
+            attribute :last_session_date, :utc_datetime_usec, public?: true
+          end
+        end
+        """,
+        ~r/repeat: true with field:/
+      )
+    end
+
     test "accepts field referencing an existing attribute" do
       assert AshWorkflowTest.FieldTimeoutWorkflow.__info__(:module) ==
                AshWorkflowTest.FieldTimeoutWorkflow

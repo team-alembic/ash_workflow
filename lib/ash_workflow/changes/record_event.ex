@@ -20,6 +20,17 @@ defmodule AshWorkflow.Changes.RecordEvent do
       action timeout must not reset it, because every other deadline on the
       step measures `after` from the same attribute, so moving it would push a
       pending `transition_to` timeout out of reach.
+    * `:repeat_fire?` (optional, defaults to `false`) — whether this write of
+      `state_entered_at` is a repeating timeout re-arming itself, rather than a
+      genuine step entry. When the resource has a `repeat_started_at`
+      attribute (added when some timeout declares `repeat_until`), this change
+      writes it to the same instant as `state_entered_at` whenever
+      `touch_state_entered_at?` is true and `repeat_fire?` is false. That is
+      every manual transition, automatic step completion, transition timeout,
+      undo and the initial create — every case where the record is truly
+      entering the step, as opposed to a repeat resetting `state_entered_at` to
+      re-arm within the same step. See `AshWorkflow.Entities.Timeout` for why
+      `repeat_until` needs an anchor repeating cannot move.
     * `:transition_name` (optional) — the name recorded on the log row.
       Defaults to `changeset.action.name`, which is enough for most sites, but
       several of the actions `AddActions` generates use an internal hidden
@@ -110,21 +121,44 @@ defmodule AshWorkflow.Changes.RecordEvent do
       end)
 
     if touch_state_entered_at?(opts) do
-      {:atomic, changeset, %{state_entered_at: expr(now())}}
+      {:atomic, changeset, atomic_touched_attrs(changeset, opts)}
     else
       {:atomic, changeset, %{}}
     end
   end
 
+  defp atomic_touched_attrs(changeset, opts) do
+    if touch_repeat_started_at?(changeset, opts) do
+      %{state_entered_at: expr(now()), repeat_started_at: expr(now())}
+    else
+      %{state_entered_at: expr(now())}
+    end
+  end
+
   defp touch_state_entered_at(changeset, opts) do
     if touch_state_entered_at?(opts) do
-      Ash.Changeset.force_change_attribute(changeset, :state_entered_at, DateTime.utc_now())
+      now = DateTime.utc_now()
+
+      changeset = Ash.Changeset.force_change_attribute(changeset, :state_entered_at, now)
+
+      if touch_repeat_started_at?(changeset, opts) do
+        Ash.Changeset.force_change_attribute(changeset, :repeat_started_at, now)
+      else
+        changeset
+      end
     else
       changeset
     end
   end
 
   defp touch_state_entered_at?(opts), do: Keyword.get(opts, :touch_state_entered_at, true)
+
+  defp repeat_fire?(opts), do: Keyword.get(opts, :repeat_fire?, false)
+
+  defp touch_repeat_started_at?(changeset, opts) do
+    not repeat_fire?(opts) and
+      Ash.Resource.Info.attribute(changeset.resource, :repeat_started_at) != nil
+  end
 
   defp finish(changeset, record, opts, context) do
     record = append_log(changeset, record, opts, context)

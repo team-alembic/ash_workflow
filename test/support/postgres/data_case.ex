@@ -34,16 +34,27 @@ defmodule AshWorkflowTest.DataCase do
   no generic update action, and the point is to move the clock without going
   through the state machine.
   """
-  def age_by(record, amount, unit) do
-    entered_at = DateTime.add(DateTime.utc_now(), -amount, unit)
+  def age_by(record, amount, unit), do: age_field_by(record, :state_entered_at, amount, unit)
+
+  @doc """
+  Like `age_by/3`, but for `repeat_started_at` — the anchor `repeat_until`
+  measures against, which a real transition sets once and a repeat never
+  moves. A test ages it independently of `state_entered_at` to put a record on
+  either side of the bound without waiting for a repeat to actually fire.
+  """
+  def age_repeat_started_at_by(record, amount, unit),
+    do: age_field_by(record, :repeat_started_at, amount, unit)
+
+  defp age_field_by(record, field, amount, unit) do
+    at = DateTime.add(DateTime.utc_now(), -amount, unit)
     table = DataLayerInfo.table(record.__struct__)
 
     {1, _} =
       Repo.update_all(
         from(r in table, where: r.id == type(^record.id, :binary_id)),
-        set: [state_entered_at: entered_at]
+        set: [{field, at}]
       )
 
-    %{record | state_entered_at: entered_at}
+    Map.put(record, field, at)
   end
 end

@@ -77,6 +77,50 @@ This reset is why `state_entered_at` is a timer anchor rather than a reliable "w
 
 Non-repeating timeouts (the default) use Oban's `trigger_once?` to prevent re-firing after the action completes, and they leave `state_entered_at` alone. Resetting it would push every other deadline on the same step back by the same amount, so a `timeout :warn, fire_after: {30, :minutes}, action: :warn` cannot delay the `timeout :breach, fire_after: {1, :hours}, transition_to: :escalated` beside it. Transition timeouts (with `transition_to`) don't need either mechanism since the state change naturally prevents re-firing.
 
+## Bounding a repeat with `repeat_until`
+
+`repeat: true` alone repeats forever. `repeat_until` stops it after a fixed amount of wall-clock time:
+
+```elixir
+timeout :reminder do
+  fire_after {2, :days}
+  action :send_review_reminder
+  repeat_until {8, :days}
+end
+```
+
+This fires every 2 days and stops once 8 days have passed since the record entered the step — four reminders, then silence. `repeat_until` implies `repeat: true` (`AshWorkflow.Entities.Timeout.normalize/1` sets it before any verifier runs), so it never needs to be declared alongside it. `AshWorkflow.Verifiers.ValidateTimeoutFields` rejects a `repeat_until` shorter than `fire_after`, since the timeout could then never fire even once.
+
+### Why `repeat_until` cannot be measured against `state_entered_at`
+
+A repeating timeout works by resetting `state_entered_at` to now on every firing — that reset is the whole mechanism, and it is why `state_entered_at` keeps matching every `fire_after` interval. A bound checked against the same moving timestamp would never be reached: every firing pushes it further from "now", by construction.
+
+So `repeat_until` is measured against a different attribute, `repeat_started_at`, which the extension adds only when some timeout in the workflow declares `repeat_until`. Every genuine step entry — a manual transition, an automatic step completing, a transition timeout, an undo, or the initial create — writes `repeat_started_at` to the same instant as `state_entered_at`. A repeating timeout's own firing resets `state_entered_at` to re-arm itself, but never touches `repeat_started_at`. So it answers "when did the record truly enter this step", immune to the resets `state_entered_at` cannot avoid, and `repeat_until` bounds the repeat against that fixed instant.
+
+This is deliberately a second attribute rather than the `entered_current_state_at` calculation from [Workflow history](workflow-history.md), even though that calculation answers the same question. `entered_current_state_at` reads the transition log to compute its value, which means it cannot be pushed into the trigger's `where` clause — `AshWorkflow.Verifiers.ValidateTimeoutFields` already rejects any module calculation used as a timeout field, for exactly that reason. `repeat_started_at` is a plain column, so both schedulers can filter on it directly.
+
+### What happens when the bound is reached
+
+Reaching `repeat_until` only stops the repeat — it does not transition state, and it fires no notification of its own. The record stays in the step, silent, until something else moves it.
+
+If you also want a transition once reminders run out, declare it as a second, ordinary timeout rather than looking for a `repeat_until`-triggered transition:
+
+```elixir
+step :awaiting_response do
+  timeout :reminder do
+    fire_after {2, :days}
+    action :send_review_reminder
+    repeat_until {8, :days}
+  end
+
+  timeout :give_up, fire_after: {8, :days}, transition_to: :escalated
+end
+```
+
+`repeat_until` and `give_up` share nothing at runtime — `give_up` is exactly the transition timeout described in [Transition timeouts](#transition-timeouts) above, just given a `fire_after` equal to the bound. Composing two timeouts this way keeps `repeat_until` doing one thing (bounding a repeat count implied by wall-clock time) rather than growing a second, transition-shaped meaning.
+
+`repeat_until` bounds wall-clock time, not a count of firings. A workflow that wants to say "at most 4 reminders" rather than "for at most 8 days" needs a firing counter, which is a different feature — nothing here tracks how many times a timeout has fired, only when it started.
+
 ## Data-driven deadlines with `field`
 
 By default, timeouts measure duration against `state_entered_at` — when the workflow entered its current state. The `field` option lets you measure against any datetime attribute or calculation instead:

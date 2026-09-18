@@ -122,6 +122,47 @@ Without `repeat`, an action timeout fires once after the deadline and then stops
 
 Transition timeouts ignore `repeat` — once the state changes, the timeout is no longer relevant.
 
+### Bounding a repeat with `repeat_until`
+
+`repeat: true` alone repeats forever. `repeat_until` stops it after a fixed
+amount of wall-clock time:
+
+```elixir
+timeout :reminder do
+  fire_after {2, :days}
+  action :send_review_reminder
+  repeat_until {8, :days}
+end
+```
+
+This fires every 2 days and stops once 8 days have passed — four reminders,
+then silence. `repeat_until` implies `repeat: true`, so it does not need to be
+set separately, and `repeat_until` must be at least `fire_after` (otherwise it
+could never fire even once).
+
+`repeat_until` is **not** measured against `fire_after`'s own anchor
+(`state_entered_at` by default). Repeating is what resets that anchor on every
+firing, so a bound checked against it would never be reached. Instead, the
+extension adds a second attribute, `repeat_started_at`, set once when the
+record genuinely enters the step and left untouched by every repeat firing
+after that. `repeat_until` is measured from there.
+
+Reaching the bound only stops the repeat — it does not transition state. To
+also force a transition once reminders run out, declare a second, non-repeating
+timeout with a longer `fire_after`:
+
+```elixir
+step :awaiting_response do
+  timeout :reminder do
+    fire_after {2, :days}
+    action :send_review_reminder
+    repeat_until {8, :days}
+  end
+
+  timeout :give_up, fire_after: {8, :days}, transition_to: :escalated
+end
+```
+
 ## Combining Multiple Timeouts
 
 A single step can have multiple timeouts with different deadlines:

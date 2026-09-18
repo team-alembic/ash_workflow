@@ -19,6 +19,7 @@ defmodule AshWorkflowTest.Domain do
     resource AshWorkflowTest.InitialFlagWorkflow
     resource AshWorkflowTest.DerivedTerminalWorkflow
     resource AshWorkflowTest.RepeatingTimeoutWorkflow
+    resource AshWorkflowTest.RepeatUntilWorkflow
     resource AshWorkflowTest.CustomQueueWorkflow
     resource AshWorkflowTest.FieldTimeoutWorkflow
     resource AshWorkflowTest.ExprCalcTimeoutWorkflow
