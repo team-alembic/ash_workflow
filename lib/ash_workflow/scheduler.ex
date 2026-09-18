@@ -43,6 +43,11 @@ defmodule AshWorkflow.Scheduler do
   a timer for it. Its floor is the timer, which is microseconds. It reads
   `Work.deadline` and implements `c:deadline_changed/2`.
 
+  `Work.deadline` is `%{field: atom(), fire_after: duration | nil}`: the instant
+  is the field plus the duration, or the field itself when `fire_after` is `nil`,
+  which is what the DSL's `fire_at` declares. `due_at/2` resolves both, so an
+  implementation reads the instant rather than the shape.
+
   Neither is forced into the other's shape: `c:deadline_changed/2` is optional, so
   a discovering scheduler simply does not implement it, and a registering one
   gets the callback it needs without every workflow paying for a table.
@@ -292,12 +297,16 @@ defmodule AshWorkflow.Scheduler do
   @spec due_at(Work.t(), Ash.Resource.record()) :: DateTime.t() | nil
   def due_at(%Work{deadline: nil}, _record), do: nil
 
-  def due_at(%Work{deadline: %{field: field, fire_after: {value, unit}}}, record) do
+  def due_at(%Work{deadline: %{field: field, fire_after: fire_after}}, record) do
     case Map.get(record, field) do
       nil -> nil
-      from -> DateTime.add(as_datetime(from), value, singular(unit))
+      %Ash.NotLoaded{} -> nil
+      from -> offset(as_datetime(from), fire_after)
     end
   end
+
+  defp offset(from, nil), do: from
+  defp offset(from, {value, unit}), do: DateTime.add(from, value, singular(unit))
 
   defp as_datetime(%DateTime{} = value), do: value
   defp as_datetime(%NaiveDateTime{} = value), do: DateTime.from_naive!(value, "Etc/UTC")

@@ -247,20 +247,32 @@ defmodule AshWorkflow.Scheduler.Precise.Timeline do
     read(work.resource, work.match, state)
   end
 
-  defp due_records(
-         %Work{deadline: %{field: field, fire_after: {value, unit}}} = work,
-         state,
-         cutoff
-       ) do
-    bound = DateTime.add(cutoff, -value, singular(unit))
+  defp due_records(%Work{deadline: %{field: field, fire_after: fire_after}} = work, state, cutoff) do
+    bound = bound(cutoff, fire_after)
     step = work.step
 
     filter = Ash.Expr.expr(state == ^step and ^ref(field) <= ^bound)
 
-    read(work.resource, filter, state)
+    read(work.resource, filter, state, deadline_loads(work))
   end
 
-  defp read(resource, filter, state) do
+  # A `fire_at` deadline is the field itself, so the horizon's cutoff is already
+  # the bound to compare it against. Either way the bound is computed in Elixir
+  # and reaches the data layer as a bind parameter.
+  defp bound(cutoff, nil), do: cutoff
+  defp bound(cutoff, {value, unit}), do: DateTime.add(cutoff, -value, singular(unit))
+
+  # `AshWorkflow.Scheduler.due_at/2` reads the deadline field off the record with
+  # `Map.get/2`, which finds nothing for a calculation that has not been loaded.
+  # A timeout may name an expression calculation as its `field` or its `fire_at`,
+  # so load it with the records the timer is armed from.
+  defp deadline_loads(%Work{deadline: %{field: field}, resource: resource}) do
+    if Ash.Resource.Info.calculation(resource, field), do: [field], else: []
+  end
+
+  defp deadline_loads(%Work{}), do: []
+
+  defp read(resource, filter, state, loads \\ []) do
     opts =
       state.action_opts
       |> Keyword.put_new(:authorize?, false)
@@ -272,6 +284,7 @@ defmodule AshWorkflow.Scheduler.Precise.Timeline do
     resource
     |> Ash.Query.new()
     |> Ash.Query.do_filter(filter)
+    |> Ash.Query.load(loads)
     |> Ash.read(opts)
     |> case do
       {:ok, records} when is_list(records) ->
@@ -381,7 +394,7 @@ defmodule AshWorkflow.Scheduler.Precise.Timeline do
 
     filter = Ash.Expr.expr(^Ash.Expr.expr(^pk_filter) and ^work.match)
 
-    case read(work.resource, filter, state) do
+    case read(work.resource, filter, state, deadline_loads(work)) do
       # The record left the step, or its deadline moved. Whatever armed this
       # timer is out of date, and doing nothing is the correct outcome.
       [] -> state
