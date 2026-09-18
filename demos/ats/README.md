@@ -33,7 +33,9 @@ One more page, `/timeline`, reading the same `transition_log` and touching neith
 
 ### The playhead
 
-Open it after a few candidates have moved. Each candidate gets a band spanning the same window, which starts at the earliest row any candidate logged — the first submission — and ends at now.
+Open it after a few candidates have moved. Each candidate gets a band spanning the same window, which runs from the earliest row any candidate logged — the first submission — to a minute past the latest one.
+
+Both ends come from the log rather than the wall clock. A window ending at `now` keeps widening for as long as the server is up, so a demo left running between sessions squeezes every band into the left edge and leaves most of the slider scrubbing through empty time.
 
 Drag the slider: the yellow playhead sweeps across every band at once, and each candidate's "state at playhead" readout updates to whatever the log says was true at that instant, not the candidate's current `state` column. This is log-backed and live (PubSub-driven, like every other page here), deliberately not built on Ash temporal resources / Postgres 19 — that is a separate, later piece of this talk.
 

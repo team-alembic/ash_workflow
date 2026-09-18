@@ -13,6 +13,10 @@ defmodule AshWorkflowDemoWeb.TimelineLive do
   at or before it, so scrubbing back takes events off the list and scrubbing
   forward puts them back.
 
+  The window spans the first logged event to a minute past the last one, so
+  it stays the width of the demo rather than the width of however long the
+  server has been up.
+
   Also the undo page. `Candidate.undo_target/1` names the state the most
   recent undoable transition would rewind to, or `nil` when the last change
   was not one of `:offer`, `:veto`, `:dbs_clear`, or `:dbs_flag`. Clicking
@@ -30,6 +34,7 @@ defmodule AshWorkflowDemoWeb.TimelineLive do
   alias AshWorkflowDemo.ATS.Candidate
 
   @slider_steps 1000
+  @window_padding_seconds 60
 
   @state_colors %{
     hr_screen: "bg-amber-500",
@@ -168,13 +173,22 @@ defmodule AshWorkflowDemoWeb.TimelineLive do
     |> Enum.reverse()
   end
 
+  # The window ends a minute past the last logged event rather than at `now`.
+  # Anchoring it to the wall clock stretches the window for as long as the
+  # demo is left running, which squeezes every band into the left edge and
+  # makes scrubbing back through them unusable. A live candidate's last
+  # segment still runs to the end of the window either way.
   defp time_window(bands) do
     all_times = Enum.flat_map(bands, fn band -> Enum.map(band.segments, & &1.start) end)
     now = DateTime.utc_now()
 
     case all_times do
-      [] -> {DateTime.add(now, -1, :hour), now}
-      times -> {Enum.min(times, DateTime), now}
+      [] ->
+        {DateTime.add(now, -@window_padding_seconds, :second), now}
+
+      times ->
+        {Enum.min(times, DateTime),
+         times |> Enum.max(DateTime) |> DateTime.add(@window_padding_seconds, :second)}
     end
   end
 

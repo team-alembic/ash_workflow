@@ -118,6 +118,31 @@ defmodule AshWorkflowDemoWeb.TimelineLiveTest do
       assert html =~ Calendar.strftime(first.occurred_at, "%H:%M:%S")
     end
 
+    test "the window ends a minute past the last logged row, not at now", %{conn: conn} do
+      # Backdated by an hour, so a window running to `now` would show a
+      # wall-clock end time rather than one anchored to the log.
+      candidate = backdated_candidate!("Bounded", 60)
+      last = candidate |> Candidate.history() |> List.last()
+      expected_end = DateTime.add(last.occurred_at, 60, :second)
+
+      {:ok, _view, html} = live(conn, "/timeline")
+
+      assert html =~ Calendar.strftime(expected_end, "%H:%M:%S")
+      refute html =~ Calendar.strftime(DateTime.utc_now(), "%H:%M:%S")
+    end
+
+    test "a new event extends the window to a minute past itself", %{conn: conn} do
+      backdated_candidate!("Settled", 60)
+
+      {:ok, view, _html} = live(conn, "/timeline")
+
+      latecomer = start_candidate("Latecomer")
+      [row] = Candidate.history(latecomer)
+
+      assert render(view) =~
+               Calendar.strftime(DateTime.add(row.occurred_at, 60, :second), "%H:%M:%S")
+    end
+
     test "a candidate created after mount appears on the next candidate_changed broadcast", %{
       conn: conn
     } do
