@@ -45,9 +45,11 @@ defmodule AshWorkflowDemo.DataCase do
   workflow actually drives it.
   """
   def run_workflow_triggers(resource, passes \\ 5) do
-    # Each pass runs from the state the last pass left behind. The demo chains
-    # :submitted -> :verifying -> :review, and work is only due for the state a
-    # record is in when it runs, so one pass is not enough.
+    # Each pass runs from the state the last pass left behind. A deadline
+    # firing on :hr_screen lands on :hr_decision, whose action then routes on
+    # to :background_check or :rejected in the same pass it was entered, but
+    # work is only due for the state a record is in when a pass starts, so one
+    # pass is not enough to walk the whole chain.
     Enum.reduce_while(1..passes, 0, fn _, _ ->
       case AshWorkflow.Scheduler.Precise.run_due(resource) do
         0 -> {:halt, 0}
@@ -83,12 +85,19 @@ defmodule AshWorkflowDemo.DataCase do
   def reload(record), do: Ash.get!(record.__struct__, record.id, authorize?: false)
 
   @doc """
-  Sets the moment the scorer may pick a candidate up. `:submitted` is a wait
-  state gated on this field, so a test that wants verification to happen has to
-  put the deadline in the past.
+  Sets the moment Janine is due to answer into the past, so `:hr_screen`'s
+  `:janine_responds` timeout is due the next time triggers run.
   """
-  def ready_to_verify(candidate),
-    do: set_datetime(candidate, :verify_after, DateTime.add(DateTime.utc_now(), -1, :second))
+  def ready_for_hr_decision(candidate),
+    do: set_datetime(candidate, :hr_respond_after, DateTime.add(DateTime.utc_now(), -1, :second))
+
+  @doc """
+  Sets the moment Steve is due to answer into the past, so `:lead_interview`'s
+  `:steve_responds` timeout is due the next time triggers run.
+  """
+  def ready_for_lead_decision(candidate),
+    do:
+      set_datetime(candidate, :lead_respond_after, DateTime.add(DateTime.utc_now(), -1, :second))
 
   @doc """
   Sets up the sandbox based on the test tags.

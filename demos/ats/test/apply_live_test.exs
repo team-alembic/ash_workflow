@@ -30,7 +30,7 @@ defmodule AshWorkflowDemoWeb.ApplyLiveTest do
     assert [c] = candidates
     assert c.name == "TestCandidate"
     assert c.pitch == "a real pitch"
-    assert c.state == :submitted
+    assert c.state == :hr_screen
     assert c.avatar_url =~ "dicebear.com"
   end
 

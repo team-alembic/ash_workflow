@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" role="img" aria-label="Crest of the Disclosure and Background Bureau">
+  <defs>
+    <path id="crest-top" d="M 120 120 m -96 0 a 96 96 0 1 1 192 0" fill="none"/>
+    <path id="crest-bottom" d="M 120 120 m -78 0 a 78 78 0 1 0 156 0" fill="none"/>
+  </defs>
+
+  <circle cx="120" cy="120" r="116" fill="#1f2a22" stroke="#c8b273" stroke-width="3"/>
+  <circle cx="120" cy="120" r="104" fill="none" stroke="#c8b273" stroke-width="1.5"/>
+  <circle cx="120" cy="120" r="72" fill="none" stroke="#c8b273" stroke-width="1"/>
+
+  <text fill="#c8b273" font-family="Georgia, 'Times New Roman', serif" font-size="15" letter-spacing="2.4">
+    <textPath href="#crest-top" startOffset="50%" text-anchor="middle">
+      DISCLOSURE &amp; BACKGROUND BUREAU
+    </textPath>
+  </text>
+
+  <text fill="#c8b273" font-family="Georgia, 'Times New Roman', serif" font-size="12" letter-spacing="3">
+    <textPath href="#crest-bottom" startOffset="50%" text-anchor="middle">
+      NIHIL OBLIVISCITUR
+    </textPath>
+  </text>
+
+  <path d="M 120 62 L 162 78 L 162 126 Q 162 158 120 178 Q 78 158 78 126 L 78 78 Z"
+        fill="#2c3a2f" stroke="#c8b273" stroke-width="2.5"/>
+
+  <circle cx="112" cy="112" r="22" fill="none" stroke="#c8b273" stroke-width="4"/>
+  <line x1="128" y1="128" x2="146" y2="148" stroke="#c8b273" stroke-width="6" stroke-linecap="round"/>
+  <line x1="100" y1="112" x2="124" y2="112" stroke="#c8b273" stroke-width="2"/>
+  <line x1="112" y1="100" x2="112" y2="124" stroke="#c8b273" stroke-width="2"/>
+</svg>

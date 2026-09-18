@@ -5,9 +5,21 @@ defmodule AshWorkflowDemoWeb.ApplyLive do
 
   @avatar_styles ~w(avataaars adventurer big-smile bottts fun-emoji micah)
 
+  # Both of these end up on a projector. The caps are enforced here rather
+  # than only by `maxlength`, which is the browser's suggestion and not a
+  # limit any other client has to respect.
+  @name_max_chars 60
+  @pitch_max_chars 200
+
   @impl true
   def mount(_params, _session, socket) do
-    {:ok, assign(socket, form: blank_form(), error: nil)}
+    {:ok,
+     assign(socket,
+       form: blank_form(),
+       error: nil,
+       name_max_chars: @name_max_chars,
+       pitch_max_chars: @pitch_max_chars
+     )}
   end
 
   @impl true
@@ -22,8 +34,11 @@ defmodule AshWorkflowDemoWeb.ApplyLive do
       pitch == "" ->
         {:noreply, assign(socket, error: "pitch cannot be empty")}
 
-      String.length(pitch) > 200 ->
-        {:noreply, assign(socket, error: "pitch must be 200 characters or fewer")}
+      String.length(name) > @name_max_chars ->
+        {:noreply, assign(socket, error: "name must be #{@name_max_chars} characters or fewer")}
+
+      String.length(pitch) > @pitch_max_chars ->
+        {:noreply, assign(socket, error: "pitch must be #{@pitch_max_chars} characters or fewer")}
 
       true ->
         avatar = build_avatar_url(name)
@@ -46,56 +61,57 @@ defmodule AshWorkflowDemoWeb.ApplyLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="min-h-screen bg-gradient-to-br from-amber-500 to-red-700 flex items-center justify-center p-6">
-      <div class="w-full max-w-md bg-white rounded-2xl shadow-2xl p-8 space-y-6">
+    <div class="min-h-screen bg-ink flex items-center justify-center p-6">
+      <div class="w-full max-w-md bg-ink-raised border border-ink-line rounded-2xl shadow-2xl p-8 space-y-6">
         <div class="text-center">
           <div class="text-5xl mb-2">🤠</div>
-          <h1 class="text-3xl font-extrabold">¿Y usted quién es?</h1>
-          <p class="text-stone-600 mt-2">El Jefe is hiring. One slot. Make it count.</p>
+          <h1 class="text-3xl font-extrabold text-paper">¿Y usted quién es?</h1>
+          <p class="text-paper-muted mt-2">El Jefe is hiring. One slot. Make it count.</p>
         </div>
 
         <form phx-submit="submit" class="space-y-4">
           <div>
-            <label class="block text-sm font-semibold text-stone-700">Your name</label>
+            <label class="block text-sm font-semibold text-paper">Your name</label>
             <input
               type="text"
               name="candidate[name]"
               value={@form["name"]}
+              maxlength={@name_max_chars}
               autocomplete="off"
-              class="mt-1 w-full rounded-lg border-stone-300 shadow-sm focus:border-amber-500 focus:ring-amber-500"
+              class="mt-1 w-full rounded-lg bg-ink border-ink-line text-paper placeholder:text-paper-muted/60 shadow-sm focus:border-accent focus:ring-accent"
               placeholder="e.g. Lola"
               required
             />
           </div>
 
           <div>
-            <label class="block text-sm font-semibold text-stone-700">
-              Your pitch (max 200 chars)
+            <label class="block text-sm font-semibold text-paper">
+              Your pitch (max {@pitch_max_chars} chars)
             </label>
             <textarea
               name="candidate[pitch]"
               rows="4"
-              maxlength="200"
-              class="mt-1 w-full rounded-lg border-stone-300 shadow-sm focus:border-amber-500 focus:ring-amber-500"
+              maxlength={@pitch_max_chars}
+              class="mt-1 w-full rounded-lg bg-ink border-ink-line text-paper placeholder:text-paper-muted/60 shadow-sm focus:border-accent focus:ring-accent"
               placeholder="Why should El Jefe hire you?"
               required
             ><%= @form["pitch"] %></textarea>
           </div>
 
           <%= if @error do %>
-            <div class="text-red-600 text-sm">{@error}</div>
+            <div class="text-bubble-alarm text-sm">{@error}</div>
           <% end %>
 
           <button
             type="submit"
-            class="w-full bg-red-700 text-white font-bold py-3 rounded-lg hover:bg-red-800 transition"
+            class="w-full bg-accent text-ink font-black py-3 rounded-lg hover:bg-accent/85 transition"
           >
             Apply
           </button>
         </form>
 
-        <p class="text-xs text-stone-500 text-center">
-          Warning: El Jefe has {Deadlines.seconds(:auto_reject)} seconds to decide.
+        <p class="text-xs text-paper-muted text-center">
+          Warning: Janine has {Deadlines.seconds(:janine_responds)} seconds to get to your pitch.
         </p>
       </div>
     </div>

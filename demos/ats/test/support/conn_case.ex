@@ -32,12 +32,25 @@ defmodule AshWorkflowDemoWeb.ConnCase do
       # Workflow-driving helpers: a LiveView test that needs a reviewable
       # candidate has to get one the way the app does.
       import AshWorkflowDemo.DataCase,
-        only: [run_workflow_triggers: 1, ready_to_verify: 1, reload: 1, age_by: 3]
+        only: [
+          run_workflow_triggers: 1,
+          ready_for_hr_decision: 1,
+          ready_for_lead_decision: 1,
+          reload: 1,
+          age_by: 3,
+          set_datetime: 3
+        ]
     end
   end
 
   setup tags do
     AshWorkflowDemo.DataCase.setup_sandbox(tags)
-    {:ok, conn: Phoenix.ConnTest.build_conn()}
+
+    # `build_conn/0` defaults to www.example.com, which
+    # `AshWorkflowDemoWeb.Plugs.LocalOnly` correctly treats as a stranger. A
+    # test stands where the operator stands unless it says otherwise, so the
+    # default here is the loopback host. `test/exposure_test.exs` overrides it
+    # to check what the tunnel can reach.
+    {:ok, conn: %{Phoenix.ConnTest.build_conn() | host: "localhost"}}
   end
 end

@@ -1,6 +1,23 @@
 # ash_workflow_demo
 
-Conference stage demo for [AshWorkflow](https://github.com/team-alembic/ash_workflow). An ATS pipeline where attendees submit themselves from their phones, El Jefe picks one, and everyone else cascades to `:position_filled`.
+Conference stage demo for [AshWorkflow](https://github.com/team-alembic/ash_workflow). An ATS pipeline where attendees submit themselves from their phones, two reviewers who are played by the workflow itself wave them through or turn them down, a background check answers from outside the application, and El Jefe picks one.
+
+## Reading this as an example
+
+This is a bigger Phoenix application than the other demos in this repo, because it was built to be run live on stage at an Ash conference. The kanban, the audience-facing apply form, the bureau portal, the playhead, the character art and the theme all exist to survive a room full of people, and none of them are what AshWorkflow asks of you.
+
+The part worth copying is `lib/ash_workflow_demo/ats/candidate.ex`. One resource, one `workflow do` block, and the whole pipeline — the steps, the deadlines, the conditional routes, the undo windows — is declared in it. Everything under `lib/ash_workflow_demo_web/` is a way of looking at that resource, not a requirement of it. `lib/ash_workflow_demo/ats/candidate_transition.ex` is the second piece: the generated transition log that `/timeline` reads.
+
+For a smaller starting point, look at the other directories under `demos/`.
+
+It still runs the ordinary way:
+
+```bash
+mix setup
+mix phx.server
+```
+
+Everything below about tunnels, QR codes and a bureau token is for running it in front of an audience. None of it is needed to watch the workflow work on `localhost:4000`.
 
 ## One-time setup
 
@@ -25,17 +42,98 @@ TUNNEL_URL=https://<xxx>.trycloudflare.com mix phx.server
 
 Open http://localhost:4000/ — that's El Jefe's kanban. Project it. The QR in the corner points at `<tunnel>/apply`.
 
-If you forget to set `TUNNEL_URL`, the dashboard shows a text input where you can paste the URL at runtime.
+Open `<tunnel>/dbs` on a second screen or a phone. That's the Disclosure & Background Bureau portal, and it is the only way a candidate leaves `:background_check` before the check lapses.
+
+Without `TUNNEL_URL` the dashboard says so where the QR code would be. There is no runtime paste field: the URL is known before the server starts, and a form for it would be one more unauthenticated write on a page the tunnel publishes.
+
+## What the room can reach
+
+`cloudflared` publishes the whole application, not only the two pages the audience needs, and every button in this demo is unauthenticated. So the operator pages are served to the machine running the demo and 404 to everybody else.
+
+| Path | Through the tunnel |
+|---|---|
+| `/apply`, `/c/:id`, `/dbs` | Served. This is the demo. |
+| `/`, `/timeline` (and the `/history`, `/rewind` redirects) | 404. They carry **Make the offer**, **Veto**, **Reset the board**, and undo. |
+
+`AshWorkflowDemoWeb.Plugs.LocalOnly` decides this on the `Host` header, not on `conn.remote_ip`. `cloudflared` runs on the same machine and proxies to `localhost:4000`, so a tunnelled request arrives from `127.0.0.1` exactly like a local one and the remote IP cannot tell them apart. The host name can. To project the board from another machine on the same network, name it:
+
+```bash
+LOCAL_EXTRA_HOSTS=192.168.1.20:4000 mix phx.server
+```
+
+Two other things a stranger can otherwise write onto the projector:
+
+- **The webhook's `offence` text.** `POST /webhooks/dbs` is unauthenticated by design, and every live `dbs_reference` is printed on `/dbs` and on the kanban cards, so it needs no guessing. A free-text offence is therefore honoured only with an `x-bureau-token` header matching `BUREAU_TOKEN`, and is capped at 120 characters with control characters stripped. Without the token the bureau picks from `DbsOffences` as it always did and the response says the text was ignored. Set it if you want to curl a custom one on stage:
+
+  ```bash
+  BUREAU_TOKEN=$(openssl rand -hex 16) mix phx.server
+  ```
+
+- **Name and pitch.** Capped at 60 and 200 characters in `ApplyLive`, server-side rather than by `maxlength` alone. There is no word filtering — you moderate by watching the board and hitting **Reset the board**.
+
+HEEx escapes every interpolation, so markup in a name renders as text rather than running. The one `raw/1` in the app is `DashboardLive.qr_svg/2`, which raws EQRCode's generated SVG; the URL becomes QR module data and never reaches the markup.
+
+One more page, `/timeline`, reading the same `transition_log` and touching neither the kanban's look nor its behaviour. `/history` and `/rewind` were two pages during development and now redirect here.
+
+### The playhead
+
+Open it after a few candidates have moved. Each candidate gets a band spanning the same window, which runs from the earliest row any candidate logged — the first submission — to a minute past the latest one.
+
+Both ends come from the log rather than the wall clock. A window ending at `now` keeps widening for as long as the server is up, so a demo left running between sessions squeezes every band into the left edge and leaves most of the slider scrubbing through empty time.
+
+Drag the slider: the yellow playhead sweeps across every band at once, and each candidate's "state at playhead" readout updates to whatever the log says was true at that instant, not the candidate's current `state` column. This is log-backed and live (PubSub-driven, like every other page here), deliberately not built on Ash temporal resources / Postgres 19 — that is a separate, later piece of this talk.
+
+Clicking a candidate's name opens their own `/c/:id` page.
+
+### The log behind each band
+
+Click a band, or the ▸ beside it, to unfold the rows it was drawn from: `#`, `when`, `from → to`, `transition`, `triggered by` (`submitted`, `automatic step`, `person`, `timeout`, `error path`, or `undo`), and `undoes` — a pointer to the row an undo row reverses.
+
+The unfolded list is cut at the playhead. Scrub left and the rows after it leave the list, with a count of what is hidden; scrub right and they come back. The `#` column keeps counting from the first row, so a row's number does not change as the playhead moves and an `↩ row N` pointer stays readable.
+
+`:offer`, `:veto`, and the bureau's `:dbs_clear` / `:dbs_flag` are undoable for 30 minutes (`undo do within({30, :minutes}) end`). Click **undo → \<state\>** on a candidate that has one:
+
+1. The candidate rewinds to the state the log says it actually came from.
+2. A *new* row appears, `triggered by: undo`, marked `↩ row N` — pointing at the row it reverses. That row is still there, struck through. Nothing was edited or deleted.
+
+That struck-through row is the whole argument for recording an undo as a pointer rather than a flag on the row it reverses. `AshWorkflow.TransitionLog.effective/1` reads the same rows and drops the reversed one, which is where the strike-through comes from.
+
+A few things worth clicking:
+
+- **Undo twice.** The second undo is a redo — it reverses the undo row, landing back where the first undo rewound out of.
+- **A freshly screened candidate says "nothing to undo".** Its most recent state change came from Janine's automatic `:record_hr_screen`, which is not an undoable transition.
+- **A bystander swept by `:offer`'s cascade from `:final_approval` still shows an undo button.** Undo resolves by `(from_state, to_state)` edge, not by which named transition wrote the row, and `:veto` shares that exact edge (`:final_approval -> :rejected`) with the `:slot_taken` cascade. A bystander swept from any *other* step stays correctly non-undoable, since no undoable transition shares that edge. See the comment on the `:final_approval` step in `candidate.ex`.
 
 ## Demo flow
 
-1. Open dashboard. QR code is top-right.
-2. Audience scans QR → lands on `/apply`. Submitting creates a candidate in `:submitted`, a wait state holding them until their own `verify_after` deadline passes; within a few seconds the automatic `:verifying` step scores them and they land in `:review`. The delay is a per-candidate timestamp, not a sleep, so a whole room applying at once does not queue up behind each other.
-3. On a `:review` card, a 30-second countdown runs. If El Jefe doesn't hire or reject, the workflow auto-rejects.
-4. Click **Hire** on one card — that candidate becomes `:hired` and every other `:review` candidate cascades to `:position_filled`.
-5. Candidates watch themselves on `/c/:id` — a mobile-optimised view with their current state. The winner sees confetti.
-6. **Insert Random Candidate** injects a fake one if the audience is shy.
-7. **Reset the Req** clears `:review` candidates to `:position_filled` so you can run the demo again.
+1. Open the dashboard. QR code is top-right.
+2. Audience scans QR, lands on `/apply`. Submitting puts them on `:hr_screen`, waiting on Janine.
+3. Janine comes back after a delay drawn for that candidate. She scores the pitch out of ten and writes a line about it. Four or better goes to the background check; anything less is rejected there and then. Nobody clicked anything.
+4. On the DBS portal, the candidate is listed by their `dbs_reference`. Return a disclosure and they carry an absurd offence for the rest of the pipeline. Ignore the portal and the bureau answers for itself after 90 seconds, disclosing something about three times in five.
+5. Steve, the engineering lead, comes back after his own delay and writes up the interview. He has read the disclosure and is unbothered by it. Four or better reaches El Jefe.
+6. El Jefe's column is the only one with buttons. **Make the offer** hires that candidate and sweeps every other candidate still moving — at any step — to `:rejected` in the same instant. **Veto** rejects just that one.
+7. Candidates watch all of it on `/c/:id`, including their own disclosure.
+8. **Insert Random Candidate** injects a fake one if the audience is shy.
+9. **Reset the board** sweeps everyone still in flight to `:rejected` so you can run it again.
+
+Every waiting step has a deadline that advances the candidate rather than stalling them, so the board keeps moving whether or not you touch it, and El Jefe's own 45-second timer makes the offer for him if he dithers.
+
+## Who moves a candidate
+
+Three parties, and only one of them is in the room.
+
+| Party | Steps | Played by |
+|---|---|---|
+| Janine, HR | `:hr_screen` → `:hr_decision` | the workflow, after a per-candidate delay |
+| The bureau | `:background_check` → `:bureau_result` | the `/dbs` portal or the webhook, from outside, or itself on a timeout |
+| Steve, engineering lead | `:lead_interview` → `:lead_decision` | the workflow, after a per-candidate delay |
+| El Jefe | `:final_approval` | you, with the only two buttons on the board |
+
+Each reviewer is a wait step whose only exit is their own deadline, followed by an instantaneous decision step that runs their action and branches on the score with conditional `on_success` routes. The decision steps never visibly hold a card, so the board files each pair under one column.
+
+The bureau is the same shape with the roles reversed. `:background_check` waits for an answer from outside, and its `:bureau_responds` deadline is the fallback rather than the mechanism: when it fires, `:bureau_result` rolls a result itself, disclosing something 60% of the time. Nobody has to work the portal for the demo to stay funny, and working it overrides the roll.
+
+Both delays are drawn once on submission and stored on the record. That is what lets a whole room apply in the same second and still come back staggered — the delay is data, not a sleep holding a database connection.
 
 ## Tests
 
@@ -43,23 +141,54 @@ If you forget to set `TUNNEL_URL`, the dashboard shows a text input where you ca
 mix test
 ```
 
-Seven tests cover: initial state, verify→review transition, hire cascade, cascade leaves terminal states alone, auto-reject timeout action, list + get code interface.
+Covering: initial state, verify→review transition, hire cascade, cascade leaves terminal states alone, auto-reject timeout action, list + get code interface, and the DBS chain — reference issued on hire, clear and flagged results, duplicate and unknown references, and hire through to `:hired`.
+
+`test/candidate_transition_test.exs` covers the transition log itself: every `triggered_by` value (`:initial`, `:automatic`, `:error_path`, `:manual`, `:timeout`), `history/1` ordered by `occurred_at`, `state_at/2` before the first row / between two rows / after the last, undo leaving the reversed row in place with a pointer to it, undoing an undo as a redo, the 30-minute undo window expiring, and the `:final_approval` edge-sharing nuance between `:veto` and `:slot_taken`.
+
+`test/exposure_test.exs` covers what the tunnel can reach: the operator pages 404ing on a non-loopback host while the audience pages still serve, `LOCAL_EXTRA_HOSTS` opening the board to a named second screen, the webhook refusing free-text offences without `BUREAU_TOKEN` and accepting and trimming them with it, the name and pitch caps, and markup in a name rendering escaped on all three pages that show it.
+
+`test/candidate_live_test.exs` covers the candidate's own page: all three reviewer columns always rendering, each El Jefe outcome and its tone, the disclosure notice, and the page following a candidate over PubSub.
+
+`test/timeline_live_test.exs` covers the `/timeline` page: the band render, the slider tracking the playhead via `render_change/3`, the window starting at the earliest logged row, a new candidate appearing on the next PubSub broadcast, unfolding and folding a candidate's log, the name linking to `/c/:id`, rows leaving and rejoining the list as the playhead moves, row numbers counting from the first row rather than the first shown one, undo and redo through the LiveView, a candidate whose last change was automatic offering nothing to undo, and the `/history` and `/rewind` redirects.
 
 ## Architecture
 
 - `lib/ash_workflow_demo/ats/candidate.ex` — the star. One Ash resource whose `workflow do` block generates the state machine, transitions, and Oban triggers.
-- `lib/ash_workflow_demo/ats/candidate/fake_score.ex` — the verify step's "AI scorer". Sleeps 2–5 seconds, assigns a random score and canned reason. Honours `:fast_tests` app env.
-- `lib/ash_workflow_demo/ats/candidate/cascade.ex` — `after_action` hook on `:hire` that transitions all other non-terminal candidates to `:position_filled`.
+- `lib/ash_workflow_demo/ats/candidate/cascade.ex` — `after_action` hook on `:offer` that sweeps every other in-flight candidate to `:rejected` through the `slot_taken` transition. A distinct transition name from El Jefe's `veto`, so the log says whether a candidate was turned down or simply beaten to the slot.
+- `lib/ash_workflow_demo/ats/candidate/janine_screens.ex` and `steve_interviews.ex` — the two reviewers. Neither sleeps; the delay belongs to the step's deadline.
+- `lib/ash_workflow_demo/ats/candidate/set_response_delays.ex` and `start_lead_clock.ex` — where each reviewer's deadline is stamped.
+- `lib/ash_workflow_demo/ats/dbs_bureau.ex` — the caller-side half of an external event, correlating on `dbs_reference`.
+- `lib/ash_workflow_demo/ats/candidate/dbs_offences.ex` — the disclosures. Crimes against a codebase, never real offences: the candidate on the projector is a real person in the room.
+- `lib/ash_workflow_demo_web/live/dbs_bureau_live.ex` — the portal, deliberately styled as a different application. It is the one page that does not take the dark theme: it stays a paper form, on the same stock as the deck's speech bubbles.
+- `lib/ash_workflow_demo_web/palette.ex` — the per-step hues and labels the kanban, the candidate page and `/timeline` all read, in both the Tailwind and raw-hex forms those three need.
 - `lib/ash_workflow_demo/ats/candidate/notifier.ex` — Ash notifier that broadcasts changes to Phoenix.PubSub.
-- `lib/ash_workflow_demo/demo_scheduler.ex` — 1-second-tick GenServer that invokes AshOban schedulers directly. Sub-minute granularity for the 30-second timeout (free Oban cron is minute-level).
-- `lib/ash_workflow_demo/tunnel_url.ex` — Agent storing the public tunnel URL for the QR code.
+- `AshWorkflow.Scheduler.Precise` — declared in the resource's `workflow` block. Arms a timer per deadline rather than polling cron, which is how deadlines of a few seconds are expressible at all. This replaced a hand-rolled 1-second ticker.
+
+  One caveat found while building this. `Timeout`'s `field` option documents support for a calculation, and the two reviewer deadlines read far better as `state_entered_at` plus the candidate's delay than as stamped columns. The scheduler builds the right SQL filter for such a calculation, then arms its timer from the unloaded value on the record and crashes `AshWorkflow.Scheduler.Precise.Timeline` with a `FunctionClauseError` in `as_datetime/1`. The deadlines here are real columns because of it.
+- `lib/ash_workflow_demo/tunnel_url.ex` — Agent holding the public tunnel URL for the QR code, seeded from `TUNNEL_URL` at boot.
 - `lib/ash_workflow_demo_web/live/dashboard_live.ex` — El Jefe's kanban.
-- `lib/ash_workflow_demo_web/live/candidate_live.ex` — candidate's mobile self-view.
+- `lib/ash_workflow_demo_web/live/candidate_live.ex` — the candidate's own view, sized to one projected slide. Janine, Steve and El Jefe read left to right in one row, and a reviewer who has not answered holds their column rather than collapsing it.
+
+  El Jefe's column is on the page from the moment a candidate applies and stays grey until he has actually answered, defaulting to "Never reached his desk". Only `:offer` and `:veto` bring it up to colour. A candidate still sitting at `:final_approval` reads "Deciding" in muted grey, and one the `:offer` cascade swept off his desk reads "Too late" fully dimmed — `:slot_taken` is somebody else's offer landing, not a verdict on this candidate.
+
+  That column is read from `Candidate.history/1`, not from `state`. `:rejected` on its own cannot tell a veto from the cascade from never having got there.
 - `lib/ash_workflow_demo_web/live/apply_live.ex` — public submission form.
+- `lib/ash_workflow_demo/ats/candidate_transition.ex` — the transition log, scaffolded by `mix ash_workflow.gen.transition_log AshWorkflowDemo.ATS.Candidate` and hand-adjusted (the generated `:workflow` relationship renamed to `:candidate`). No `belongs_to_actor`: this demo has no actor/auth resource, and `triggered_by` alone is enough to say who or what moved a candidate.
+- `lib/ash_workflow_demo_web/live/timeline_live.ex` — the `/timeline` page: the all-candidates playhead, with each candidate's log and undo/redo folded behind its band. Built from `demos/workflow_timeline`'s `timeline_live.ex` and `undo_live.ex`, which are still two pages there.
+- `lib/ash_workflow_demo_web/controllers/timeline_redirect_controller.ex` — sends `/history` and `/rewind` to `/timeline`.
+
+## Theme
+
+The demo and the talk deck share a palette. The base tokens live in `assets/tailwind.config.js` as `ink`, `paper`, `accent` and `bubble`, taken from `slides/theme/alembic.css` on the slides branch, and Inter is loaded in `root.html.heex`. Change a value in one place and change it in the other.
+
+The per-step hues are `AshWorkflowDemoWeb.Palette`. Every page reads them from there rather than keeping its own copy.
 
 ## Why it's flashy
 
-- The entire hiring pipeline is ~25 lines of DSL.
+- The entire hiring pipeline, DBS check and two approval gates included, is one `workflow do` block.
 - Timeouts genuinely fire live — not mocked.
 - Every screen updates in real time via Phoenix.PubSub.
-- One click cascades the whole "losers" population to `:position_filled`.
+- One click sweeps every other candidate, at every step at once, to `:rejected`.
+- A stranger's HTTP request, from a different screen on a different URL, resumes a workflow that was sitting still.
+- El Jefe's own veto, undone within 30 minutes, un-happens without erasing the row that recorded it.
+- One slider rewinds every candidate on the board at once, live, from nothing but an append-only log.
