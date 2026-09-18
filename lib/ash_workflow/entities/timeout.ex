@@ -122,8 +122,8 @@ defmodule AshWorkflow.Entities.Timeout do
       Stop repeating once this much wall-clock time has passed since the record
       entered the step — measured against `repeat_started_at`, not against
       `field`, because a repeating timeout keeps moving `field` forward. See
-      the moduledoc for why. Implies `repeat: true`, and must be at least as
-      long as `fire_after` so the timeout can fire at least once.
+      the moduledoc for why. Implies `repeat: true`, and must be strictly
+      longer than `fire_after` — equal to it leaves no room for even one fire.
       """
     ],
     self_scheduled?: [

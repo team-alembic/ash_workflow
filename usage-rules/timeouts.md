@@ -135,10 +135,11 @@ timeout :reminder do
 end
 ```
 
-This fires every 2 days and stops once 8 days have passed — four reminders,
-then silence. `repeat_until` implies `repeat: true`, so it does not need to be
-set separately, and `repeat_until` must be at least `fire_after` (otherwise it
-could never fire even once).
+This fires roughly at day 2, day 4 and day 6, then stops before day 8 — three
+reminders, then silence, not four: the last fire has to land strictly before
+`repeat_until`. `repeat_until` implies `repeat: true`, so it does not need to
+be set separately, and `repeat_until` must be strictly longer than
+`fire_after` (equal to it leaves no room for even one fire).
 
 `repeat_until` is **not** measured against `fire_after`'s own anchor
 (`state_entered_at` by default). Repeating is what resets that anchor on every

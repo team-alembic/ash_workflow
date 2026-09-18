@@ -110,4 +110,30 @@ defmodule AshWorkflow.Scheduler.RepeatUntilTest do
     reloaded = reload(aged)
     assert reloaded.reminder_count == 1
   end
+
+  test "a repeat fire backfills a nil repeat_started_at from the pre-firing state_entered_at, once" do
+    record = create!()
+    stale_entry = ago(1, :hour)
+
+    aged =
+      record
+      |> Ash.Changeset.for_update(:set_clock, %{state_entered_at: stale_entry})
+      |> Ash.Changeset.force_change_attribute(:repeat_started_at, nil)
+      |> Ash.update!()
+
+    assert Precise.run_due(Workflow) == 1
+
+    once_backfilled = reload(aged)
+    assert DateTime.compare(once_backfilled.repeat_started_at, stale_entry) == :eq
+
+    # A second fire, further within the bound the backfilled anchor now
+    # implies, must not move repeat_started_at again — only the first repeat
+    # after the attribute was unset backfills it.
+    set_clock(once_backfilled, %{state_entered_at: ago(1, :hour)})
+    assert Precise.run_due(Workflow) == 1
+
+    twice_fired = reload(once_backfilled)
+    assert twice_fired.reminder_count == 2
+    assert DateTime.compare(twice_fired.repeat_started_at, stale_entry) == :eq
+  end
 end

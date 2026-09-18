@@ -89,7 +89,7 @@ timeout :reminder do
 end
 ```
 
-This fires every 2 days and stops once 8 days have passed since the record entered the step — four reminders, then silence. `repeat_until` implies `repeat: true` (`AshWorkflow.Entities.Timeout.normalize/1` sets it before any verifier runs), so it never needs to be declared alongside it. `AshWorkflow.Verifiers.ValidateTimeoutFields` rejects a `repeat_until` shorter than `fire_after`, since the timeout could then never fire even once.
+This fires roughly at day 2, day 4 and day 6, then stops before day 8 — three reminders, then silence, not four: the last fire has to land strictly before `repeat_until`, and polling lag pushes each one slightly later than its nominal day. `repeat_until` implies `repeat: true` (`AshWorkflow.Entities.Timeout.normalize/1` sets it before any verifier runs), so it never needs to be declared alongside it. `AshWorkflow.Verifiers.ValidateTimeoutFields` rejects a `repeat_until` that is not strictly longer than `fire_after`, since anything shorter or equal leaves no room for even one fire.
 
 ### Why `repeat_until` cannot be measured against `state_entered_at`
 

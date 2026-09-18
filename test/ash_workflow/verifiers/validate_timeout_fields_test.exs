@@ -210,7 +210,46 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutFieldsTest do
           end
         end
         """,
-        ~r/repeat_until: \{1, :days\}, which is shorter than fire_after/
+        ~r/repeat_until: \{1, :days\}, which is not longer than fire_after/
+      )
+    end
+
+    test "rejects repeat_until equal to fire_after, since that leaves no room to fire even once" do
+      assert_dsl_error(
+        """
+        defmodule EqualRepeatUntilWorkflow do
+          use Ash.Resource,
+            domain: AshWorkflowTest.Domain,
+            data_layer: Ash.DataLayer.Ets,
+            extensions: [AshWorkflow, AshOban]
+
+          workflow do
+            step :waiting do
+              transition :resolve, to: :done
+
+              timeout :reminder do
+                fire_after {3, :days}
+                action :send_reminder
+                repeat_until {3, :days}
+              end
+            end
+
+            step :done, terminal: true
+          end
+
+          actions do
+            update :send_reminder do
+              accept []
+            end
+          end
+
+          attributes do
+            uuid_v7_primary_key :id
+            attribute :title, :string, allow_nil?: false, public?: true
+          end
+        end
+        """,
+        ~r/repeat_until: \{3, :days\}, which is not longer than fire_after/
       )
     end
 

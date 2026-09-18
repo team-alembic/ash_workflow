@@ -103,22 +103,54 @@ into `Work.match` as an extra clause:
 `repeat_started_at` is further in the past than `repeat_until`, this clause is
 false forever for the current step visit — the record never matches again
 until it leaves and re-enters the step. Because both schedulers execute
-through the same `Work.match`, the bound is enforced in exactly one place:
-`AshWorkflow.Scheduler.Precise`'s recovery sweep arms timers from a separate,
-narrower filter for performance (`Precise.Timeline.due_records/3`), but
-every timer — swept or precisely armed — fires through `fire/4`, which
-re-reads the record and re-checks the full `Work.match` before running
-anything. A bound-exceeded record armed by an over-eager sweep therefore
-still fires nothing.
+through the same `Work.match`, correctness lives in exactly one place: even
+though `AshWorkflow.Scheduler.Precise`'s recovery sweep arms timers from a
+separate, narrower filter (`Precise.Timeline.due_records/3`), every timer —
+swept or precisely armed — fires through `fire/4`, which re-reads the record
+and re-checks the full `Work.match` before running anything. A bound-exceeded
+record armed by an over-eager sweep therefore still fires nothing.
+
+Left there, though, a bound-exceeded record would keep matching the sweep's
+narrower filter forever, arming a timer on every `look_ahead_ms` tick that
+`fire/4` immediately discards — one wasted read and one wasted timer per
+record per tick, indefinitely, for every record that has run out its
+reminders. `due_records/3` also filters on `repeat_until` now, checked
+against "now" rather than the horizon's `cutoff`: a record already
+bound-exceeded is excluded from the sweep outright, rather than merely from
+running once armed.
 
 `is_nil(repeat_started_at)` treats a record written before this attribute
 existed — a new column on what may be an existing table — as "bound not yet
-reached" rather than raising or refusing to poll it. The alternative, backing
-it with `NOT NULL` and a migration that backfills every existing row from
-`state_entered_at`, was rejected: it assumes every existing row's current
+reached" rather than raising or refusing to poll it. Backing it with
+`NOT NULL` and a migration that backfills every existing row from
+`state_entered_at` was rejected: it assumes every existing row's current
 `state_entered_at` already reflects a genuine entry rather than a stale
 repeat reset, which is precisely the fact this attribute exists because
-`state_entered_at` cannot be trusted to report.
+`state_entered_at` cannot be trusted to report. Leaving it permanently `nil`
+was also rejected, once it was pointed out that "bound not yet reached"
+would then mean "never bounded" for every record already repeating when
+`repeat_until` was added to its timeout — the opposite of what enabling the
+option asks for. `AshWorkflow.Changes.RecordEvent` instead backfills lazily:
+a repeat fire that finds `repeat_started_at` still `nil` sets it to the
+pre-firing `state_entered_at` — the last instant this repeat actually reset
+the clock — rather than leaving it unset. That is the closest available
+estimate of when repeating started, and it is only ever read once, on the
+first repeat fire after the attribute exists; every fire after that finds it
+already set and leaves it alone.
+
+A fourth option, not a new attribute but a different one moved, would invert
+which attribute a repeat writes: leave `state_entered_at` alone as the
+genuine entry time, and have `repeat` write a new `last_fired_at` instead,
+with `fire_after` measured against `coalesce(last_fired_at, state_entered_at)`.
+That would make `state_entered_at` truthful again for every other deadline on
+the step, and remove the reason `AshWorkflow.Calculations.EnteredCurrentStateAt`
+exists at all. It was not taken because it changes the existing, released
+`repeat` mechanism rather than adding beside it: every workflow already using
+`repeat: true` measures `fire_after` against `state_entered_at`, and moving
+that to a new column is a breaking change to a feature this PR was not asked
+to touch. `repeat_until` adding a second attribute, rather than `repeat`
+changing which attribute it uses, keeps this PR additive: a workflow that
+declares no `repeat_until` gets no new column and no behavior change at all.
 
 ## What happens when the bound is reached
 
