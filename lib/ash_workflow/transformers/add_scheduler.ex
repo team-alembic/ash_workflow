@@ -104,6 +104,12 @@ defmodule AshWorkflow.Transformers.AddScheduler do
         timeout.action
       end
 
+    base_match =
+      Ash.Expr.expr(
+        ^in_step(state_attribute, step_name) and
+          ^ref(field) <= ago(^duration_value, ^ago_unit)
+      )
+
     %Work{
       # Scoped by step so two steps can declare a timeout with the same name.
       name: :"__timeout_trigger_#{step_name}_#{timeout.name}",
@@ -112,13 +118,10 @@ defmodule AshWorkflow.Transformers.AddScheduler do
       step: step_name,
       timeout: timeout.name,
       action: action,
-      match:
-        Ash.Expr.expr(
-          ^in_step(state_attribute, step_name) and
-            ^ref(field) <= ago(^duration_value, ^ago_unit)
-        ),
+      match: repeat_until_match(base_match, timeout),
       deadline: %{field: field, fire_after: timeout.fire_after},
       repeat?: timeout.repeat,
+      repeat_until: timeout.repeat_until,
       # An action timeout does not change state, so nothing stops it matching
       # again on the next poll. A transition timeout leaves the step it matched
       # on, which is a durable record that it fired.
@@ -127,6 +130,25 @@ defmodule AshWorkflow.Transformers.AddScheduler do
       retry: timeout.retry || %Retry{},
       opts: [check_interval: timeout.check_interval]
     }
+  end
+
+  # `repeat_until` cannot be checked against `field`, because repeating is what
+  # keeps moving it forward — see `AshWorkflow.Entities.Timeout`. It is checked
+  # against `repeat_started_at` instead, which every genuine step entry sets
+  # and no repeat firing touches. Once that instant is more than `repeat_until`
+  # in the past, this clause is false forever for this step visit — the record
+  # never matches again until it leaves and re-enters the step, which is
+  # exactly "the timeout stops repeating".
+  defp repeat_until_match(match, %{repeat_until: nil}), do: match
+
+  defp repeat_until_match(match, %{repeat_until: {until_value, until_unit}}) do
+    until_ago_unit = singular_unit(until_unit)
+
+    Ash.Expr.expr(
+      ^match and
+        (is_nil(^ref(:repeat_started_at)) or
+           ^ref(:repeat_started_at) > ago(^until_value, ^until_ago_unit))
+    )
   end
 
   # ago/2 expects singular duration names (:day, :hour, :minute, :second)

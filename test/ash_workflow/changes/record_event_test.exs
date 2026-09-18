@@ -11,17 +11,26 @@ defmodule AshWorkflow.Changes.RecordEventTest do
 
   describe "injection onto action timeouts" do
     test "a non-repeating action timeout gets RecordEvent and leaves state_entered_at alone" do
-      assert [{RecordEvent, [triggered_by: :timeout, touch_state_entered_at: false]}] ==
+      assert [
+               {RecordEvent,
+                [triggered_by: :timeout, touch_state_entered_at: false, repeat_fire?: false]}
+             ] ==
                change_specs(LoggedWorkflow, :send_nudge)
     end
 
     test "a repeating action timeout gets RecordEvent and resets state_entered_at" do
-      assert [{RecordEvent, [triggered_by: :timeout, touch_state_entered_at: true]}] ==
+      assert [
+               {RecordEvent,
+                [triggered_by: :timeout, touch_state_entered_at: true, repeat_fire?: true]}
+             ] ==
                change_specs(LoggedWorkflow, :send_reminder)
     end
 
     test "two timeouts naming the same action get one RecordEvent between them" do
-      assert [{RecordEvent, [triggered_by: :timeout, touch_state_entered_at: false]}] ==
+      assert [
+               {RecordEvent,
+                [triggered_by: :timeout, touch_state_entered_at: false, repeat_fire?: false]}
+             ] ==
                change_specs(SharedTimeoutNameWorkflow, :send_warning)
     end
 
@@ -58,6 +67,48 @@ defmodule AshWorkflow.Changes.RecordEventTest do
 
       assert %{state_entered_at: _now_expr} = atomics
       assert returned_changeset.after_action != []
+    end
+
+    test "a genuine entry's atomic branch resets repeat_started_at to now, on a resource that has it" do
+      changeset =
+        AshWorkflowTest.RepeatUntilWorkflow
+        |> Ash.Changeset.for_create(:create, %{title: "atomic repeat_until"})
+        |> Map.put(:action_type, :update)
+        |> Map.put(:data, %AshWorkflowTest.RepeatUntilWorkflow{state: :waiting})
+
+      context = %Context{actor: nil}
+
+      assert {:atomic, _changeset, atomics} =
+               RecordEvent.atomic(
+                 changeset,
+                 [triggered_by: :manual, repeat_fire?: false],
+                 context
+               )
+
+      assert %{state_entered_at: _now_expr, repeat_started_at: _now_expr2} = atomics
+    end
+
+    test "a repeat fire's atomic branch coalesces repeat_started_at instead of overwriting it" do
+      changeset =
+        AshWorkflowTest.RepeatUntilWorkflow
+        |> Ash.Changeset.for_create(:create, %{title: "atomic repeat fire"})
+        |> Map.put(:action_type, :update)
+        |> Map.put(:data, %AshWorkflowTest.RepeatUntilWorkflow{state: :waiting})
+
+      context = %Context{actor: nil}
+
+      assert {:atomic, _changeset, atomics} =
+               RecordEvent.atomic(
+                 changeset,
+                 [triggered_by: :timeout, repeat_fire?: true],
+                 context
+               )
+
+      assert %{state_entered_at: _now_expr, repeat_started_at: coalesce_expr} = atomics
+      # A repeat-fire's expression reads back the attribute itself, unlike the
+      # plain `now()` a genuine entry writes — that is what makes it leave an
+      # already-set anchor alone rather than resetting it on every fire.
+      assert inspect(coalesce_expr) =~ "repeat_started_at"
     end
 
     test "an action whose action runs atomically still writes through the log" do

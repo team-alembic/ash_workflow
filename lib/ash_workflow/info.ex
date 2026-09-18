@@ -342,8 +342,9 @@ defmodule AshWorkflow.Info do
     condition:}`.
   * `:on_error` — the step an automatic step falls to on failure, or `nil`.
   * `:timeouts` — one entry per timeout, as `%{name:, to:, fire_after:, field:,
-    action:, repeat:, retry:}`. A timeout that runs an action rather than
-    moving the workflow has a `nil` `:to` and a non-`nil` `:action`.
+    action:, repeat:, repeat_until:, retry:}`. A timeout that runs an action
+    rather than moving the workflow has a `nil` `:to` and a non-`nil`
+    `:action`. `:repeat_until` is `nil` unless the timeout bounds its repeat.
 
   ## Example
 
@@ -365,7 +366,7 @@ defmodule AshWorkflow.Info do
       #=>     on_success: [],
       #=>     on_error: nil,
       #=>     timeouts: [
-      #=>       %{name: :chase, to: nil, fire_after: {3, :days}, field: :state_entered_at, action: :send_reminder, repeat: true, retry: nil}
+      #=>       %{name: :chase, to: nil, fire_after: {3, :days}, field: :state_entered_at, action: :send_reminder, repeat: true, repeat_until: {8, :days}, retry: nil}
       #=>     ]
       #=>   },
       #=>   ...
@@ -424,6 +425,7 @@ defmodule AshWorkflow.Info do
       field: timeout.field,
       action: timeout.action,
       repeat: timeout.repeat,
+      repeat_until: timeout.repeat_until,
       retry: timeout.retry
     }
   end

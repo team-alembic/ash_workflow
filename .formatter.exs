@@ -16,6 +16,7 @@ spark_locals_without_parens = [
   policy: 1,
   queue: 1,
   repeat: 1,
+  repeat_until: 1,
   retry: 0,
   retry: 1,
   route: 1,

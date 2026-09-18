@@ -77,6 +77,7 @@ defmodule AshWorkflow do
     target: Entities.Timeout,
     args: [:name],
     schema: Entities.Timeout.attribute_schema(),
+    transform: {Entities.Timeout, :normalize, []},
     entities: [
       retry: [@retry]
     ],

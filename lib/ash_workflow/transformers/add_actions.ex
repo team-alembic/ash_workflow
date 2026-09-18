@@ -428,7 +428,10 @@ defmodule AshWorkflow.Transformers.AddActions do
         existing_action ->
           record_event_change =
             Transformer.build_entity!(ResourceDsl, [:actions, :update], :change,
-              change: {RecordEvent, triggered_by: :timeout, touch_state_entered_at: repeats?}
+              change: {
+                RecordEvent,
+                triggered_by: :timeout, touch_state_entered_at: repeats?, repeat_fire?: repeats?
+              }
             )
 
           updated_action = %{

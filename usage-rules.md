@@ -297,6 +297,7 @@ end
 
 - `action`: References a user-defined update action. The workflow stays in the current state.
 - `repeat: true`: Re-fires on the same interval. Useful for recurring reminders.
+- `repeat_until: {8, :days}`: Bounds a `repeat: true` timeout to that much wall-clock time since the step was entered, measured against `repeat_started_at` (an attribute this extension adds), never against the anchor `repeat` itself resets. See `usage-rules/timeouts.md` for the full explanation.
 
 ### Transition Timeout (force state change)
 

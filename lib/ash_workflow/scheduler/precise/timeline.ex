@@ -255,9 +255,28 @@ defmodule AshWorkflow.Scheduler.Precise.Timeline do
     bound = DateTime.add(cutoff, -value, singular(unit))
     step = work.step
 
-    filter = Ash.Expr.expr(state == ^step and ^ref(field) <= ^bound)
+    filter =
+      Ash.Expr.expr(state == ^step and ^ref(field) <= ^bound)
+      |> repeat_until_filter(work)
 
     read(work.resource, filter, state)
+  end
+
+  # Without this, a record whose `repeat_until` bound has already passed keeps
+  # matching the plain `field <= bound` filter above forever, so every sweep
+  # arms a timer for it, `fire/4` re-checks `Work.match` and finds nothing, and
+  # the cycle repeats every `look_ahead_ms`. Filtering it out here means a
+  # bound-exceeded record stops costing a query once it stops being eligible,
+  # the same way it already stops matching `AshWorkflow.Scheduler.Oban`'s
+  # trigger `where`. Checked against "now" rather than `cutoff`, unlike the
+  # `fire_after` bound above: this excludes only a record that is *already*
+  # bound-exceeded, not one that merely will be by the time the horizon closes.
+  defp repeat_until_filter(filter, %Work{repeat_until: nil}), do: filter
+
+  defp repeat_until_filter(filter, %Work{repeat_until: {value, unit}}) do
+    bound = DateTime.add(DateTime.utc_now(), -value, singular(unit))
+
+    Ash.Expr.expr(^filter and (is_nil(repeat_started_at) or repeat_started_at > ^bound))
   end
 
   defp read(resource, filter, state) do

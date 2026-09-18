@@ -4,7 +4,10 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutFields do
 
   Checks:
   - Custom fields reference existing attributes or calculations on the resource
-  - `repeat: true` is not combined with a custom field (see `Entities.Timeout` for rationale)
+  - `repeat: true` is not combined with a custom field (see `Entities.Timeout` for rationale).
+    `repeat_until` implies `repeat: true` (`AshWorkflow.Entities.Timeout.normalize/1`), so this
+    also catches a custom field combined with `repeat_until`.
+  - `repeat_until` is not shorter than `fire_after`
 
   Runs after all transformers have added attributes and calculations to the resource.
   Skips field existence validation for the default `:state_entered_at` since it is always present.
@@ -27,10 +30,38 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutFields do
     |> Enum.reject(&Step.terminal?/1)
     |> Enum.flat_map(fn step -> Enum.map(step.timeouts, &{step, &1}) end)
     |> Enum.reduce_while(:ok, fn {step, timeout}, :ok ->
-      with {:cont, :ok} <- validate_no_repeat_with_custom_field(step, timeout) do
+      with {:cont, :ok} <- validate_no_repeat_with_custom_field(step, timeout),
+           {:cont, :ok} <- validate_repeat_until(step, timeout) do
         validate_field_exists(dsl, step, timeout)
       end
     end)
+  end
+
+  defp validate_repeat_until(_step, %{repeat_until: nil}), do: {:cont, :ok}
+
+  # A timeout fires when `state_entered_at <= now - fire_after`, and
+  # `repeat_until` requires `repeat_started_at > now - repeat_until`. Since
+  # both anchors start out equal, the first fire needs
+  # `now - repeat_until < now - fire_after`, i.e. `repeat_until > fire_after`
+  # strictly — equal durations leave zero room between the two conditions, and
+  # the timeout never fires even once.
+  defp validate_repeat_until(step, timeout) do
+    fire_after_seconds = AshWorkflow.Duration.to_seconds(timeout.fire_after)
+    repeat_until_seconds = AshWorkflow.Duration.to_seconds(timeout.repeat_until)
+
+    if repeat_until_seconds <= fire_after_seconds do
+      {:halt,
+       {:error,
+        DslError.exception(
+          path: [:workflow, :step, step.name],
+          message:
+            "Timeout :#{timeout.name} on step :#{step.name} has repeat_until: #{inspect(timeout.repeat_until)}, " <>
+              "which is not longer than fire_after: #{inspect(timeout.fire_after)}. The timeout would never fire " <>
+              "even once before the bound is reached — repeat_until must be strictly greater than fire_after."
+        )}}
+    else
+      {:cont, :ok}
+    end
   end
 
   defp validate_no_repeat_with_custom_field(step, timeout) do
