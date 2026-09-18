@@ -164,17 +164,25 @@ defmodule AshWorkflowDemoWeb.DashboardLive do
   defp waiting_on(:final_approval), do: {:jefe_rubber_stamp, "El Jefe rubber-stamps in"}
   defp waiting_on(_state), do: nil
 
-  # The face behind a column or a verdict. The bureau has none on purpose —
-  # it is a faceless institution, not a person with an opinion.
+  # The mark on a column. The three reviewers get their face; the bureau gets
+  # its crest, because it is an institution rather than a person with an
+  # opinion; the two terminal columns get an icon, because nobody is waiting
+  # in them.
   defp reviewer_avatar(:hr_screen), do: "/images/janine-hr.png"
   defp reviewer_avatar(:lead_interview), do: "/images/steve-tech.png"
   defp reviewer_avatar(:final_approval), do: "/images/conor.png"
+  defp reviewer_avatar(:background_check), do: "/images/bureau-crest.svg"
   defp reviewer_avatar(_state), do: nil
 
   defp reviewer_alt(:hr_screen), do: "Janine, HR manager"
   defp reviewer_alt(:lead_interview), do: "Steve, engineering lead"
   defp reviewer_alt(:final_approval), do: "El Jefe, the boss"
+  defp reviewer_alt(:background_check), do: "The Disclosure & Background Bureau crest"
   defp reviewer_alt(_state), do: nil
+
+  defp column_icon(:hired), do: "hero-check-badge-solid"
+  defp column_icon(:rejected), do: "hero-x-circle-solid"
+  defp column_icon(_state), do: nil
 
   defp qr_svg(url, width \\ 200) do
     url
@@ -276,10 +284,10 @@ defmodule AshWorkflowDemoWeb.DashboardLive do
             </button>
             <button
               phx-click="reset"
-              data-confirm="Reset the req? This clears in-flight candidates."
+              data-confirm="Reset the board? This clears in-flight candidates."
               class="bg-rose-600 hover:bg-rose-500 text-ink px-4 py-2 rounded font-bold"
             >
-              Reset the Req
+              Reset the board
             </button>
           </div>
         </div>
@@ -323,8 +331,15 @@ defmodule AshWorkflowDemoWeb.DashboardLive do
                   <img
                     src={reviewer_avatar(state)}
                     alt={reviewer_alt(state)}
-                    class="w-8 h-8 rounded-full object-cover shrink-0"
+                    class="w-8 h-8 rounded-full object-cover shrink-0 bg-paper/10"
                   />
+                <% end %>
+                <%= if column_icon(state) do %>
+                  <span
+                    class={column_icon(state) <> " w-7 h-7 shrink-0"}
+                    style={"color: #{Palette.hex(state)}"}
+                  >
+                  </span>
                 <% end %>
                 <h2 class="font-bold text-lg whitespace-nowrap">{Palette.label(state)}</h2>
                 <span
@@ -502,12 +517,21 @@ defmodule AshWorkflowDemoWeb.DashboardLive do
                     "w-80 h-80 object-cover shrink-0 bg-paper " <>
                       if(@maximised == :background_check,
                         do: "p-8",
-                        else: "rounded-full ring-8 ring-amber-500"
+                        else: "rounded-full ring-8 ring-accent"
                       )
                   }
                 />
               <% else %>
-                <div class="w-80 h-80 shrink-0"></div>
+                <%!-- :hired and :rejected have no face to show, so the panel
+                      takes the column's icon at full size instead of a gap. --%>
+                <div class="w-80 h-80 shrink-0 flex items-center justify-center">
+                  <span
+                    :if={column_icon(@maximised)}
+                    class={column_icon(@maximised) <> " w-56 h-56"}
+                    style={"color: #{Palette.hex(@maximised)}"}
+                  >
+                  </span>
+                </div>
               <% end %>
               <div class="min-w-0">
                 <h2 class="text-7xl font-black">{char.name}</h2>

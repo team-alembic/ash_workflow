@@ -2,6 +2,23 @@
 
 Conference stage demo for [AshWorkflow](https://github.com/team-alembic/ash_workflow). An ATS pipeline where attendees submit themselves from their phones, two reviewers who are played by the workflow itself wave them through or turn them down, a background check answers from outside the application, and El Jefe picks one.
 
+## Reading this as an example
+
+This is a bigger Phoenix application than the other demos in this repo, because it was built to be run live on stage at an Ash conference. The kanban, the audience-facing apply form, the bureau portal, the playhead, the character art and the theme all exist to survive a room full of people, and none of them are what AshWorkflow asks of you.
+
+The part worth copying is `lib/ash_workflow_demo/ats/candidate.ex`. One resource, one `workflow do` block, and the whole pipeline — the steps, the deadlines, the conditional routes, the undo windows — is declared in it. Everything under `lib/ash_workflow_demo_web/` is a way of looking at that resource, not a requirement of it. `lib/ash_workflow_demo/ats/candidate_transition.ex` is the second piece: the generated transition log that `/timeline` reads.
+
+For a smaller starting point, look at the other directories under `demos/`.
+
+It still runs the ordinary way:
+
+```bash
+mix setup
+mix phx.server
+```
+
+Everything below about tunnels, QR codes and a bureau token is for running it in front of an audience. None of it is needed to watch the workflow work on `localhost:4000`.
+
 ## One-time setup
 
 ```bash
@@ -28,6 +45,33 @@ Open http://localhost:4000/ — that's El Jefe's kanban. Project it. The QR in t
 Open `<tunnel>/dbs` on a second screen or a phone. That's the Disclosure & Background Bureau portal, and it is the only way a candidate leaves `:background_check` before the check lapses.
 
 If you forget to set `TUNNEL_URL`, the dashboard shows a text input where you can paste the URL at runtime.
+
+## What the room can reach
+
+`cloudflared` publishes the whole application, not only the two pages the audience needs, and every button in this demo is unauthenticated. So the operator pages are served to the machine running the demo and 404 to everybody else.
+
+| Path | Through the tunnel |
+|---|---|
+| `/apply`, `/c/:id`, `/dbs` | Served. This is the demo. |
+| `/`, `/timeline` (and the `/history`, `/rewind` redirects) | 404. They carry **Make the offer**, **Veto**, **Reset the board**, and undo. |
+
+`AshWorkflowDemoWeb.Plugs.LocalOnly` decides this on the `Host` header, not on `conn.remote_ip`. `cloudflared` runs on the same machine and proxies to `localhost:4000`, so a tunnelled request arrives from `127.0.0.1` exactly like a local one and the remote IP cannot tell them apart. The host name can. To project the board from another machine on the same network, name it:
+
+```bash
+LOCAL_EXTRA_HOSTS=192.168.1.20:4000 mix phx.server
+```
+
+Two other things a stranger can otherwise write onto the projector:
+
+- **The webhook's `offence` text.** `POST /webhooks/dbs` is unauthenticated by design, and every live `dbs_reference` is printed on `/dbs` and on the kanban cards, so it needs no guessing. A free-text offence is therefore honoured only with an `x-bureau-token` header matching `BUREAU_TOKEN`, and is capped at 120 characters with control characters stripped. Without the token the bureau picks from `DbsOffences` as it always did and the response says the text was ignored. Set it if you want to curl a custom one on stage:
+
+  ```bash
+  BUREAU_TOKEN=$(openssl rand -hex 16) mix phx.server
+  ```
+
+- **Name and pitch.** Capped at 60 and 200 characters in `ApplyLive`, server-side rather than by `maxlength` alone. There is no word filtering — you moderate by watching the board and hitting **Reset the board**.
+
+HEEx escapes every interpolation, so markup in a name renders as text rather than running. The one `raw/1` in the app is `DashboardLive.qr_svg/2`, which raws EQRCode's generated SVG; the URL becomes QR module data and never reaches the markup.
 
 One more page, `/timeline`, reading the same `transition_log` and touching neither the kanban's look nor its behaviour. `/history` and `/rewind` were two pages during development and now redirect here.
 
@@ -70,7 +114,7 @@ A few things worth clicking:
 6. El Jefe's column is the only one with buttons. **Make the offer** hires that candidate and sweeps every other candidate still moving — at any step — to `:rejected` in the same instant. **Veto** rejects just that one.
 7. Candidates watch all of it on `/c/:id`, including their own disclosure.
 8. **Insert Random Candidate** injects a fake one if the audience is shy.
-9. **Reset the Req** sweeps everyone still in flight to `:rejected` so you can run it again.
+9. **Reset the board** sweeps everyone still in flight to `:rejected` so you can run it again.
 
 Every waiting step has a deadline that advances the candidate rather than stalling them, so the board keeps moving whether or not you touch it, and El Jefe's own 45-second timer makes the offer for him if he dithers.
 
@@ -100,6 +144,10 @@ mix test
 Covering: initial state, verify→review transition, hire cascade, cascade leaves terminal states alone, auto-reject timeout action, list + get code interface, and the DBS chain — reference issued on hire, clear and flagged results, duplicate and unknown references, and hire through to `:hired`.
 
 `test/candidate_transition_test.exs` covers the transition log itself: every `triggered_by` value (`:initial`, `:automatic`, `:error_path`, `:manual`, `:timeout`), `history/1` ordered by `occurred_at`, `state_at/2` before the first row / between two rows / after the last, undo leaving the reversed row in place with a pointer to it, undoing an undo as a redo, the 30-minute undo window expiring, and the `:final_approval` edge-sharing nuance between `:veto` and `:slot_taken`.
+
+`test/exposure_test.exs` covers what the tunnel can reach: the operator pages 404ing on a non-loopback host while the audience pages still serve, `LOCAL_EXTRA_HOSTS` opening the board to a named second screen, the webhook refusing free-text offences without `BUREAU_TOKEN` and accepting and trimming them with it, the name and pitch caps, and markup in a name rendering escaped on all three pages that show it.
+
+`test/candidate_live_test.exs` covers the candidate's own page: all three reviewer columns always rendering, each El Jefe outcome and its tone, the disclosure notice, and the page following a candidate over PubSub.
 
 `test/timeline_live_test.exs` covers the `/timeline` page: the band render, the slider tracking the playhead via `render_change/3`, the window starting at the earliest logged row, a new candidate appearing on the next PubSub broadcast, unfolding and folding a candidate's log, the name linking to `/c/:id`, rows leaving and rejoining the list as the playhead moves, row numbers counting from the first row rather than the first shown one, undo and redo through the LiveView, a candidate whose last change was automatic offering nothing to undo, and the `/history` and `/rewind` redirects.
 

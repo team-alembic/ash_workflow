@@ -76,7 +76,7 @@ defmodule AshWorkflowDemoWeb.DashboardLiveTest do
     assert html =~ "El Jefe"
     assert html =~ "Kanban"
     assert html =~ "Insert Random Candidate"
-    assert html =~ "Reset the Req"
+    assert html =~ "Reset the board"
     assert html =~ "Alice"
     assert html =~ "Bob"
   end

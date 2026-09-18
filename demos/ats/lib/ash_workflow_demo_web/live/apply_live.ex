@@ -5,9 +5,21 @@ defmodule AshWorkflowDemoWeb.ApplyLive do
 
   @avatar_styles ~w(avataaars adventurer big-smile bottts fun-emoji micah)
 
+  # Both of these end up on a projector. The caps are enforced here rather
+  # than only by `maxlength`, which is the browser's suggestion and not a
+  # limit any other client has to respect.
+  @name_max_chars 60
+  @pitch_max_chars 200
+
   @impl true
   def mount(_params, _session, socket) do
-    {:ok, assign(socket, form: blank_form(), error: nil)}
+    {:ok,
+     assign(socket,
+       form: blank_form(),
+       error: nil,
+       name_max_chars: @name_max_chars,
+       pitch_max_chars: @pitch_max_chars
+     )}
   end
 
   @impl true
@@ -22,8 +34,11 @@ defmodule AshWorkflowDemoWeb.ApplyLive do
       pitch == "" ->
         {:noreply, assign(socket, error: "pitch cannot be empty")}
 
-      String.length(pitch) > 200 ->
-        {:noreply, assign(socket, error: "pitch must be 200 characters or fewer")}
+      String.length(name) > @name_max_chars ->
+        {:noreply, assign(socket, error: "name must be #{@name_max_chars} characters or fewer")}
+
+      String.length(pitch) > @pitch_max_chars ->
+        {:noreply, assign(socket, error: "pitch must be #{@pitch_max_chars} characters or fewer")}
 
       true ->
         avatar = build_avatar_url(name)
@@ -61,6 +76,7 @@ defmodule AshWorkflowDemoWeb.ApplyLive do
               type="text"
               name="candidate[name]"
               value={@form["name"]}
+              maxlength={@name_max_chars}
               autocomplete="off"
               class="mt-1 w-full rounded-lg bg-ink border-ink-line text-paper placeholder:text-paper-muted/60 shadow-sm focus:border-accent focus:ring-accent"
               placeholder="e.g. Lola"
@@ -70,12 +86,12 @@ defmodule AshWorkflowDemoWeb.ApplyLive do
 
           <div>
             <label class="block text-sm font-semibold text-paper">
-              Your pitch (max 200 chars)
+              Your pitch (max {@pitch_max_chars} chars)
             </label>
             <textarea
               name="candidate[pitch]"
               rows="4"
-              maxlength="200"
+              maxlength={@pitch_max_chars}
               class="mt-1 w-full rounded-lg bg-ink border-ink-line text-paper placeholder:text-paper-muted/60 shadow-sm focus:border-accent focus:ring-accent"
               placeholder="Why should El Jefe hire you?"
               required

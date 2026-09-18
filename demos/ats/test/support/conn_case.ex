@@ -45,6 +45,12 @@ defmodule AshWorkflowDemoWeb.ConnCase do
 
   setup tags do
     AshWorkflowDemo.DataCase.setup_sandbox(tags)
-    {:ok, conn: Phoenix.ConnTest.build_conn()}
+
+    # `build_conn/0` defaults to www.example.com, which
+    # `AshWorkflowDemoWeb.Plugs.LocalOnly` correctly treats as a stranger. A
+    # test stands where the operator stands unless it says otherwise, so the
+    # default here is the loopback host. `test/exposure_test.exs` overrides it
+    # to check what the tunnel can reach.
+    {:ok, conn: %{Phoenix.ConnTest.build_conn() | host: "localhost"}}
   end
 end
