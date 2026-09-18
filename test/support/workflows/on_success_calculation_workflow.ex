@@ -19,10 +19,12 @@ defmodule AshWorkflowTest.OnSuccessCalculationWorkflow do
 
       on_success :interview, when: expr(is_strong)
       on_success :rejected, when: expr(not is_strong)
+      on_error :screening_failed
     end
 
     step :interview, terminal: true
     step :rejected, terminal: true
+    step :screening_failed, terminal: true
   end
 
   code_interface do

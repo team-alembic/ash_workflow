@@ -179,7 +179,8 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
         )
 
       true ->
-        with :ok <- validate_on_success_ordering(step) do
+        with :ok <- validate_on_success_ordering(step),
+             :ok <- validate_on_success_exhaustive(step) do
           validate_timeouts(step)
         end
     end
@@ -219,6 +220,32 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
         :ok
     end
   end
+
+  # A step whose on_success entries are all conditional, with none acting as an
+  # unconditional fallback, can run its action and have nothing match. That
+  # fails the action and leaves the record in the step, so the step needs some
+  # other declared way out: on_error, which the scheduler runs once the final
+  # attempt has failed, or a timeout with transition_to, which moves the record
+  # on once its deadline passes. With neither, the record stays in the step and
+  # the action is retried on every scheduler cycle forever — a dead end this
+  # verifier can see coming from the declaration alone.
+  defp validate_on_success_exhaustive(step) do
+    if Step.on_success_exhaustive?(step) or not is_nil(step.on_error) or timeout_escape?(step) do
+      :ok
+    else
+      step_error(
+        step,
+        "Step :#{step.name} has no unconditional on_success (a trailing entry with no " <>
+          "`when`), no on_error, and no timeout with transition_to. If the action " <>
+          "succeeds and none of its on_success conditions match, the record stays in " <>
+          "this step and the action is retried on every cycle. Add a trailing " <>
+          "unconditional on_success as the fallback, declare on_error, or give the step " <>
+          "a timeout with transition_to."
+      )
+    end
+  end
+
+  defp timeout_escape?(step), do: Enum.any?(step.timeouts, & &1.transition_to)
 
   defp validate_timeouts(step) do
     Enum.reduce_while(step.timeouts, :ok, fn timeout, :ok ->

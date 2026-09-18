@@ -305,7 +305,9 @@ defmodule AshWorkflow.Transformers.AddActions do
     if Step.on_success_conditional?(step) do
       change =
         Transformer.build_entity!(ResourceDsl, [:actions, :update], :change,
-          change: {ConditionalOnSuccess, routes: step.on_success, step_name: step.name}
+          change:
+            {ConditionalOnSuccess,
+             routes: step.on_success, step_name: step.name, action: step.action}
         )
 
       {change, true}

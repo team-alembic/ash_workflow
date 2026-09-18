@@ -22,11 +22,13 @@ defmodule AshWorkflowTest.OnSuccessThreeWayWorkflow do
       on_success :low, when: expr(score < 3)
       on_success :mid, when: expr(score >= 3 and score < 7)
       on_success :high, when: expr(score >= 7)
+      on_error :classification_failed
     end
 
     step :low, terminal: true
     step :mid, terminal: true
     step :high, terminal: true
+    step :classification_failed, terminal: true
   end
 
   code_interface do

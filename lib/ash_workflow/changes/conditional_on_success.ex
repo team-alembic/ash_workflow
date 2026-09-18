@@ -13,8 +13,15 @@ defmodule AshWorkflow.Changes.ConditionalOnSuccess do
   own changes, so by the time it runs, the action's business logic has
   already been folded into the changeset. Routes are evaluated in order. The
   first route whose `when` expression matches wins; a route with no `when`
-  (an unconditional fallback) always matches. If no route matches, the
-  changeset gets an error naming the step and the record.
+  (an unconditional fallback) always matches.
+
+  If no route matches, that is a distinct failure rather than a silent no-op:
+  `AshWorkflow.Errors.NoMatchingRoute` is added to the changeset, which fails
+  the action and sends it down the step's own error path the same way any
+  other action failure does. `AshWorkflow.Verifiers.ValidateWorkflow` requires
+  a step whose `on_success` is not statically exhaustive to declare either
+  `on_error` or a timeout with `transition_to`, so a step that compiles always
+  has somewhere for such a record to end up.
 
   Used internally by the AddActions transformer for automatic steps whose
   `on_success` needs runtime evaluation (more than one entry, or a `when` on
@@ -22,10 +29,13 @@ defmodule AshWorkflow.Changes.ConditionalOnSuccess do
   """
   use Ash.Resource.Change
 
+  alias AshWorkflow.Errors.NoMatchingRoute
+
   @impl true
   def change(changeset, opts, _context) do
     routes = opts[:routes]
     step_name = opts[:step_name]
+    action_name = opts[:action]
     resource = changeset.resource
 
     Ash.Changeset.before_action(changeset, fn changeset ->
@@ -45,8 +55,11 @@ defmodule AshWorkflow.Changes.ConditionalOnSuccess do
         nil ->
           Ash.Changeset.add_error(
             changeset,
-            "No matching on_success route for step :#{step_name} on record #{inspect(record)}. " <>
-              "Record did not match any of the #{length(routes)} configured routes."
+            NoMatchingRoute.exception(
+              resource: resource,
+              step: step_name,
+              action: action_name
+            )
           )
       end
     end)

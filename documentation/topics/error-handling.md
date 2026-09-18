@@ -104,6 +104,17 @@ Manual transitions fail if the state machine rejects them — for example, calli
 
 If a conditional transition has no matching route for the current record, the action fails with a descriptive error. If a route's `when` expression fails to evaluate (e.g., references a missing field), the error includes the specific expression that failed and the underlying reason.
 
+An automatic step's `on_success` fails the same way when none of its conditions match: the action succeeded, but `AshWorkflow.Changes.ConditionalOnSuccess` finds no route to take, so it adds `AshWorkflow.Errors.NoMatchingRoute` — naming the step and the action — to the changeset. That failure runs down the step's `on_error` exactly like any other, described above.
+
+`AshWorkflow.Verifiers.ValidateWorkflow` requires a step whose `on_success` is not statically exhaustive — no trailing unconditional entry — to declare one of two ways out, so a step that compiles always has one:
+
+- `on_error`, which the scheduler runs once the final attempt has failed.
+- A timeout with `transition_to`, which moves the record on once its deadline passes. The record sits in the step until then, and the action is retried on every cycle in the meantime.
+
+A timeout that only names an `action` does not count. It never changes state, so it leaves the record exactly where it was.
+
+`retry` interacts with this in a way worth knowing. A no-match is deterministic for a given record: the conditions read attributes the action just computed, so running the same action again computes the same values and matches nothing again. A step with `max_attempts 3` therefore runs its action three times, failing identically each time, before `on_error` fires. That costs whatever the action costs — three charges of an external API call, say — for no chance of a different outcome. Keep `max_attempts` at its default of `1` on a step whose `on_success` conditions are the likely failure, and raise it only where the action itself is what can fail transiently.
+
 ## Compensation and rollback
 
 AshWorkflow does not provide automatic compensation or rollback. Each transition is an Ash action, and Ash handles transactional semantics at the action level — if a change within an action fails, the entire action is rolled back.

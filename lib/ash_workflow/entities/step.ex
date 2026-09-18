@@ -68,7 +68,7 @@ defmodule AshWorkflow.Entities.Step do
   Returns `true` if the step is an end state: nothing runs on entry and nothing
   leaves it.
 
-  Derived from the shape of the step. A step with no action, no transitions, no
+  Derived from the fields of the step. A step with no action, no transitions, no
   timeouts, no `on_success` and no `on_error` has no way out, so it is terminal
   whether or not it says so. `terminal: true` is an assertion on top of that:
   `AshWorkflow.Verifiers.ValidateWorkflow` rejects a step that declares it and
@@ -134,6 +134,21 @@ defmodule AshWorkflow.Entities.Step do
   order. Returns `[]` if no `on_success` is declared.
   """
   def on_success_targets(%__MODULE__{on_success: routes}), do: Enum.map(routes, & &1.to)
+
+  @doc """
+  Returns `true` if `on_success` is statically guaranteed to match: it ends
+  with an unconditional entry (no `when`), which `validate_on_success_ordering`
+  already requires to be both trailing and unique.
+
+  A step whose `on_success` is not exhaustive can, at runtime, run its action
+  and have every route's `when` fail to match. `AshWorkflow.Verifiers.ValidateWorkflow`
+  uses this to require `on_error` on such a step, since that is otherwise a
+  failure the step has no declared way to handle.
+  """
+  def on_success_exhaustive?(%__MODULE__{on_success: []}), do: false
+
+  def on_success_exhaustive?(%__MODULE__{on_success: routes}),
+    do: is_nil(List.last(routes).when)
 
   @doc """
   Finds the initial step from a list of steps.
