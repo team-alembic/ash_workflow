@@ -2,12 +2,13 @@ defmodule AshWorkflow.Transformers.AddPolicies do
   @moduledoc """
   Generates Ash policies from workflow step declarations.
 
-  Ensures workflow resources work out of the box when `Authorizer`
+  Ensures workflow resources function by default when `Authorizer`
   is present by injecting four layers of policies:
 
-  1. **AshOban bypass** — allows Oban-triggered actions (automatic steps and
-     timeouts) to execute without an actor. Uses `AshOban.Checks.AshObanInteraction`
-     which only matches when `context.private.ash_oban?` is true.
+  1. **AshOban bypass** — allows Oban-triggered actions (automatic steps,
+     timeouts and `every` entities) to execute without an actor. Uses
+     `AshOban.Checks.AshObanInteraction` which only matches when
+     `context.private.ash_oban?` is true.
 
   2. **Step-level policies** — for each manual step with a `policy` field,
      generates a policy scoped to that step's transition actions. For example:
@@ -28,9 +29,10 @@ defmodule AshWorkflow.Transformers.AddPolicies do
      policy scoped to the generated `:undo` action.
 
   4. **Default allow** — a catch-all `authorize_if always()` scoped to workflow
-     transition actions, automatic step actions, timeout actions, read actions,
-     and user-defined create actions, so workflow initialization and background
-     execution aren't blocked by other policies on the resource.
+     transition actions, automatic step actions, timeout actions, `every`
+     actions, read actions, and user-defined create actions, so workflow
+     initialization and background execution aren't blocked by other policies
+     on the resource.
 
   Skips all policy generation if `Authorizer` is not configured
   on the resource.
@@ -113,13 +115,20 @@ defmodule AshWorkflow.Transformers.AddPolicies do
         end
       end)
 
+    every_actions =
+      steps
+      |> Enum.reject(&Step.terminal?/1)
+      |> Enum.flat_map(& &1.everys)
+      |> Enum.map(& &1.action)
+
     undo_actions = if Info.undo(dsl), do: [AddActions.undo_action_name()], else: []
 
     Enum.uniq(
       create_actions ++
         read_actions ++
         transition_actions ++
-        automatic_actions ++ timeout_actions ++ on_error_actions(steps) ++ undo_actions
+        automatic_actions ++
+        timeout_actions ++ every_actions ++ on_error_actions(steps) ++ undo_actions
     )
   end
 
@@ -164,7 +173,13 @@ defmodule AshWorkflow.Transformers.AddPolicies do
         end
       end)
 
-    Enum.uniq(automatic_actions ++ timeout_actions ++ on_error_actions(steps))
+    every_actions =
+      steps
+      |> Enum.reject(&Step.terminal?/1)
+      |> Enum.flat_map(& &1.everys)
+      |> Enum.map(& &1.action)
+
+    Enum.uniq(automatic_actions ++ timeout_actions ++ every_actions ++ on_error_actions(steps))
   end
 
   # AshOban invokes these when an automatic step fails, so they need the same

@@ -31,6 +31,18 @@ defmodule AshWorkflow.Info do
     Enum.find(steps(resource), &(&1.name == step_name))
   end
 
+  @doc """
+  Returns the `every` entities declared on a given step, or `[]` if the step
+  has none or does not exist.
+  """
+  @spec everys(Ash.Resource.t(), atom()) :: [AshWorkflow.Entities.Every.t()]
+  def everys(resource, step_name) do
+    case step(resource, step_name) do
+      nil -> []
+      step -> step.everys
+    end
+  end
+
   @typedoc """
   The merged view of a transition name, as returned by `transition/2`.
   """
@@ -238,10 +250,13 @@ defmodule AshWorkflow.Info do
   def recommended_indexes(resource) do
     steps = steps(resource) |> Enum.reject(&Step.terminal?/1)
 
+    every_fields = if Enum.any?(steps, &(&1.everys != [])), do: [:state_entered_at], else: []
+
     timeout_fields =
       steps
       |> Enum.flat_map(& &1.timeouts)
       |> Enum.map(& &1.field)
+      |> Enum.concat(every_fields)
       |> Enum.filter(&column?(resource, &1))
       |> Enum.uniq()
       |> Enum.sort_by(&(&1 != :state_entered_at))
@@ -330,7 +345,7 @@ defmodule AshWorkflow.Info do
   * `:manual` — `true` when nothing runs on entry
   * `:wait_state` — `true` when a timeout is the step's only exit
 
-  The edges are four lists:
+  The edges are five lists:
 
   * `:transitions` — one entry per reachable target, as `%{name:, to:,
     condition:, undoable?:, accept:}`. A conditional transition contributes one
@@ -342,8 +357,11 @@ defmodule AshWorkflow.Info do
     condition:}`.
   * `:on_error` — the step an automatic step falls to on failure, or `nil`.
   * `:timeouts` — one entry per timeout, as `%{name:, to:, fire_after:, field:,
-    action:, repeat:, retry:}`. A timeout that runs an action rather than
-    moving the workflow has a `nil` `:to` and a non-`nil` `:action`.
+    action:, retry:}`. A timeout that runs an action rather than moving the
+    workflow has a `nil` `:to` and a non-`nil` `:action`.
+  * `:everys` — one entry per `every`, as `%{name:, interval:, action:,
+    retry:}`. Always measures against `state_entered_at` and never has a
+    target, since firing never leaves the step.
 
   ## Example
 
@@ -365,7 +383,10 @@ defmodule AshWorkflow.Info do
       #=>     on_success: [],
       #=>     on_error: nil,
       #=>     timeouts: [
-      #=>       %{name: :chase, to: nil, fire_after: {3, :days}, field: :state_entered_at, action: :send_reminder, repeat: true, retry: nil}
+      #=>       %{name: :breach, to: :escalated, fire_after: {1, :hours}, field: :state_entered_at, action: nil, retry: nil}
+      #=>     ],
+      #=>     everys: [
+      #=>       %{name: :chase, interval: {3, :days}, action: :send_reminder, retry: nil}
       #=>     ]
       #=>   },
       #=>   ...
@@ -394,7 +415,8 @@ defmodule AshWorkflow.Info do
        transitions: Enum.flat_map(step.transitions, &transition_edges(&1, undo_enabled?)),
        on_success: Enum.map(step.on_success, &%{to: &1.to, condition: &1.when}),
        on_error: step.on_error,
-       timeouts: Enum.map(step.timeouts, &timeout_edge/1)
+       timeouts: Enum.map(step.timeouts, &timeout_edge/1),
+       everys: Enum.map(step.everys, &every_edge/1)
      }}
   end
 
@@ -423,8 +445,16 @@ defmodule AshWorkflow.Info do
       fire_after: timeout.fire_after,
       field: timeout.field,
       action: timeout.action,
-      repeat: timeout.repeat,
       retry: timeout.retry
+    }
+  end
+
+  defp every_edge(every) do
+    %{
+      name: every.name,
+      interval: every.interval,
+      action: every.action,
+      retry: every.retry
     }
   end
 end

@@ -85,7 +85,7 @@ defmodule AshWorkflow.UndoTest do
     end
   end
 
-  describe "repeating timeouts" do
+  describe "every" do
     test "same-state rows are not what undo reverses" do
       {:ok, record} = UndoWorkflow.create(%{title: "test"})
       record = Ash.update!(record, action: :defer)

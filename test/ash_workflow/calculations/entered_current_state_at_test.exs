@@ -15,7 +15,7 @@ defmodule AshWorkflow.Calculations.EnteredCurrentStateAtTest do
   end
 
   describe "value" do
-    test "matches state_entered_at when there have been no repeats" do
+    test "matches state_entered_at when the every hasn't fired yet" do
       {:ok, record} = AshWorkflowTest.LoggedWorkflow.create(%{title: "test"})
       {:ok, record} = Ash.update(record, action: :process_intake)
 
@@ -33,7 +33,7 @@ defmodule AshWorkflow.Calculations.EnteredCurrentStateAtTest do
                       50_000
     end
 
-    test "stays fixed across repeats while state_entered_at keeps moving" do
+    test "stays fixed while an every fires and keeps state_entered_at moving" do
       {:ok, record} = AshWorkflowTest.LoggedWorkflow.create(%{title: "test"})
       {:ok, record} = Ash.update(record, action: :process_intake)
 

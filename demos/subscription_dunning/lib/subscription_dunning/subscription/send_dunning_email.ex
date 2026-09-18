@@ -2,7 +2,7 @@ defmodule SubscriptionDunning.Subscription.SendDunningEmail do
   @moduledoc """
   Stands in for emailing the customer about their overdue payment.
 
-  Counting the sends is what lets a test prove the repeating timeout fires more
+  Counting the sends is what lets a test prove the every fires more
   than once without the subscription leaving `:grace_period`.
   """
   use Ash.Resource.Change

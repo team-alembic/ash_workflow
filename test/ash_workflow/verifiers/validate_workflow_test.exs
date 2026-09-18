@@ -28,7 +28,8 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflowTest do
       on_error: opts[:on_error],
       policy: opts[:policy],
       transitions: opts[:transitions] || [],
-      timeouts: opts[:timeouts] || []
+      timeouts: opts[:timeouts] || [],
+      everys: opts[:everys] || []
     }
   end
 
@@ -49,8 +50,7 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflowTest do
       name: name,
       fire_after: opts[:fire_after] || {1, :days},
       action: opts[:action],
-      transition_to: opts[:transition_to],
-      repeat: opts[:repeat] || false
+      transition_to: opts[:transition_to]
     }
   end
 

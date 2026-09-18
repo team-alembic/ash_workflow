@@ -8,7 +8,7 @@ defmodule AshWorkflowTest.UndoWorkflow do
         ├─(escalate)───────────→ rejected
         └─(defer, undoable)────→ deferred ──(resume, undoable, conditional)──→ review | publish
 
-  `deferred` carries a repeating timeout so its same-state log rows are in the
+  `deferred` carries a recurring `every` so its same-state log rows are in the
   way of anything walking the log back to the last real state change.
   """
 
@@ -41,7 +41,7 @@ defmodule AshWorkflowTest.UndoWorkflow do
         route :publish, when: expr(priority == :high)
       end
 
-      timeout :nudge, fire_after: {2, :days}, action: :send_nudge, repeat: true
+      every :nudge, {2, :days}, action: :send_nudge
     end
 
     step :done, terminal: true

@@ -3,10 +3,10 @@ defmodule AshWorkflow.Calculations.EnteredCurrentStateAt do
   Ash calculation that returns the `occurred_at` of the most recent transition
   log row where `from_state != to_state`.
 
-  Unlike `state_entered_at`, this ignores repeating-timeout rows — a repeat
-  writes a row with `from_state == to_state` to re-arm its own trigger, but it
-  is not a state change. Only registered when a `transition_log` is
-  configured; see `AshWorkflow.Transformers.AddCalculations`.
+  Unlike `state_entered_at`, this ignores `every` rows — an `every` writes a
+  row with `from_state == to_state` to re-arm its own trigger, but it is not a
+  state change. Only registered when a `transition_log` is configured; see
+  `AshWorkflow.Transformers.AddCalculations`.
   """
   use Ash.Resource.Calculation
 

@@ -54,20 +54,20 @@ defmodule AshWorkflow.Transformers.AddObanTriggersTest do
     end
   end
 
-  describe "timeout repeat behavior" do
+  describe "timeout and every trigger behavior" do
     test "non-repeating action timeout generates trigger_once? true" do
       trigger = trigger(AshWorkflowTest.TimeoutWorkflow, :__timeout_trigger_waiting_reminder)
       assert trigger.trigger_once? == true
     end
 
-    test "repeating action timeout does not set trigger_once?" do
+    test "an every does not set trigger_once?" do
       trigger =
-        trigger(AshWorkflowTest.RepeatingTimeoutWorkflow, :__timeout_trigger_waiting_follow_up)
+        trigger(AshWorkflowTest.RepeatingTimeoutWorkflow, :__every_trigger_waiting_follow_up)
 
       assert trigger.trigger_once? == false
     end
 
-    test "repeating action timeout injects a RecordEvent that resets state_entered_at" do
+    test "an every injects a RecordEvent that resets state_entered_at" do
       action =
         Ash.Resource.Info.action(AshWorkflowTest.RepeatingTimeoutWorkflow, :send_follow_up)
 
@@ -80,7 +80,7 @@ defmodule AshWorkflow.Transformers.AddObanTriggersTest do
              end)
     end
 
-    test "transition timeouts are not affected by repeat flag" do
+    test "transition timeouts are not affected by an every elsewhere on the resource" do
       trigger = trigger(AshWorkflowTest.TimeoutWorkflow, :__timeout_trigger_waiting_escalation)
       assert trigger.trigger_once? == false
     end

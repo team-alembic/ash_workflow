@@ -87,6 +87,19 @@ defmodule AshWorkflow do
     singleton_entity_keys: [:retry]
   }
 
+  @every %Spark.Dsl.Entity{
+    name: :every,
+    describe:
+      "Declares a recurring action that runs on an interval for as long as the workflow stays in this step.",
+    target: Entities.Every,
+    args: [:name, {:optional, :interval}],
+    schema: Entities.Every.attribute_schema(),
+    entities: [
+      retry: [@retry]
+    ],
+    singleton_entity_keys: [:retry]
+  }
+
   @belongs_to_actor %Spark.Dsl.Entity{
     name: :belongs_to_actor,
     describe: "Configures actor capture on the transition log.",
@@ -131,6 +144,7 @@ defmodule AshWorkflow do
     entities: [
       transitions: [@transition],
       timeouts: [@timeout],
+      everys: [@every],
       on_success: [@on_success],
       retry: [@retry]
     ],

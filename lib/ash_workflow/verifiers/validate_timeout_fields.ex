@@ -2,9 +2,8 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutFields do
   @moduledoc """
   Verifies that timeout `field` options are valid.
 
-  Checks:
-  - Custom fields reference existing attributes or calculations on the resource
-  - `repeat: true` is not combined with a custom field (see `Entities.Timeout` for rationale)
+  Checks that custom fields reference existing attributes or calculations on
+  the resource.
 
   Runs after all transformers have added attributes and calculations to the resource.
   Skips field existence validation for the default `:state_entered_at` since it is always present.
@@ -27,26 +26,8 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutFields do
     |> Enum.reject(&Step.terminal?/1)
     |> Enum.flat_map(fn step -> Enum.map(step.timeouts, &{step, &1}) end)
     |> Enum.reduce_while(:ok, fn {step, timeout}, :ok ->
-      with {:cont, :ok} <- validate_no_repeat_with_custom_field(step, timeout) do
-        validate_field_exists(dsl, step, timeout)
-      end
+      validate_field_exists(dsl, step, timeout)
     end)
-  end
-
-  defp validate_no_repeat_with_custom_field(step, timeout) do
-    if timeout.repeat and timeout.field != :state_entered_at do
-      {:halt,
-       {:error,
-        DslError.exception(
-          path: [:workflow, :step, step.name],
-          message:
-            "Timeout :#{timeout.name} on step :#{step.name} has repeat: true with field: :#{timeout.field}. " <>
-              "Repeating timeouts are not supported with custom fields because the repeat mechanism " <>
-              "resets state_entered_at, not the custom field. Use the default field or remove repeat: true."
-        )}}
-    else
-      {:cont, :ok}
-    end
   end
 
   defp validate_field_exists(_dsl, _step, %{field: :state_entered_at}), do: {:cont, :ok}
