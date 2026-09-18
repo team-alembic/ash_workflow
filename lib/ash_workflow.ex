@@ -27,10 +27,10 @@ defmodule AshWorkflow do
         "in declaration order, first match wins, against the record *after* the step's " <>
         "action has run. An entry with no `when` is unconditional and must be declared " <>
         "last, since it always matches and would otherwise shadow any entries after it. " <>
-        "If no entry is unconditional, the step must declare `on_error`: a record whose " <>
-        "action succeeds but matches none of the conditions fails with " <>
-        "`AshWorkflow.Errors.NoMatchingRoute` and runs down that path, the same as any " <>
-        "other action failure.",
+        "If no entry is unconditional, the step must declare another way out — `on_error`, " <>
+        "or a timeout with `transition_to` — since a record whose action succeeds but " <>
+        "matches none of the conditions fails with `AshWorkflow.Errors.NoMatchingRoute` " <>
+        "and stays in the step until one of those moves it.",
     target: Entities.Route,
     imports: [Ash.Expr],
     args: [:to],

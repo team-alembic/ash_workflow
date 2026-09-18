@@ -257,6 +257,21 @@ defmodule AshWorkflow.OnSuccessTest do
       {:ok, high_result} = Ash.update(high, action: :run_classification)
       assert high_result.state == :high
     end
+
+    test "a nil score matches no range, and on_error is what catches it" do
+      # The three ranges cover every integer, which is why the step needs
+      # on_error rather than a fallback route: a nil score satisfies none of
+      # them, since each comparison evaluates to nil rather than false.
+      {:ok, record} = OnSuccessThreeWayWorkflow.create(%{})
+      assert record.score == nil
+
+      assert {:error, error} = Ash.update(record, action: :run_classification)
+
+      assert %AshWorkflow.Errors.NoMatchingRoute{step: :classifying} = hd(error.errors)
+
+      {:ok, failed} = Ash.update(record, action: :__on_error_classifying)
+      assert failed.state == :classification_failed
+    end
   end
 
   describe "on_success routing to a terminal step" do
@@ -297,6 +312,13 @@ defmodule AshWorkflow.OnSuccessTest do
       assert r3.state == :succeeded
       assert r3.attempts == 3
     end
+
+    test "the on_error the exhaustiveness rule required moves the record out of the loop" do
+      {:ok, record} = OnSuccessSelfLoopWorkflow.create(%{})
+
+      {:ok, failed} = Ash.update(record, action: :__on_error_attempting)
+      assert failed.state == :attempting_failed
+    end
   end
 
   describe "backward on_success routing to an earlier step" do
@@ -334,6 +356,13 @@ defmodule AshWorkflow.OnSuccessTest do
       {:ok, r5} = Ash.update(r4, action: :run_validation)
       assert r5.state == :submitted
     end
+
+    test "the on_error the exhaustiveness rule required moves the record out of the loop" do
+      {:ok, record} = OnSuccessBackwardLoopWorkflow.create(%{})
+
+      {:ok, failed} = Ash.update(record, action: :__on_error_validating)
+      assert failed.state == :validation_failed
+    end
   end
 
   describe "a condition over a calculation" do
@@ -345,6 +374,13 @@ defmodule AshWorkflow.OnSuccessTest do
       {:ok, weak} = OnSuccessCalculationWorkflow.create(%{title: "weak"})
       {:ok, weak_result} = Ash.update(weak, action: :run_screening)
       assert weak_result.state == :rejected
+    end
+
+    test "the on_error the exhaustiveness rule required moves the record to its error state" do
+      {:ok, record} = OnSuccessCalculationWorkflow.create(%{title: "strong"})
+
+      {:ok, failed} = Ash.update(record, action: :__on_error_screening)
+      assert failed.state == :screening_failed
     end
   end
 end

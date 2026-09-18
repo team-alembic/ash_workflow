@@ -307,10 +307,7 @@ defmodule AshWorkflow.Transformers.AddActions do
         Transformer.build_entity!(ResourceDsl, [:actions, :update], :change,
           change:
             {ConditionalOnSuccess,
-             routes: step.on_success,
-             step_name: step.name,
-             action: step.action,
-             on_error: step.on_error}
+             routes: step.on_success, step_name: step.name, action: step.action}
         )
 
       {change, true}

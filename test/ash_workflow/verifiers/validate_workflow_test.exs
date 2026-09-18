@@ -270,7 +270,7 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflowTest do
       assert :ok = ValidateWorkflow.verify(dsl)
     end
 
-    test "conditional on_success entries with neither a fallback nor on_error fails" do
+    test "conditional on_success entries with no fallback, no on_error and no timeout fails" do
       dsl =
         build_dsl([
           step(:process,
@@ -284,6 +284,42 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflowTest do
       assert {:error, %Spark.Error.DslError{message: message}} = ValidateWorkflow.verify(dsl)
       assert message =~ "no unconditional on_success"
       assert message =~ "no on_error"
+      assert message =~ "no timeout with transition_to"
+    end
+
+    test "a timeout with transition_to is a way out, so conditional entries need no on_error" do
+      dsl =
+        build_dsl([
+          step(:process,
+            action: :do_work,
+            on_success: [route(:path_a, true), route(:path_b, true)],
+            timeouts: [timeout(:sla, transition_to: :escalated)]
+          ),
+          step(:path_a, terminal: true),
+          step(:path_b, terminal: true),
+          step(:escalated, terminal: true)
+        ])
+
+      assert :ok = ValidateWorkflow.verify(dsl)
+    end
+
+    test "a timeout that only runs an action is not a way out, since it never changes state" do
+      dsl =
+        build_dsl(
+          [
+            step(:process,
+              action: :do_work,
+              on_success: [route(:path_a, true), route(:path_b, true)],
+              timeouts: [timeout(:reminder, action: :send_reminder)]
+            ),
+            step(:path_a, terminal: true),
+            step(:path_b, terminal: true)
+          ],
+          [:send_reminder]
+        )
+
+      assert {:error, %Spark.Error.DslError{message: message}} = ValidateWorkflow.verify(dsl)
+      assert message =~ "no timeout with transition_to"
     end
 
     test "conditional entries with a trailing unconditional fallback are valid, with no on_error" do

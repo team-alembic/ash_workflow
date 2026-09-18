@@ -186,9 +186,11 @@ step :send_offer, action: :send_offer_email, on_success: :awaiting_response, on_
   Declaring an unconditional `on_success` before conditional ones is a
   compile-time error — it would shadow everything after it.
 - If every `on_success` entry is conditional (no trailing unconditional
-  fallback), the step must also declare `on_error` — a compile-time error
-  otherwise. Without it, a record whose action succeeds but matches no
-  condition would have nowhere to go.
+  fallback), the step must declare another way out: `on_error`, or a timeout
+  with `transition_to`. A compile-time error otherwise. Without one, a record
+  whose action succeeds but matches no condition stays in the step and the
+  action is retried on every cycle. A timeout that only names an `action` does
+  not count — it never changes state.
 - **Timing**: `on_success` conditions are evaluated *after* the step's own
   action has run — including any attributes that action computed. This is
   the opposite of a manual transition's `route` conditions (see `route` under
@@ -564,7 +566,7 @@ AshWorkflow validates your workflow at compile time and raises clear errors for:
 - References to undefined steps (in `on_success`, `on_error`, `transition :to`, `timeout :transition_to`)
 - An automatic step declaring no `on_success`
 - More than one unconditional `on_success` on a step, or an unconditional `on_success` declared before a conditional one (it would shadow it)
-- An automatic step whose `on_success` is entirely conditional (no trailing unconditional fallback) and declares no `on_error`
+- An automatic step whose `on_success` is entirely conditional (no trailing unconditional fallback) and declares neither `on_error` nor a timeout with `transition_to`
 - Unreachable steps (not connected to the first step via any path)
 
 ## Important Caveats

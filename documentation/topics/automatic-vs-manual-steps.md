@@ -68,15 +68,16 @@ compile-time error: it would always match first and shadow everything after
 it.
 
 A step whose `on_success` entries are all conditional — no trailing
-unconditional fallback — must also declare `on_error`. Without one, a record
-whose action succeeds but matches none of the conditions would have nowhere
-to go, so `AshWorkflow.Verifiers.ValidateWorkflow` rejects the step at
-compile time rather than let that surface only when the data hits it. At
-runtime, a no-match is a distinct failure, not a silent "stay put":
-`AshWorkflow.Changes.ConditionalOnSuccess` adds `AshWorkflow.Errors.NoMatchingRoute`
-to the changeset, naming the step and the action, and the failure runs down
-`on_error` the same way any other action failure does — see
-`documentation/topics/error-handling.md`.
+unconditional fallback — must declare another way out: `on_error`, or a
+timeout with `transition_to`. Without one, a record whose action succeeds but
+matches none of the conditions stays in the step, and the action is retried on
+every scheduler cycle forever, so `AshWorkflow.Verifiers.ValidateWorkflow`
+rejects the step at compile time rather than let that surface only when the
+data hits it. At runtime, a no-match is a distinct failure, not a silent "stay
+put": `AshWorkflow.Changes.ConditionalOnSuccess` adds
+`AshWorkflow.Errors.NoMatchingRoute` to the changeset, naming the step and the
+action, and the failure runs down `on_error` the same way any other action
+failure does — see `documentation/topics/error-handling.md`.
 
 Conditions follow SQL's three-valued logic, not Elixir's: comparing a `nil`
 attribute (one the action never set) evaluates to `nil`, not `false`. A route
