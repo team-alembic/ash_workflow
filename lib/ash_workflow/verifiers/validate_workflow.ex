@@ -179,7 +179,8 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
         )
 
       true ->
-        with :ok <- validate_on_success_ordering(step) do
+        with :ok <- validate_on_success_ordering(step),
+             :ok <- validate_on_success_exhaustive(step) do
           validate_timeouts(step)
         end
     end
@@ -217,6 +218,25 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
 
       true ->
         :ok
+    end
+  end
+
+  # A step whose on_success entries are all conditional, with none acting as an
+  # unconditional fallback, can run its action and have nothing match. Without
+  # on_error that case has no declared destination, so AshWorkflow.Changes.ConditionalOnSuccess
+  # would raise at runtime instead of routing anywhere — a failure this
+  # verifier can already see coming from the declaration alone.
+  defp validate_on_success_exhaustive(step) do
+    if Step.on_success_exhaustive?(step) or step.on_error do
+      :ok
+    else
+      step_error(
+        step,
+        "Step :#{step.name} has no unconditional on_success (a trailing entry with no " <>
+          "`when`) and no on_error. If the action succeeds and none of its on_success " <>
+          "conditions match, there is nowhere for the record to go. Either add a trailing " <>
+          "unconditional on_success as the fallback, or declare on_error."
+      )
     end
   end
 

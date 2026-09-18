@@ -13,8 +13,16 @@ defmodule AshWorkflow.Changes.ConditionalOnSuccess do
   own changes, so by the time it runs, the action's business logic has
   already been folded into the changeset. Routes are evaluated in order. The
   first route whose `when` expression matches wins; a route with no `when`
-  (an unconditional fallback) always matches. If no route matches, the
-  changeset gets an error naming the step and the record.
+  (an unconditional fallback) always matches.
+
+  If no route matches, that is a distinct failure rather than a silent no-op:
+  `AshWorkflow.Errors.NoMatchingRoute` is added to the changeset, which sends
+  it down the step's own error path the same way any other action failure
+  does — see `AshWorkflow.Verifiers.ValidateWorkflow`, which requires
+  `on_error` on any step whose `on_success` is not statically exhaustive, so
+  that path always exists. On a step this verifier somehow missed, with no
+  `on_error` declared, the error is raised directly instead, since there is
+  then nowhere for the record to go.
 
   Used internally by the AddActions transformer for automatic steps whose
   `on_success` needs runtime evaluation (more than one entry, or a `when` on
@@ -22,10 +30,14 @@ defmodule AshWorkflow.Changes.ConditionalOnSuccess do
   """
   use Ash.Resource.Change
 
+  alias AshWorkflow.Errors.NoMatchingRoute
+
   @impl true
   def change(changeset, opts, _context) do
     routes = opts[:routes]
     step_name = opts[:step_name]
+    action_name = opts[:action]
+    on_error = opts[:on_error]
     resource = changeset.resource
 
     Ash.Changeset.before_action(changeset, fn changeset ->
@@ -43,13 +55,20 @@ defmodule AshWorkflow.Changes.ConditionalOnSuccess do
           )
 
         nil ->
-          Ash.Changeset.add_error(
-            changeset,
-            "No matching on_success route for step :#{step_name} on record #{inspect(record)}. " <>
-              "Record did not match any of the #{length(routes)} configured routes."
-          )
+          handle_no_match(changeset, resource, step_name, action_name, on_error)
       end
     end)
+  end
+
+  defp handle_no_match(_changeset, resource, step_name, action_name, nil) do
+    raise NoMatchingRoute.exception(resource: resource, step: step_name, action: action_name)
+  end
+
+  defp handle_no_match(changeset, resource, step_name, action_name, _on_error) do
+    Ash.Changeset.add_error(
+      changeset,
+      NoMatchingRoute.exception(resource: resource, step: step_name, action: action_name)
+    )
   end
 
   # Folds the changeset's pending attribute changes into its data, so route

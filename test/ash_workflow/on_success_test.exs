@@ -76,13 +76,27 @@ defmodule AshWorkflow.OnSuccessTest do
       assert failed.state == :screening_failed
     end
 
-    test "raises a clear error naming the step and the record when no route matches" do
+    test "fails with a typed error naming the step and the action when no route matches" do
       {:ok, record} = OnSuccessWorkflow.create(%{title: "neutral"})
 
       assert {:error, error} = Ash.update(record, action: :run_screening)
+
+      assert %AshWorkflow.Errors.NoMatchingRoute{step: :screening, action: :run_screening} =
+               hd(error.errors)
+
       message = Exception.message(error)
-      assert message =~ "No matching on_success route for step :screening"
-      assert message =~ record.id
+      assert message =~ "No on_success route matched for step :screening"
+      assert message =~ "action :run_screening"
+    end
+
+    test "a no-match failure routes down the step's on_error path, same as any other failure" do
+      {:ok, record} = OnSuccessWorkflow.create(%{title: "neutral"})
+
+      assert {:error, _error} = Ash.update(record, action: :run_screening)
+      assert Ash.get!(OnSuccessWorkflow, record.id).state == :screening
+
+      {:ok, failed} = Ash.update(record, action: :__on_error_screening)
+      assert failed.state == :screening_failed
     end
 
     test "first matching on_success wins when more than one condition would match" do
@@ -212,7 +226,7 @@ defmodule AshWorkflow.OnSuccessTest do
       assert record.screen_score == nil
 
       assert {:error, error} = Ash.update(record, action: :run_screening)
-      assert Exception.message(error) =~ "No matching on_success route for step :screening"
+      assert Exception.message(error) =~ "No on_success route matched for step :screening"
     end
   end
 

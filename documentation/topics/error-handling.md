@@ -104,6 +104,8 @@ Manual transitions fail if the state machine rejects them — for example, calli
 
 If a conditional transition has no matching route for the current record, the action fails with a descriptive error. If a route's `when` expression fails to evaluate (e.g., references a missing field), the error includes the specific expression that failed and the underlying reason.
 
+An automatic step's `on_success` fails the same way when none of its conditions match: the action succeeded, but `AshWorkflow.Changes.ConditionalOnSuccess` finds no route to take, so it adds `AshWorkflow.Errors.NoMatchingRoute` — naming the step and the action — to the changeset. That failure runs down the step's `on_error` exactly like any other, described above. `AshWorkflow.Verifiers.ValidateWorkflow` requires `on_error` on any step whose `on_success` is not statically exhaustive (no trailing unconditional entry), so this path always exists for a step that compiles.
+
 ## Compensation and rollback
 
 AshWorkflow does not provide automatic compensation or rollback. Each transition is an Ash action, and Ash handles transactional semantics at the action level — if a change within an action fails, the entire action is rolled back.

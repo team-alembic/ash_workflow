@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `AshWorkflow.Errors.NoMatchingRoute`, with `resource`, `step` and `action` fields, so a caller can match on the error rather than its message.
+
+### Changed
+
+- **Breaking: an automatic step whose `on_success` is entirely conditional now requires `on_error`.** `AshWorkflow.Verifiers.ValidateWorkflow` rejects a step with no trailing unconditional `on_success` and no `on_error` at compile time: without one, a record whose action succeeds but matches none of the conditions would have nowhere to go. The verifier cannot evaluate arbitrary `Ash.Expr` conditions for logical completeness, so this applies even when a step's conditions are semantically exhaustive (`attempts < 3` / `attempts >= 3`, or a boolean and its negation) but declare no unconditional fallback — add `on_error` to fix it.
+- **Breaking: a no-match `on_success` now fails with `AshWorkflow.Errors.NoMatchingRoute` instead of a bare changeset error string.** `AshWorkflow.Changes.ConditionalOnSuccess` names the resource, step and action on the error, and the failure runs down the step's `on_error` the same way any other action failure does. Code matching on the old message text ("No matching on_success route for step ...") should match on `%AshWorkflow.Errors.NoMatchingRoute{}` instead.
+
 ## [0.6.0] - 2026-09-17
 
 ### Added

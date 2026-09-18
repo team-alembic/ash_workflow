@@ -4,7 +4,7 @@ defmodule AshWorkflowTest.OnSuccessSelfLoopWorkflow do
   loop entirely within one automatic step, the way `order_fulfilment`'s
   `on_error` loops backward. Deliberately supported: reachability only asks
   whether a step is reachable from the initial step, not whether the path to
-  it is acyclic, and a route targeting its own step is reachable trivially
+  it is acyclic, and a route targeting its own step is already reachable
   (it is the step doing the routing). Nothing about a self-loop is rejected
   at compile time.
 
@@ -23,9 +23,11 @@ defmodule AshWorkflowTest.OnSuccessSelfLoopWorkflow do
 
       on_success :attempting, when: expr(attempts < 3)
       on_success :succeeded, when: expr(attempts >= 3)
+      on_error :attempting_failed
     end
 
     step :succeeded, terminal: true
+    step :attempting_failed, terminal: true
   end
 
   code_interface do

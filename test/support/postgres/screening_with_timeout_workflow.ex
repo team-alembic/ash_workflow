@@ -8,6 +8,7 @@ defmodule AshWorkflowTest.Postgres.ScreeningWithTimeoutWorkflow do
 
       screening ──(run_screening, score >= 5)──▶ interview
                 └─(run_screening, score < 5)───▶ rejected_by_hr
+                └─(run_screening, no route matched)──▶ escalated
                 └─(1 hour, unrouted)────────────▶ escalated
   """
 
@@ -27,6 +28,7 @@ defmodule AshWorkflowTest.Postgres.ScreeningWithTimeoutWorkflow do
 
       on_success :interview, when: expr(screen_score >= 5)
       on_success :rejected_by_hr, when: expr(screen_score < 5)
+      on_error :escalated
 
       timeout :sla, fire_after: {1, :hours}, transition_to: :escalated
     end

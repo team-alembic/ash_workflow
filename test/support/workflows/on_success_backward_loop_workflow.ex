@@ -22,6 +22,7 @@ defmodule AshWorkflowTest.OnSuccessBackwardLoopWorkflow do
 
       on_success :submitted, when: expr(valid == true)
       on_success :collecting, when: expr(valid == false)
+      on_error :validation_failed
     end
 
     step :collecting do
@@ -30,6 +31,7 @@ defmodule AshWorkflowTest.OnSuccessBackwardLoopWorkflow do
     end
 
     step :submitted, terminal: true
+    step :validation_failed, terminal: true
   end
 
   code_interface do
