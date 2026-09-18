@@ -291,20 +291,24 @@ AshWorkflow will inject its state-transition changes into the action you define.
 
 Timeouts fire when a workflow stays in a step longer than a specified duration. They are checked via Oban cron jobs.
 
-### Action Timeout (stay in state, run side-effect)
+### Action Timeout (stay in state, run side-effect, fires once)
 
 ```elixir
 timeout :reminder, fire_after: {3, :days}, action: :send_reminder
-
-timeout :follow_up do
-  fire_after {7, :days}
-  action :send_follow_up
-  repeat true
-end
 ```
 
 - `action`: References a user-defined update action. The workflow stays in the current state.
-- `repeat: true`: Re-fires on the same interval. Useful for recurring reminders.
+
+### Recurring Action (`every`, fires on every interval)
+
+```elixir
+every :follow_up do
+  interval {7, :days}
+  action :send_follow_up
+end
+```
+
+`every` is a sibling entity to `timeout`, not an option on it. Use it instead of `timeout` when the action should keep firing on the same interval for as long as the record stays in the step. It always requires `action` and has no `transition_to`.
 
 ### Transition Timeout (force state change)
 
@@ -368,11 +372,11 @@ When configured, the resource gains:
 
 - `state_at/3` — the state a record was in at a given `DateTime`, resolved by walking the log.
 - `history/2` — the full list of log rows for a record, ordered oldest first.
-- `entered_current_state_at` — a calculation for when the state last *actually* changed, ignoring repeat rows (see below).
+- `entered_current_state_at` — a calculation for when the state last *actually* changed, ignoring `every` rows (see below).
 
 Both take an `effective: true` option, which omits rows a later undo reversed. See Undo below.
 
-A repeating timeout writes a log row with `from_state == to_state` — it's not a state change, but it's a recorded event, and it's what lets the log reproduce `state_entered_at`'s value. This means `state_entered_at` (a timer anchor, reset by repeats) and `entered_current_state_at` (ignores repeats, the honest "entered this state" fact) can disagree. See [Workflow history](documentation/topics/workflow-history.md) for the full explanation and the documented aggregate-query recipe for "how many records were in state S at time Y".
+An `every` writes a log row with `from_state == to_state` — it's not a state change, but it's a recorded event, and it's what lets the log reproduce `state_entered_at`'s value. This means `state_entered_at` (a timer anchor, reset each time an `every` fires) and `entered_current_state_at` (ignores those resets, the honest "entered this state" fact) can disagree. See [Workflow history](documentation/topics/workflow-history.md) for the full explanation and the documented aggregate-query recipe for "how many records were in state S at time Y".
 
 This is not an audit trail (attribute-level changes) — pair it with AshPaperTrail for that — and not event sourcing; `state` stays a plain column.
 

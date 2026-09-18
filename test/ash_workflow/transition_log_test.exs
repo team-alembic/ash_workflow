@@ -68,7 +68,7 @@ defmodule AshWorkflow.TransitionLogTest do
       assert escalation.triggered_by == :timeout
     end
 
-    test "a repeating timeout writes a from_state == to_state row" do
+    test "an every writes a from_state == to_state row" do
       {:ok, record} = LoggedWorkflow.create(%{title: "test"})
       {:ok, record} = Ash.update(record, action: :process_intake)
       {:ok, record} = Ash.update(record, action: :send_reminder)
@@ -101,7 +101,7 @@ defmodule AshWorkflow.TransitionLogTest do
       assert record.state_entered_at == entered_review_at
     end
 
-    test "a repeating action timeout resets state_entered_at to re-arm its trigger" do
+    test "an every resets state_entered_at to re-arm its trigger" do
       {:ok, record} = LoggedWorkflow.create(%{title: "test"})
       {:ok, record} = Ash.update(record, action: :process_intake)
       entered_review_at = record.state_entered_at
@@ -111,18 +111,18 @@ defmodule AshWorkflow.TransitionLogTest do
       assert DateTime.after?(record.state_entered_at, entered_review_at)
     end
 
-    test "repeating twice writes two from_state == to_state rows" do
+    test "firing an every twice writes two from_state == to_state rows" do
       {:ok, record} = LoggedWorkflow.create(%{title: "test"})
       {:ok, record} = Ash.update(record, action: :process_intake)
       {:ok, record} = Ash.update(record, action: :send_reminder)
       {:ok, record} = Ash.update(record, action: :send_reminder)
 
-      repeats =
+      fired_twice =
         record
         |> LoggedWorkflow.history()
         |> Enum.filter(&(&1.from_state == :review and &1.to_state == :review))
 
-      assert length(repeats) == 2
+      assert length(fired_twice) == 2
     end
   end
 
@@ -171,7 +171,7 @@ defmodule AshWorkflow.TransitionLogTest do
   end
 
   describe "entered_current_state_at vs state_entered_at" do
-    test "entered_current_state_at ignores repeat rows, state_entered_at does not" do
+    test "entered_current_state_at ignores every rows, state_entered_at does not" do
       {:ok, record} = LoggedWorkflow.create(%{title: "test"})
       {:ok, record} = Ash.update(record, action: :process_intake)
 

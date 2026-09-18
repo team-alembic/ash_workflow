@@ -20,16 +20,16 @@ product:
 (create) ─▶ triaging ──(auto: classify_severity)──▶ investigating ──(escalate)──▶ escalated ──(resolve)──▶ resolved
                │                                         │  ▲                          │
                │                                         │  every 90s: status reminder   │
-               └──(on_error)──▶ triage_failed            │  (repeat, no state change)    │
+               └──(on_error)──▶ triage_failed            │  (no state change)            │
                                                           └──(resolve)───────────────────▶ resolved
                                                           └──(8 min unresolved)──▶ escalated
 ```
 
 It exercises every kind of workflow event the log records: an automatic step
 with `on_success`/`on_error`, manual transitions, a one-shot timeout that
-transitions (`:auto_escalate`), and — the one this feature exists for — a
-*repeating* timeout (`:status_reminder`) that fires over and over without
-changing state.
+transitions (`:auto_escalate`), and — the one this feature exists for — an
+*`every`* (`:status_reminder`) that fires over and over without changing
+state.
 
 ## One-time setup
 
@@ -55,12 +55,12 @@ playhead" readout updates to whatever `state_at/2` says the incident was in
 at that instant — read straight from its transition log, not from its current
 `state` column.
 
-The thin white ticks on a band are repeat-timeout rows (`from_state ==
-to_state`) — the `:status_reminder` firing while nothing about the incident
-changed. Each band also shows `state_entered_at` next to
+The thin white ticks on a band are same-state rows (`from_state ==
+to_state`) — the `:status_reminder` every firing while nothing about the
+incident changed. Each band also shows `state_entered_at` next to
 `entered_current_state_at`; once a reminder has fired, the two diverge,
-because `state_entered_at` moves every time the reminder resets its own
-timer and `entered_current_state_at` does not.
+because `state_entered_at` moves every time the every resets its own timer
+and `entered_current_state_at` does not.
 
 Click **Generate incident history** to add another incident with a random,
 backdated scenario without restarting the server.
@@ -92,8 +92,8 @@ would exist.
 A few other things worth clicking:
 
 - **Undo twice.** The second undo is a redo — it reverses the undo row, which
-  puts `escalated` back. No extra machinery; the corrected reading just follows
-  the pointers.
+  puts `escalated` back. No extra table or function for this case; the
+  corrected reading just follows the pointers.
 - **`resolve` from either state.** It is one action shared between
   `investigating` and `escalated`, so it has two undoable edges. Undo rewinds
   to whichever state the log says it actually came from.
@@ -109,10 +109,10 @@ mix test
 ```
 
 `test/incident_response_test.exs` covers the transition log itself: every
-`triggered_by` value gets a dedicated test, a repeating timeout produces
+`triggered_by` value gets a dedicated test, an every produces
 `from_state == to_state` rows, `state_at/2` is checked before the first row,
 between two rows, and after the last, and `entered_current_state_at` is shown
-diverging from `state_entered_at` once a repeat fires.
+diverging from `state_entered_at` once the every fires.
 
 `test/timeline_live_test.exs` renders the timeline, exercises the "Generate
 incident history" button, and drives the slider via `render_change/3` to
@@ -139,7 +139,7 @@ to undo.
 - `lib/workflow_timeline/incident_response/incident/classify_severity.ex` —
   the `:triaging` step's automatic action.
 - `lib/workflow_timeline/incident_response/incident/send_status_update.ex` —
-  the repeating `:status_reminder` timeout's action.
+  the `:status_reminder` every's action.
 - `lib/workflow_timeline/seeder.ex` — runs an incident through a random
   lifecycle using the real workflow actions, then rewrites the resulting
   transition-log rows' `occurred_at` (and the incident's denormalised

@@ -1,10 +1,10 @@
 defmodule AshWorkflowTest.RepeatingTimeoutWorkflow do
   @moduledoc """
-  Workflow with a repeating timeout: sends follow-ups every 3 days.
+  Workflow with a recurring action: sends follow-ups every 3 days.
 
   start → waiting ──(resolve)──→ resolved
                   │
-                  └─ 3 days ──→ (send_follow_up, repeat every 3 days)
+                  └─ every 3 days ──→ send_follow_up
   """
 
   use Ash.Resource,
@@ -16,7 +16,7 @@ defmodule AshWorkflowTest.RepeatingTimeoutWorkflow do
     step :waiting do
       transition :resolve, to: :resolved
 
-      timeout :follow_up, fire_after: {3, :days}, action: :send_follow_up, repeat: true
+      every :follow_up, {3, :days}, action: :send_follow_up
     end
 
     step :resolved, terminal: true

@@ -11,18 +11,19 @@ defmodule SubscriptionDunning.Subscription do
                                                               │  (payment_received)
                                                               ╰─ 30 days ──▶ cancelled
 
-  This is the demo for **timeouts**, and specifically for the two kinds of
-  deadline that look similar and behave differently:
+  This is the demo for **timeouts and `every`**, and specifically for the two
+  kinds of deadline that look similar and behave differently:
 
-  - `:dunning_email` uses `repeat: true`. It fires every three days for as long
-    as the subscription stays in `:grace_period`, resetting the clock each time.
-  - `:grace_expired` uses `field: :grace_period_ends_at`. Its deadline is a
-    date stored on the record — set by the billing system, and different per
-    customer — rather than "N days since entering this state".
+  - `:dunning_email` is an `every`. It fires every three days for as long as
+    the subscription stays in `:grace_period`, resetting the clock each time.
+  - `:grace_expired` is a timeout using `field: :grace_period_ends_at`. Its
+    deadline is a date stored on the record — set by the billing system, and
+    different per customer — rather than "N days since entering this state".
 
-  Those two cannot be combined, and the library rejects it at compile time:
-  a repeating timeout works by resetting its field to now, and resetting
-  `grace_period_ends_at` would claim the grace period restarted when it did not.
+  `every` has no `field` option, so it cannot be pointed at
+  `grace_period_ends_at`: an `every` works by resetting its field to now, and
+  resetting `grace_period_ends_at` would claim the grace period restarted when
+  it did not.
   """
 
   use Ash.Resource,
@@ -49,10 +50,9 @@ defmodule SubscriptionDunning.Subscription do
       transition :cancel, to: :cancelled, accept: [:cancellation_reason]
 
       # Fires repeatedly while the customer remains in arrears.
-      timeout :dunning_email do
-        fire_after {3, :days}
+      every :dunning_email do
+        interval {3, :days}
         action :send_dunning_email
-        repeat true
       end
 
       # Fires once, against a date the billing system put on the record. The

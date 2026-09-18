@@ -1,6 +1,7 @@
 defmodule AshWorkflow.Verifiers.ValidateTimeoutPrecision do
   @moduledoc """
-  Rejects timeouts whose deadline is shorter than the selected scheduler can honour.
+  Rejects timeouts and `every` entities whose deadline is shorter than the
+  selected scheduler can honour.
 
   The floor comes from the scheduler, through
   `AshWorkflow.Scheduler.precision_floor_ms/1`.
@@ -9,15 +10,15 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutPrecision do
   scheduler only wakes on minute boundaries — so a deadline shorter than a
   minute cannot be honoured there. `fire_after: {30, :seconds}` compiles happily and
   then fires anywhere up to 60 seconds late, an error larger than the deadline
-  itself.
+  itself. The same is true of an `every`'s `interval`.
 
   Rather than let the DSL make a promise the scheduler cannot keep, a deadline
-  under the floor is a compile error unless the timeout sets
+  under the floor is a compile error unless the entity sets
   `self_scheduled?: true`, which asserts that something other than the
   scheduler drives the trigger at the resolution the deadline needs.
 
   `AshWorkflow.Scheduler.Precise` arms a timer per deadline, so its floor is a
-  millisecond and a sub-minute timeout needs no flag.
+  millisecond and a sub-minute deadline needs no flag.
   """
   use Spark.Dsl.Verifier
 
@@ -32,35 +33,45 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutPrecision do
     scheduler = Info.scheduler(dsl)
     floor_ms = Scheduler.precision_floor_ms(scheduler)
 
-    dsl
-    |> Verifier.get_entities([:workflow])
-    |> Enum.filter(&match?(%Step{}, &1))
-    |> Enum.reject(&Step.terminal?/1)
-    |> Enum.flat_map(fn step -> Enum.map(step.timeouts, &{step, &1}) end)
-    |> Enum.reduce_while(:ok, fn {step, timeout}, :ok ->
-      case validate(step, timeout, scheduler, floor_ms) do
+    steps =
+      dsl
+      |> Verifier.get_entities([:workflow])
+      |> Enum.filter(&match?(%Step{}, &1))
+      |> Enum.reject(&Step.terminal?/1)
+
+    timeouts = Enum.flat_map(steps, fn step -> Enum.map(step.timeouts, &{step, :timeout, &1}) end)
+    everys = Enum.flat_map(steps, fn step -> Enum.map(step.everys, &{step, :every, &1}) end)
+
+    (timeouts ++ everys)
+    |> Enum.reduce_while(:ok, fn {step, kind, entity}, :ok ->
+      case validate(step, kind, entity, scheduler, floor_ms) do
         :ok -> {:cont, :ok}
         {:error, error} -> {:halt, {:error, error}}
       end
     end)
   end
 
-  defp validate(_step, %{self_scheduled?: true}, _scheduler, _floor_ms), do: :ok
+  defp validate(_step, _kind, %{self_scheduled?: true}, _scheduler, _floor_ms), do: :ok
 
-  defp validate(step, timeout, {module, _opts}, floor_ms) do
-    if AshWorkflow.Duration.to_milliseconds(timeout.fire_after) < floor_ms do
+  defp validate(step, kind, entity, {module, _opts}, floor_ms) do
+    duration = duration(kind, entity)
+
+    if AshWorkflow.Duration.to_milliseconds(duration) < floor_ms do
       {:error,
        DslError.exception(
-         path: [:workflow, :step, step.name, :timeout, timeout.name],
-         message: message(step, timeout, module, floor_ms)
+         path: [:workflow, :step, step.name, kind, entity.name],
+         message: message(step, kind, entity, duration, module, floor_ms)
        )}
     else
       :ok
     end
   end
 
-  defp message(step, timeout, module, floor_ms) do
-    {value, unit} = timeout.fire_after
+  defp duration(:timeout, timeout), do: timeout.fire_after
+  defp duration(:every, every), do: every.interval
+
+  defp message(step, :timeout, timeout, duration, module, floor_ms) do
+    {value, unit} = duration
 
     """
     Timeout :#{timeout.name} on step :#{step.name} has fire_after: {#{value}, :#{unit}}, \
@@ -86,6 +97,32 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutPrecision do
     If you are using a custom field to carry the deadline, {1, :minutes} behaves \
     the same as a sub-minute duration — both mean "once that instant has passed", \
     and the polling interval decides how soon after.
+    """
+  end
+
+  defp message(step, :every, every, duration, module, floor_ms) do
+    {value, unit} = duration
+
+    """
+    every :#{every.name} on step :#{step.name} has interval: {#{value}, :#{unit}}, \
+    which is shorter than #{inspect(module)} can honour. That scheduler checks no more \
+    often than every #{humanize(floor_ms)}, so this action would fire up to \
+    #{humanize(floor_ms)} late relative to the interval.
+
+    Either lengthen the interval past that floor:
+
+        every :#{every.name}, interval: {#{floor_value(floor_ms)}}, ...
+
+    or select a scheduler that fires precisely:
+
+        workflow do
+          scheduler AshWorkflow.Scheduler.Precise
+        end
+
+    or declare that you drive this trigger yourself, at whatever resolution the \
+    interval needs:
+
+        every :#{every.name}, interval: {#{value}, :#{unit}}, self_scheduled?: true, ...
     """
   end
 

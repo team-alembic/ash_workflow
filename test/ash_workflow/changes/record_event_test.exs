@@ -15,7 +15,7 @@ defmodule AshWorkflow.Changes.RecordEventTest do
                change_specs(LoggedWorkflow, :send_nudge)
     end
 
-    test "a repeating action timeout gets RecordEvent and resets state_entered_at" do
+    test "an every's action gets RecordEvent and resets state_entered_at" do
       assert [{RecordEvent, [triggered_by: :timeout, touch_state_entered_at: true]}] ==
                change_specs(LoggedWorkflow, :send_reminder)
     end

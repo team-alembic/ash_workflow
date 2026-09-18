@@ -2,13 +2,13 @@ defmodule AshWorkflowTest.LoggedWorkflow do
   @moduledoc """
   Exercises every `triggered_by` value the transition log records: an
   automatic step (`:automatic`/`:error_path`), a manual transition
-  (`:manual`), a repeating action timeout (`:timeout`, `from_state ==
+  (`:manual`), a recurring action (`:timeout`, `from_state ==
   to_state`), and a transitioning timeout (`:timeout`), on top of the
   `:initial` row every workflow gets on create.
 
   start → intake ──(success)──→ review ──(approve)──→ done
                   └──(error)───→ failed          └─(reject)───→ rejected
-                            (2d reminder, repeat; 3d nudge; 7d escalation)
+                            (every 2d reminder; 3d nudge; 7d escalation)
   """
 
   use Ash.Resource,
@@ -27,7 +27,7 @@ defmodule AshWorkflowTest.LoggedWorkflow do
       transition :approve, to: :done
       transition :reject, to: :rejected
 
-      timeout :reminder, fire_after: {2, :days}, action: :send_reminder, repeat: true
+      every :reminder, {2, :days}, action: :send_reminder
       timeout :nudge, fire_after: {3, :days}, action: :send_nudge
       timeout :escalation, fire_after: {7, :days}, transition_to: :escalated
     end

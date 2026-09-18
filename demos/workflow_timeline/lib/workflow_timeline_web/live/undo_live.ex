@@ -120,8 +120,8 @@ defmodule WorkflowTimelineWeb.UndoLive do
   end
 
   # Same derivation as the timeline page: a row where `from_state == to_state`
-  # is a repeat, not a state change, so it becomes a tick rather than a new
-  # segment.
+  # is an every firing, not a state change, so it becomes a tick rather than a
+  # new segment.
   defp segments_from_history([]), do: []
 
   defp segments_from_history([first | rest]) do

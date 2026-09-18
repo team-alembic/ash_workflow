@@ -75,19 +75,34 @@ defmodule AshWorkflow.Transformers.AddCalculations do
   # record. Terminal steps are excluded: a record there has no deadlines ahead.
   defp timeouts_map(steps) do
     steps
-    |> Enum.reject(&(Step.terminal?(&1) or &1.timeouts == []))
+    |> Enum.reject(&(Step.terminal?(&1) or (&1.timeouts == [] and &1.everys == [])))
     |> Map.new(fn step ->
       {step.name,
-       Enum.map(step.timeouts, fn timeout ->
-         %{
-           name: timeout.name,
-           field: timeout.field,
-           fire_after: timeout.fire_after,
-           kind: if(timeout.transition_to, do: :transition, else: :action),
-           target: timeout.transition_to
-         }
-       end)}
+       Enum.map(step.timeouts, &timeout_entry/1) ++ Enum.map(step.everys, &every_entry/1)}
     end)
+  end
+
+  defp timeout_entry(timeout) do
+    %{
+      name: timeout.name,
+      field: timeout.field,
+      fire_after: timeout.fire_after,
+      kind: if(timeout.transition_to, do: :transition, else: :action),
+      target: timeout.transition_to
+    }
+  end
+
+  # An `every` always resets `state_entered_at` when it fires, so unlike a
+  # non-repeating action timeout its `due_at` never goes stale: it is always
+  # the next instant the action will run.
+  defp every_entry(every) do
+    %{
+      name: every.name,
+      field: :state_entered_at,
+      fire_after: every.interval,
+      kind: :every,
+      target: nil
+    }
   end
 
   defp add_entered_current_state_at(dsl) do

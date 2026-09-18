@@ -6,12 +6,12 @@ defmodule WorkflowTimeline.IncidentResponse.Incident do
       (create) ─▶ triaging ──(auto: classify_severity)──▶ investigating ──(escalate)──▶ escalated ──(resolve)──▶ resolved
                      │                                         │  ▲                          │
                      │                                         │  every 90s: status reminder   │
-                     └──(on_error)──▶ triage_failed            │  (repeat, no state change)    │
+                     └──(on_error)──▶ triage_failed            │  (no state change)            │
                                                                 └──(resolve)───────────────────▶ resolved
                                                                 └──(8 min unresolved)──▶ escalated
 
   This is the workflow the timeline demo puts on screen. `transition_log`
-  is enabled here, so every event above — including the repeating status
+  is enabled here, so every event above — including the recurring status
   reminder, which does *not* change state — is recorded on
   `IncidentTransition` and readable through `history/1` and `state_at/2`.
   """
@@ -82,10 +82,9 @@ defmodule WorkflowTimeline.IncidentResponse.Incident do
       transition :escalate, to: :escalated
       transition :resolve, to: :resolved
 
-      timeout :status_reminder do
-        fire_after {90, :seconds}
+      every :status_reminder do
+        interval {90, :seconds}
         action :send_status_update
-        repeat true
       end
 
       timeout :auto_escalate, fire_after: {8, :minutes}, transition_to: :escalated
