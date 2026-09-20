@@ -36,6 +36,7 @@ defmodule AshWorkflow.Scheduler.Precise.Timeline do
 
   require Logger
 
+  alias AshWorkflow.Entities.Every
   alias AshWorkflow.Info
   alias AshWorkflow.Scheduler
   alias AshWorkflow.Scheduler.Leader
@@ -251,7 +252,9 @@ defmodule AshWorkflow.Scheduler.Precise.Timeline do
     bound = bound(cutoff, fire_after)
     step = work.step
 
-    filter = Ash.Expr.expr(state == ^step and ^ref(field) <= ^bound)
+    filter =
+      Ash.Expr.expr(state == ^step and ^ref(field) <= ^bound)
+      |> until_filter(work)
 
     read(work.resource, filter, state, deadline_loads(work))
   end
@@ -271,6 +274,24 @@ defmodule AshWorkflow.Scheduler.Precise.Timeline do
   end
 
   defp deadline_loads(%Work{}), do: []
+
+  # Without this, a record whose `until` bound has already passed keeps
+  # matching the plain `field <= bound` filter above forever, so every sweep
+  # arms a timer for it, `fire/4` re-checks `Work.match` and finds nothing, and
+  # the cycle repeats every `look_ahead_ms`. Filtering it out here means a
+  # bound-exceeded record stops costing a query once it stops being eligible,
+  # the same way it already stops matching `AshWorkflow.Scheduler.Oban`'s
+  # trigger `where`. Checked against "now" rather than `cutoff`, unlike the
+  # `fire_after` bound above: this excludes only a record that is *already*
+  # bound-exceeded, not one that merely will be by the time the horizon closes.
+  defp until_filter(filter, %Work{until: nil}), do: filter
+
+  defp until_filter(filter, %Work{until: {value, unit}}) do
+    anchor = Every.until_anchor()
+    bound = DateTime.add(DateTime.utc_now(), -value, singular(unit))
+
+    Ash.Expr.expr(^filter and (is_nil(^ref(anchor)) or ^ref(anchor) > ^bound))
+  end
 
   defp read(resource, filter, state, loads \\ []) do
     opts =

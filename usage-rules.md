@@ -310,6 +310,18 @@ end
 
 `every` is a sibling entity to `timeout`, not an option on it. Use it instead of `timeout` when the action should keep firing on the same interval for as long as the record stays in the step. It always requires `action` and has no `transition_to`.
 
+`until` bounds `every` to a fixed amount of wall-clock time, after which it stops firing:
+
+```elixir
+every :follow_up do
+  interval {7, :days}
+  action :send_follow_up
+  until {28, :days}
+end
+```
+
+`until` is never measured against `state_entered_at`, which `every` resets on every firing. It must be strictly longer than `interval`. See `usage-rules/timeouts.md` for the full explanation.
+
 ### Transition Timeout (force state change)
 
 ```elixir

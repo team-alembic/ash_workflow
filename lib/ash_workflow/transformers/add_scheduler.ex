@@ -23,6 +23,7 @@ defmodule AshWorkflow.Transformers.AddScheduler do
   """
   use Spark.Dsl.Transformer
 
+  alias AshWorkflow.Entities.Every
   alias AshWorkflow.Entities.Retry
   alias AshWorkflow.Entities.Step
   alias AshWorkflow.Entities.Timeout
@@ -147,6 +148,12 @@ defmodule AshWorkflow.Transformers.AddScheduler do
     ago_unit = singular_unit(duration_unit)
     field = :state_entered_at
 
+    base_match =
+      Ash.Expr.expr(
+        ^in_step(state_attribute, step_name) and
+          ^ref(field) <= ago(^duration_value, ^ago_unit)
+      )
+
     %Work{
       # Scoped by step so two steps can declare an every with the same name.
       name: :"__every_trigger_#{step_name}_#{every.name}",
@@ -155,13 +162,10 @@ defmodule AshWorkflow.Transformers.AddScheduler do
       step: step_name,
       timeout: every.name,
       action: every.action,
-      match:
-        Ash.Expr.expr(
-          ^in_step(state_attribute, step_name) and
-            ^ref(field) <= ago(^duration_value, ^ago_unit)
-        ),
+      match: until_match(base_match, every),
       deadline: %{field: field, fire_after: every.interval},
       repeat?: true,
+      until: every.until,
       once?: false,
       self_scheduled?: every.self_scheduled?,
       retry: every.retry || %Retry{},
@@ -180,6 +184,25 @@ defmodule AshWorkflow.Transformers.AddScheduler do
     ago_unit = singular_unit(unit)
 
     Ash.Expr.expr(^ref(field) <= ago(^value, ^ago_unit))
+  end
+
+  # `until` cannot be checked against `state_entered_at`, because firing is
+  # what keeps resetting it. See `AshWorkflow.Entities.Every`. It is checked
+  # against `repeat_started_at` instead, which every genuine step entry sets
+  # and no firing touches. Once that instant is further in the past than the
+  # bound, this clause is false for the rest of the step visit, so the record
+  # never matches again until it leaves and re-enters. That is exactly "the
+  # firing stops".
+  defp until_match(match, %Every{until: nil}), do: match
+
+  defp until_match(match, %Every{until: {until_value, until_unit}}) do
+    until_ago_unit = singular_unit(until_unit)
+    anchor = Every.until_anchor()
+
+    Ash.Expr.expr(
+      ^match and
+        (is_nil(^ref(anchor)) or ^ref(anchor) > ago(^until_value, ^until_ago_unit))
+    )
   end
 
   # ago/2 expects singular duration names (:day, :hour, :minute, :second)

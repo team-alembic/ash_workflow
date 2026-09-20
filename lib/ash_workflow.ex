@@ -242,6 +242,7 @@ defmodule AshWorkflow do
     verifiers: [
       AshWorkflow.Verifiers.ValidateWorkflow,
       AshWorkflow.Verifiers.ValidateTimeoutFields,
+      AshWorkflow.Verifiers.ValidateEvery,
       AshWorkflow.Verifiers.ValidateTimeoutPrecision,
       AshWorkflow.Verifiers.ValidateRetry,
       AshWorkflow.Verifiers.ValidateTransitionLog,

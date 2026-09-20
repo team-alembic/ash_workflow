@@ -11,5 +11,6 @@ defmodule AshWorkflowTest.Postgres.Domain do
     resource AshWorkflowTest.Postgres.ScreeningTransition
     resource AshWorkflowTest.Postgres.AuthorizedScreeningWorkflow
     resource AshWorkflowTest.Postgres.ScreeningWithTimeoutWorkflow
+    resource AshWorkflowTest.Postgres.EveryUntilWorkflow
   end
 end

@@ -23,12 +23,38 @@ defmodule AshWorkflow.Entities.Every do
   `state_entered_at`. If you need a periodic check against a custom field, use
   a non-repeating `timeout` with a short `check_interval` — its trigger keeps
   matching on every poll cycle as long as the condition holds.
+
+  ## Bounding an `every` with `until`
+
+  `every` alone fires forever. `until` stops it after a fixed amount of
+  wall-clock time:
+
+      every :reminder do
+        interval {2, :days}
+        action :send_review_reminder
+        until {8, :days}
+      end
+
+  `until` cannot be measured against `state_entered_at`, the same attribute
+  `interval` measures against, because firing is what keeps resetting it — a
+  bound checked against it would never be reached. It is measured against
+  `repeat_started_at` instead, an attribute `AshWorkflow.Transformers.AddAttributes`
+  adds when some `every` declares `until`. Every genuine step entry writes it
+  alongside `state_entered_at`; no `every` firing touches it. See
+  `AshWorkflow.Changes.RecordEvent`'s `:repeat_fire?` option for how that
+  distinction is made, and `AshWorkflow.Verifiers.ValidateEvery` for why
+  `until` must be strictly longer than `interval`.
+
+  Reaching the bound only stops the firing. It does not transition state —
+  compose a second, ordinary timeout with a `fire_after` equal to the bound
+  for "give up and move on".
   """
 
   defstruct [
     :name,
     :interval,
     :action,
+    :until,
     :check_interval,
     self_scheduled?: false,
     __spark_metadata__: nil,
@@ -40,6 +66,7 @@ defmodule AshWorkflow.Entities.Every do
           name: atom(),
           interval: {pos_integer(), duration_unit()},
           action: atom(),
+          until: AshWorkflow.Duration.t() | nil,
           check_interval: String.t() | nil,
           self_scheduled?: boolean(),
           retry: AshWorkflow.Entities.Retry.t() | nil
@@ -60,6 +87,17 @@ defmodule AshWorkflow.Entities.Every do
       type: :atom,
       required: true,
       doc: "Action to run each time the interval elapses. Does not change state."
+    ],
+    until: [
+      type: {:custom, AshWorkflow.Duration, :validate, []},
+      doc: """
+      Stop firing once this much wall-clock time has passed since the record
+      entered the step.
+
+      Measured against `repeat_started_at`, never against `state_entered_at`,
+      which every firing resets. Must be strictly longer than `interval`,
+      since equal to it leaves no room to fire even once.
+      """
     ],
     self_scheduled?: [
       type: :boolean,
@@ -93,4 +131,10 @@ defmodule AshWorkflow.Entities.Every do
   def attribute_schema, do: @schema
 
   def validate_duration(value), do: AshWorkflow.Duration.validate(value)
+
+  @doc """
+  The attribute `until` is measured against.
+  """
+  @spec until_anchor() :: atom()
+  def until_anchor, do: :repeat_started_at
 end

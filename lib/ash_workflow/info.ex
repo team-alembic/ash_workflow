@@ -364,8 +364,9 @@ defmodule AshWorkflow.Info do
     timeout names the field holding its deadline, so it has a `nil`
     `:fire_after` and a `nil` `:field`.
   * `:everys` — one entry per `every`, as `%{name:, interval:, action:,
-    retry:}`. Always measures against `state_entered_at` and never has a
-    target, since firing never leaves the step.
+    until:, retry:}`. Always measures against `state_entered_at` and never has
+    a target, since firing never leaves the step. `:until` is `nil` unless the
+    `every` bounds its firing.
 
   ## Example
 
@@ -391,7 +392,7 @@ defmodule AshWorkflow.Info do
       #=>       %{name: :expire, to: :expired, fire_after: nil, fire_at: :offer_expires_at, field: nil, action: nil, retry: nil}
       #=>     ],
       #=>     everys: [
-      #=>       %{name: :chase, interval: {3, :days}, action: :send_reminder, retry: nil}
+      #=>       %{name: :chase, interval: {3, :days}, action: :send_reminder, until: nil, retry: nil}
       #=>     ]
       #=>   },
       #=>   ...
@@ -460,6 +461,7 @@ defmodule AshWorkflow.Info do
       name: every.name,
       interval: every.interval,
       action: every.action,
+      until: every.until,
       retry: every.retry
     }
   end
