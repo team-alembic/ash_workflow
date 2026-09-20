@@ -1,5 +1,11 @@
 # AshWorkflow
 
+[![CI](https://github.com/team-alembic/ash_workflow/actions/workflows/ci.yml/badge.svg)](https://github.com/team-alembic/ash_workflow/actions/workflows/ci.yml)
+[![Hex version](https://img.shields.io/hexpm/v/ash_workflow.svg)](https://hex.pm/packages/ash_workflow)
+[![Hex downloads](https://img.shields.io/hexpm/dt/ash_workflow.svg)](https://hex.pm/packages/ash_workflow)
+[![Documentation](https://img.shields.io/badge/docs-hexdocs-purple.svg)](https://hexdocs.pm/ash_workflow)
+[![License: MIT](https://img.shields.io/hexpm/l/ash_workflow.svg)](https://github.com/team-alembic/ash_workflow/blob/main/LICENSE)
+
 Declarative workflow orchestration for [Ash Framework](https://ash-hq.org). Define multi-step workflows that combine human actions, background jobs, and time-based deadlines — all as a single, readable DSL.
 
 AshWorkflow generates [ash_state_machine](https://hexdocs.pm/ash_state_machine) states and transitions, [ash_oban](https://hexdocs.pm/ash_oban) triggers for automatic steps, and Ash actions for manual transitions. You write the workflow; it handles the wiring.
@@ -9,6 +15,7 @@ AshWorkflow generates [ash_state_machine](https://hexdocs.pm/ash_state_machine) 
 - **Step** — a state the workflow can be in. Some steps run automatically (background work via Oban), others wait for a human to trigger a transition.
 - **Transition** — a named outcome from a manual step that moves the workflow to a new state. Each transition becomes a callable Ash action. The same transition name can be used across multiple steps — they merge into a single action that routes based on the current state.
 - **Timeout** — a time-based rule: "if the workflow has been in this state for N days, do X." Timeouts can run actions (reminders) or force transitions (escalations).
+- **Every** — a recurring action that runs on an interval for as long as the record sits in a step, for nudges and chasers. Unlike a timeout, it always runs an action and never changes state.
 - **Terminal step** — an end state. A step that declares no action, no transitions and no timeouts has no way out, so it is terminal without saying so. `terminal: true` states the intent and makes the verifier hold you to it.
 - **Transition log** — an opt-in resource recording one row per workflow event, which becomes the source of truth for history.
 - **Undo** — rewinding a record to the state before its last transition, for transitions marked `undoable?: true`. Recorded as a new log row pointing at the one it reverses, never by erasing history.
@@ -409,7 +416,7 @@ that CI runs:
 | [`ats`](https://github.com/team-alembic/ash_workflow/tree/main/demos/ats) | A Phoenix LiveView app you can click through |
 | [`document_approval`](https://github.com/team-alembic/ash_workflow/tree/main/demos/document_approval) | Conditional routes: two admins must sign off, so one `:approve` action does not advance the workflow the first time |
 | [`order_fulfilment`](https://github.com/team-alembic/ash_workflow/tree/main/demos/order_fulfilment) | Error handling across a long automatic chain, with recovery looping back into it |
-| [`subscription_dunning`](https://github.com/team-alembic/ash_workflow/tree/main/demos/subscription_dunning) | Repeating timeouts, and deadlines measured against a date on the record |
+| [`subscription_dunning`](https://github.com/team-alembic/ash_workflow/tree/main/demos/subscription_dunning) | `every` for recurring actions, and deadlines measured against a date on the record |
 | [`support_ticket_sla`](https://github.com/team-alembic/ash_workflow/tree/main/demos/support_ticket_sla) | Priority routing, one transition name meaning different things per step, per-queue SLAs |
 
 ## Contributing
