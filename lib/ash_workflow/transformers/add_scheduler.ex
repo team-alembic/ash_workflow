@@ -3,7 +3,7 @@ defmodule AshWorkflow.Transformers.AddScheduler do
   Describes the workflow's scheduled work, then hands it to the selected
   scheduler.
 
-  Every automatic step and every timeout becomes one
+  Every automatic step, every timeout and every `every` becomes one
   `AshWorkflow.Scheduler.Work`. The scheduler's `transform/3` then adds whatever
   it needs to the resource — `AshWorkflow.Scheduler.Oban` adds AshOban triggers,
   another implementation might add nothing at all.
@@ -43,8 +43,16 @@ defmodule AshWorkflow.Transformers.AddScheduler do
     resource = Transformer.get_persisted(dsl, :module)
     state_attribute = AshWorkflow.Info.state_attribute(dsl)
 
+    # `every_works` before `timeout_works`: a scheduler implementation adds
+    # entities to the DSL in reverse, so a timeout added after an `every` ends
+    # up scheduled and run first within the same poll. That matters when both
+    # are due together on the same step — an `every` resets
+    # `state_entered_at`, and a transition timeout's `where` measures against
+    # it, so letting the transition timeout run first keeps it from losing a
+    # race against the `every` moving the goalposts.
     works =
       step_works(steps, resource, state_attribute) ++
+        every_works(steps, resource, state_attribute) ++
         timeout_works(steps, resource, state_attribute)
 
     # Persisted for every scheduler, not just the selected one, so that a
@@ -118,14 +126,51 @@ defmodule AshWorkflow.Transformers.AddScheduler do
             ^ref(field) <= ago(^duration_value, ^ago_unit)
         ),
       deadline: %{field: field, fire_after: timeout.fire_after},
-      repeat?: timeout.repeat,
-      # An action timeout does not change state, so nothing stops it matching
-      # again on the next poll. A transition timeout leaves the step it matched
-      # on, which is a durable record that it fired.
-      once?: not timeout.repeat and timeout.action != nil,
+      repeat?: false,
+      # A timeout never repeats: an action timeout does not change state, so
+      # `once?` stops it matching again on the next poll. A transition timeout
+      # leaves the step it matched on, which is itself a durable record that
+      # it fired.
+      once?: timeout.action != nil,
       self_scheduled?: timeout.self_scheduled?,
       retry: timeout.retry || %Retry{},
       opts: [check_interval: timeout.check_interval]
+    }
+  end
+
+  defp every_works(steps, resource, state_attribute) do
+    steps
+    |> Enum.reject(&Step.terminal?/1)
+    |> Enum.flat_map(fn step ->
+      Enum.map(step.everys, &every_work(step, &1, resource, state_attribute))
+    end)
+  end
+
+  defp every_work(step, every, resource, state_attribute) do
+    step_name = step.name
+    {duration_value, duration_unit} = every.interval
+    ago_unit = singular_unit(duration_unit)
+    field = :state_entered_at
+
+    %Work{
+      # Scoped by step so two steps can declare an every with the same name.
+      name: :"__every_trigger_#{step_name}_#{every.name}",
+      kind: :timeout,
+      resource: resource,
+      step: step_name,
+      timeout: every.name,
+      action: every.action,
+      match:
+        Ash.Expr.expr(
+          ^in_step(state_attribute, step_name) and
+            ^ref(field) <= ago(^duration_value, ^ago_unit)
+        ),
+      deadline: %{field: field, fire_after: every.interval},
+      repeat?: true,
+      once?: false,
+      self_scheduled?: every.self_scheduled?,
+      retry: every.retry || %Retry{},
+      opts: [check_interval: every.check_interval]
     }
   end
 

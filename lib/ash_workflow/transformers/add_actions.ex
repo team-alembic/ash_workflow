@@ -20,6 +20,11 @@ defmodule AshWorkflow.Transformers.AddActions do
     a hidden update action named `__timeout_<step>_<name>` that transitions to the
     target state and records the event (`triggered_by: :timeout`).
 
+  - **`every` action injection** — appends `AshWorkflow.Changes.RecordEvent`
+    (`triggered_by: :timeout`, resetting `state_entered_at`) onto the action an
+    `every` names, so each firing re-arms the interval and is logged the same
+    way a timeout's firing is.
+
   - **Undo action** — when the workflow declares an `undo` block, a single
     `:undo` update action that rewinds the record to the state before its most
     recent undoable state change. Not atomic: the target is only known after
@@ -64,6 +69,7 @@ defmodule AshWorkflow.Transformers.AddActions do
       |> add_transition_actions(steps)
       |> inject_automatic_step_changes(steps)
       |> add_timeout_actions(steps)
+      |> add_every_changes(steps)
       |> add_on_error_actions(steps)
       |> add_undo_action()
 
@@ -400,11 +406,13 @@ defmodule AshWorkflow.Transformers.AddActions do
     inject_action_timeout_changes(dsl, steps)
   end
 
-  # Every timeout that names an action gets `RecordEvent`, repeating or not: a
-  # one-shot reminder is a workflow event, and the log's contract is one row
-  # per event. Two timeouts may name the same action, so the actions are
-  # deduplicated before the change is appended, and the action resets
-  # `state_entered_at` if any timeout naming it repeats.
+  # Every timeout that names an action gets `RecordEvent`: a one-shot reminder
+  # is a workflow event, and the log's contract is one row per event. A
+  # timeout never resets `state_entered_at` — that would push every other
+  # deadline on the step back — so `touch_state_entered_at` is always false
+  # here; only `every` resets it, in `add_every_changes/2`. Two timeouts may
+  # name the same action, so the actions are deduplicated before the change is
+  # appended.
   defp inject_action_timeout_changes(dsl, steps) do
     steps
     |> Enum.flat_map(fn step ->
@@ -412,12 +420,8 @@ defmodule AshWorkflow.Transformers.AddActions do
       |> Enum.filter(&(&1.action != nil))
       |> Enum.map(&{step, &1})
     end)
-    |> Enum.group_by(fn {_step, timeout} -> timeout.action end)
-    |> Enum.map(fn {_action, pairs} ->
-      {step, timeout} = hd(pairs)
-      {step, timeout, Enum.any?(pairs, fn {_step, timeout} -> timeout.repeat end)}
-    end)
-    |> Enum.reduce(dsl, fn {step, timeout, repeats?}, dsl ->
+    |> Enum.uniq_by(fn {_step, timeout} -> timeout.action end)
+    |> Enum.reduce(dsl, fn {step, timeout}, dsl ->
       actions = Transformer.get_entities(dsl, [:actions])
 
       case Enum.find(actions, &(&1.name == timeout.action)) do
@@ -430,7 +434,7 @@ defmodule AshWorkflow.Transformers.AddActions do
         existing_action ->
           record_event_change =
             Transformer.build_entity!(ResourceDsl, [:actions, :update], :change,
-              change: {RecordEvent, triggered_by: :timeout, touch_state_entered_at: repeats?}
+              change: {RecordEvent, triggered_by: :timeout, touch_state_entered_at: false}
             )
 
           updated_action = %{
@@ -440,6 +444,42 @@ defmodule AshWorkflow.Transformers.AddActions do
 
           dsl
           |> Transformer.remove_entity([:actions], &(&1.name == timeout.action))
+          |> Transformer.add_entity([:actions], updated_action)
+      end
+    end)
+  end
+
+  # Every `every` always resets `state_entered_at` when its action runs: that
+  # reset is how it re-arms its own trigger for the next interval, the same
+  # mechanism a repeating timeout used to rely on. Two everys may name the same
+  # action, so the actions are deduplicated before the change is appended.
+  defp add_every_changes(dsl, steps) do
+    steps
+    |> Enum.flat_map(fn step -> Enum.map(step.everys, &{step, &1}) end)
+    |> Enum.uniq_by(fn {_step, every} -> every.action end)
+    |> Enum.reduce(dsl, fn {step, every}, dsl ->
+      actions = Transformer.get_entities(dsl, [:actions])
+
+      case Enum.find(actions, &(&1.name == every.action)) do
+        nil ->
+          raise DslError,
+            path: [:workflow, :step, step.name],
+            message:
+              "every :#{every.name} on step :#{step.name} references action :#{every.action}, but no such action is defined on the resource."
+
+        existing_action ->
+          record_event_change =
+            Transformer.build_entity!(ResourceDsl, [:actions, :update], :change,
+              change: {RecordEvent, triggered_by: :timeout, touch_state_entered_at: true}
+            )
+
+          updated_action = %{
+            existing_action
+            | changes: existing_action.changes ++ [record_event_change]
+          }
+
+          dsl
+          |> Transformer.remove_entity([:actions], &(&1.name == every.action))
           |> Transformer.add_entity([:actions], updated_action)
       end
     end)

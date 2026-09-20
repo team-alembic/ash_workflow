@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`every`, a sibling entity to `timeout`.** Declares a recurring action that runs on an interval for as long as a record sits in its step: `every :nudge, {1, :day}, action: :send_reminder` or the block form with `interval`, `action`, `check_interval`, `self_scheduled?` and a nested `retry`. Unlike `timeout`, `every` always requires `action`, has no `transition_to` and no `field` — it always measures against `state_entered_at`. `AshWorkflow.Info.everys/2` reads the entities off a step. No scheduler implementation changed: `every` reduces to the same `AshWorkflow.Scheduler.Work` shape a repeating timeout used to.
+
+### Changed
+
+- **Breaking: `timeout`'s `repeat` option is gone. Use `every` instead.** `repeat: true` let a timeout re-fire on its own interval, but it also compiled two combinations that were meaningless: `repeat: true` with `transition_to` (firing leaves the step, so the repeat never comes round) and `repeat: true` with a custom `field` (rejected at compile time, since the repeat mechanism resets `state_entered_at`, not the custom field). `every` requiring `action` and offering neither `transition_to` nor `field` stops both from being representable at all. Change `timeout :name, fire_after: ..., action: ..., repeat: true` to `every :name, interval: ..., action: ...`. `AshWorkflow.Verifiers.ValidateTimeoutFields.validate_no_repeat_with_custom_field/2` and its tests are gone along with the option.
+- **Breaking: `AshWorkflow.Info.workflow_graph/1`'s `:timeouts` entries drop `:repeat`, and each step's map gains an `:everys` list** of `%{name:, interval:, action:, retry:}` maps, mirroring `:timeouts`.
+
 ## [0.6.1] - 2026-09-20
 
 ### Added

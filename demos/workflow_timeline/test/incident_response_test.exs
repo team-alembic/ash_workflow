@@ -99,7 +99,7 @@ defmodule WorkflowTimeline.IncidentResponseTest do
       assert escalation.triggered_by == :timeout
     end
 
-    test "a repeating timeout writes a from_state == to_state row" do
+    test "an every writes a from_state == to_state row" do
       incident = report!()
       {:ok, incident} = Ash.update(incident, action: :classify_severity)
       {:ok, incident} = Ash.update(incident, action: :send_status_update)
@@ -110,7 +110,7 @@ defmodule WorkflowTimeline.IncidentResponseTest do
       assert reminder.triggered_by == :timeout
     end
 
-    test "repeating three times writes three from_state == to_state rows" do
+    test "firing an every three times writes three from_state == to_state rows" do
       incident = report!()
       {:ok, incident} = Ash.update(incident, action: :classify_severity)
 
@@ -120,12 +120,12 @@ defmodule WorkflowTimeline.IncidentResponseTest do
           incident
         end)
 
-      repeats =
+      fired_three_times =
         incident
         |> Incident.history()
         |> Enum.filter(&(&1.from_state == :investigating and &1.to_state == :investigating))
 
-      assert length(repeats) == 3
+      assert length(fired_three_times) == 3
       assert incident.status_updates_sent == 3
     end
   end
@@ -179,7 +179,7 @@ defmodule WorkflowTimeline.IncidentResponseTest do
   end
 
   describe "entered_current_state_at vs state_entered_at" do
-    test "entered_current_state_at ignores repeat rows; state_entered_at does not" do
+    test "entered_current_state_at ignores every rows; state_entered_at does not" do
       incident = report!()
       {:ok, incident} = Ash.update(incident, action: :classify_severity)
 

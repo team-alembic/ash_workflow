@@ -19,6 +19,8 @@ Define a workflow by declaring steps, transitions, and timeouts.
      * route
    * timeout
      * retry
+   * every
+     * retry
    * on_success
    * retry
  * [transition_log](#workflow-transition_log)
@@ -53,6 +55,8 @@ Declares a step in the workflow. Each step becomes a state in the generated stat
  * [transition](#workflow-step-transition)
    * route
  * [timeout](#workflow-step-timeout)
+   * retry
+ * [every](#workflow-step-every)
    * retry
  * [on_success](#workflow-step-on_success)
  * [retry](#workflow-step-retry)
@@ -169,7 +173,6 @@ Declares a time-based action or forced transition if the workflow stays in this 
 | [`field`](#workflow-step-timeout-field){: #workflow-step-timeout-field } | `atom` | `:state_entered_at` | The datetime attribute or calculation to measure `fire_after` against. Defaults to `:state_entered_at`. |
 | [`action`](#workflow-step-timeout-action){: #workflow-step-timeout-action } | `atom` |  | Action to run when the timeout fires. Does not change state. |
 | [`transition_to`](#workflow-step-timeout-transition_to){: #workflow-step-timeout-transition_to } | `atom` |  | Step to force-transition to when the timeout fires. |
-| [`repeat`](#workflow-step-timeout-repeat){: #workflow-step-timeout-repeat } | `boolean` | `false` | If true, re-fire the timeout on the same interval. |
 | [`self_scheduled?`](#workflow-step-timeout-self_scheduled?){: #workflow-step-timeout-self_scheduled? } | `boolean` | `false` | Declares that you run this timeout's trigger yourself, more often than a cron expression can ask for. Cron cannot poll more often than once a minute, so a sub-minute `fire_after` is normally a compile error — the deadline would fire up to 60 seconds late. Setting this asserts that something else drives the trigger at the resolution the deadline needs, and permits the shorter duration. This changes nothing about what is generated: the scheduler module and its cron are still created, so `AshOban.schedule/2` and `AshOban.schedule_and_run_triggers/1` keep working. It only records the claim, and silences the check that would otherwise reject the duration. |
 | [`check_interval`](#workflow-step-timeout-check_interval){: #workflow-step-timeout-check_interval } | `String.t` |  | Oban cron expression for how often to check this timeout, overriding the workflow-level `check_interval`. Defaults to the workflow's setting, which itself defaults to every minute. |
 
@@ -210,6 +213,72 @@ Target: `AshWorkflow.Entities.Retry`
 ### Introspection
 
 Target: `AshWorkflow.Entities.Timeout`
+
+### workflow.step.every
+```elixir
+every name, interval \\ nil
+```
+
+
+Declares a recurring action that runs on an interval for as long as the workflow stays in this step.
+
+### Nested DSLs
+ * [retry](#workflow-step-every-retry)
+
+
+
+
+### Arguments
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`name`](#workflow-step-every-name){: #workflow-step-every-name .spark-required} | `atom` |  | A unique name for this recurring action. |
+| [`interval`](#workflow-step-every-interval){: #workflow-step-every-interval .spark-required} | `any` |  | Duration tuple, e.g. `{1, :day}` or `{2, :hours}`. |
+### Options
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`action`](#workflow-step-every-action){: #workflow-step-every-action .spark-required} | `atom` |  | Action to run each time the interval elapses. Does not change state. |
+| [`self_scheduled?`](#workflow-step-every-self_scheduled?){: #workflow-step-every-self_scheduled? } | `boolean` | `false` | Declares that you run this action's trigger yourself, more often than a cron expression can ask for. Cron cannot poll more often than once a minute, so a sub-minute `interval` is normally a compile error — the action would fire up to 60 seconds late. Setting this asserts that something else drives the trigger at the resolution the interval needs, and permits the shorter duration. This changes nothing about what is generated: the scheduler module and its cron are still created, so `AshOban.schedule/2` and `AshOban.schedule_and_run_triggers/1` keep working. It only records the claim, and silences the check that would otherwise reject the duration. |
+| [`check_interval`](#workflow-step-every-check_interval){: #workflow-step-every-check_interval } | `String.t` |  | Oban cron expression for how often to check this action, overriding the workflow-level `check_interval`. Defaults to the workflow's setting, which itself defaults to every minute. |
+
+
+### workflow.step.every.retry
+
+
+Declares the failure policy for the step's or timeout's generated work: how
+many attempts and how long between them. Scheduler-neutral:
+`AshWorkflow.Scheduler.Oban` turns it into the trigger's `max_attempts` and
+`backoff`, and `AshWorkflow.Scheduler.Precise` re-arms its timer. Either
+way, `on_error` runs only after the final attempt fails.
+
+
+
+
+
+
+
+### Options
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`max_attempts`](#workflow-step-every-retry-max_attempts){: #workflow-step-every-retry-max_attempts } | `pos_integer` | `1` | How many times the scheduler runs the step's action before it gives up. The default of 1 means one attempt and no retry, which is why a step declaring `on_error` moves to its error state on the first failure. |
+| [`backoff`](#workflow-step-every-retry-backoff){: #workflow-step-every-retry-backoff } | `any \| :exponential` | `:exponential` | How long to wait between attempts. A duration tuple such as `{10, :seconds}` is a fixed delay between attempts. `:exponential` grows the delay with the attempt number. Has no effect while `max_attempts` is 1. |
+
+
+
+
+
+### Introspection
+
+Target: `AshWorkflow.Entities.Retry`
+
+
+
+
+### Introspection
+
+Target: `AshWorkflow.Entities.Every`
 
 ### workflow.step.on_success
 ```elixir

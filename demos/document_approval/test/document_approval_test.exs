@@ -107,12 +107,12 @@ defmodule DocumentApproval.DocumentTest do
       %{document: reach_review()}
     end
 
-    test "the repeating nudge fires once per interval while review is pending", ctx do
+    test "the nudge every fires once per interval while review is pending", ctx do
       age_by(ctx.document, 3, :day)
       run_workflow_triggers(Document)
       assert reload(ctx.document).nudges_sent == 1
 
-      # A repeating timeout resets state_entered_at, so the next nudge needs the
+      # An every resets state_entered_at, so the next nudge needs the
       # clock moved on again rather than firing immediately.
       run_workflow_triggers(Document)
       assert reload(ctx.document).nudges_sent == 1

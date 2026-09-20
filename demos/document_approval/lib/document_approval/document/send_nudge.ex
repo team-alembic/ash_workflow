@@ -1,7 +1,7 @@
 defmodule DocumentApproval.Document.SendNudge do
   @moduledoc """
   Stands in for emailing the reviewers. Counting the nudges instead of sending
-  them is what lets the test assert that a repeating timeout really does fire
+  them is what lets the test assert that the every really does fire
   more than once.
   """
   use Ash.Resource.Change

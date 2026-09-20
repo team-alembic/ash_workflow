@@ -20,6 +20,7 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
          :ok <- validate_step_configs(steps),
          :ok <- validate_references(steps),
          :ok <- validate_timeout_actions(dsl, steps),
+         :ok <- validate_every_actions(dsl, steps),
          :ok <- validate_shared_transition_policies(steps) do
       validate_reachability(steps)
     end
@@ -99,6 +100,9 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
 
       step.timeouts != [] ->
         step_error(step, "Terminal step :#{step.name} must not have timeouts.")
+
+      step.everys != [] ->
+        step_error(step, "Terminal step :#{step.name} must not have every.")
 
       true ->
         :ok
@@ -272,10 +276,10 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
 
   # A timeout's `action` is handed to the scheduler as the action to invoke, so
   # a name that matches nothing fails when the deadline passes rather than at
-  # compile time. `AshWorkflow.Transformers.AddActions` already raises for the
-  # repeating case, because it has to rewrite the action to add
-  # `AshWorkflow.Changes.RecordEvent`; a non-repeating one was passed through
-  # unchecked.
+  # compile time. `AshWorkflow.Transformers.AddActions` already raises when it
+  # rewrites the action to add `AshWorkflow.Changes.RecordEvent`, for both a
+  # timeout and an `every`; a timeout naming no action at all was passed
+  # through unchecked.
   defp validate_timeout_actions(dsl, steps) do
     action_names =
       dsl
@@ -293,6 +297,31 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
          step_error(
            step,
            "Timeout :#{timeout.name} on step :#{step.name} references action :#{timeout.action}, but no such action is defined on the resource."
+         )}
+      end
+    end)
+  end
+
+  # An `every`'s `action` is required, so unlike a timeout's `action` this can
+  # never be nil, but the same reasoning applies: it is handed to the scheduler
+  # as the action to invoke, so a name that matches nothing would otherwise
+  # fail only when the interval elapses rather than at compile time.
+  defp validate_every_actions(dsl, steps) do
+    action_names =
+      dsl
+      |> Verifier.get_entities([:actions])
+      |> MapSet.new(& &1.name)
+
+    steps
+    |> Enum.flat_map(fn step -> Enum.map(step.everys, &{step, &1}) end)
+    |> Enum.reduce_while(:ok, fn {step, every}, :ok ->
+      if MapSet.member?(action_names, every.action) do
+        {:cont, :ok}
+      else
+        {:halt,
+         step_error(
+           step,
+           "every :#{every.name} on step :#{step.name} references action :#{every.action}, but no such action is defined on the resource."
          )}
       end
     end)

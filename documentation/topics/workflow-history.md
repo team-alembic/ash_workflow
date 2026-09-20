@@ -79,7 +79,7 @@ The generator creates a resource with these attributes:
 |---|---|---|
 | `workflow_id` | `belongs_to` | to the workflow resource |
 | `from_state` | `:atom` | `nil` on the `:initial` row |
-| `to_state` | `:atom` | equal to `from_state` for repeats |
+| `to_state` | `:atom` | equal to `from_state` for an `every` firing |
 | `transition_name` | `:atom` | the action that ran |
 | `occurred_at` | `:utc_datetime_usec` | |
 | `triggered_by` | `:atom` | `:initial \| :manual \| :automatic \| :timeout \| :error_path` |
@@ -93,21 +93,21 @@ denormalised `note`) — the verifier only requires the attributes above.
 ## Every event, not just state changes
 
 The log writes one row per workflow *event*, and not every event is a
-transition. Every timeout that names an action appends a row with
-`from_state == to_state` and `triggered_by: :timeout`, whether it fires once
-or repeats. A one-shot `timeout :nudge, fire_after: {3, :days}, action: :send_nudge`
-writes a row the first and only time it fires, and a repeating
-`timeout :follow_up, ..., repeat: true` writes one on every scheduler cycle
-while the workflow stays in that state.
+transition. Every timeout that names an action, and every `every`, appends a
+row with `from_state == to_state` and `triggered_by: :timeout`. A one-shot
+`timeout :nudge, fire_after: {3, :days}, action: :send_nudge` writes a row the
+first and only time it fires, and a recurring
+`every :follow_up do interval {3, :days}; action :send_follow_up end` writes
+one on every scheduler cycle while the workflow stays in that state.
 
 This looks redundant at first — nothing about the state changed — but it's
 deliberate for two reasons:
 
 - It's what makes the history complete. "Reminder sent three times, then
   escalated" is only visible in the log if the reminders are in it.
-- It's what makes the timer anchor derivable at all. A repeat re-arms its own
-  Oban trigger by moving `state_entered_at` forward (see
-  [Timeouts and deadlines](timeouts-and-deadlines.md)). If repeat rows were
+- It's what makes the timer anchor derivable at all. An `every` re-arms its
+  own Oban trigger by moving `state_entered_at` forward (see
+  [Timeouts and deadlines](timeouts-and-deadlines.md)). If those rows were
   excluded from the log, the log couldn't reproduce that value — the whole
   point of the log is that it's the source of truth `state_entered_at`
   projects from.
@@ -118,18 +118,18 @@ This is the sharpest distinction the log makes possible, and it's easy to
 mix up because the two values agree everywhere except the case that matters.
 
 `state_entered_at` is a **timer anchor**. It moves every time any event is
-recorded for the workflow — including a repeat that changes nothing about the
-state — because that movement is the mechanism that reschedules the next
-Oban firing. It answers "when did the timer last reset", not "when did we
+recorded for the workflow — including an `every` firing, which changes nothing
+about the state — because that movement is the mechanism that reschedules the
+next Oban firing. It answers "when did the timer last reset", not "when did we
 get here".
 
 `entered_current_state_at` is a calculation, only added when a `transition_log`
 is configured, that walks the log and returns the `occurred_at` of the most
-recent row where `from_state != to_state`. It ignores repeat rows entirely.
+recent row where `from_state != to_state`. It ignores `every` rows entirely.
 It answers "when did we actually enter this state" — the question the
 library couldn't answer before the log existed.
 
-| Value | Definition | Moved by a repeat? |
+| Value | Definition | Moved by an `every` firing? |
 |---|---|---|
 | `state_entered_at` | `occurred_at` of the most recent row, any row | Yes |
 | `entered_current_state_at` | `occurred_at` of the most recent row where `from_state != to_state` | No |
@@ -163,7 +163,7 @@ MyApp.Ticket.history(ticket)
 #=> [%MyApp.TicketTransition{from_state: nil, to_state: :triage, triggered_by: :initial}, ...]
 ```
 
-Rows come back ordered by `occurred_at` ascending, including repeat rows.
+Rows come back ordered by `occurred_at` ascending, including `every` rows.
 
 ### Aggregate query: how many were in state S at time Y
 

@@ -2,8 +2,8 @@ defmodule WorkflowTimeline.IncidentResponse.IncidentTransition do
   @moduledoc """
   The transition log for `WorkflowTimeline.IncidentResponse.Incident`.
 
-  One row per workflow event — including repeat rows where `from_state ==
-  to_state`, written by the repeating `:status_reminder` timeout. This is the
+  One row per workflow event — including same-state rows where `from_state ==
+  to_state`, written by the recurring `:status_reminder` every. This is the
   resource the timeline UI reads to draw each incident's band.
 
   Hand-written to satisfy `AshWorkflow.Verifiers.ValidateTransitionLog`

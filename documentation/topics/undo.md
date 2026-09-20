@@ -127,8 +127,8 @@ Only the most recent **state change**, and only when it came from a transition
 marked `undoable?: true`.
 
 Rows where `from_state == to_state` are skipped while looking for that change.
-A repeating timeout writes one every time it re-arms; it moved nothing, so a
-pending reminder does not block undo of the transition before it.
+An `every` writes one every time it re-arms; it moved nothing, so a pending
+reminder does not block undo of the transition before it.
 
 Everything else is refused, with a reason on
 `AshWorkflow.Errors.UndoNotPermitted`:
@@ -173,11 +173,11 @@ call undo at all.
 
 ## What undo does not do
 
-**It does not restore attributes.** The log records states, not the values a
+It does not restore attributes. The log records states, not the values a
 transition with `accept` wrote. Undoing a transition that set `priority: :high`
 leaves `priority` as `:high`.
 
-**It does not compensate side effects.** An email sent by an action stays sent;
+It does not compensate side effects. An email sent by an action stays sent;
 a payment taken stays taken. AshWorkflow has no rollback (see [Error
 handling](error-handling.md)), and undo does not add one.
 

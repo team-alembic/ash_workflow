@@ -206,8 +206,7 @@ defmodule AshWorkflow.InfoTest do
                to: :escalated,
                fire_after: {7, :days},
                field: :state_entered_at,
-               action: nil,
-               repeat: false
+               action: nil
              } = find_timeout(graph[:waiting], :escalation)
 
       assert %{name: :reminder, to: nil, fire_after: {2, :days}, action: :send_reminder} =

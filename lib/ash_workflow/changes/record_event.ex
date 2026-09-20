@@ -15,10 +15,10 @@ defmodule AshWorkflow.Changes.RecordEvent do
     * `:triggered_by` (required) — one of `:initial`, `:manual`, `:automatic`,
       `:timeout`, `:error_path`, `:undo`.
     * `:touch_state_entered_at` (optional, defaults to `true`) — whether the
-      change writes `state_entered_at`. A repeating timeout relies on that
-      write: resetting the anchor is how its trigger re-arms. A non-repeating
-      action timeout must not reset it, because every other deadline on the
-      step measures `after` from the same attribute, so moving it would push a
+      change writes `state_entered_at`. An `every` relies on that write:
+      resetting the anchor is how its trigger re-arms for the next interval. A
+      timeout must not reset it, because every other deadline on the step
+      measures `after` from the same attribute, so moving it would push a
       pending `transition_to` timeout out of reach.
     * `:transition_name` (optional) — the name recorded on the log row.
       Defaults to `changeset.action.name`, which is enough for most sites, but

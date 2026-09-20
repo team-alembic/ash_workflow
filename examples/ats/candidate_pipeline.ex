@@ -65,7 +65,7 @@ defmodule ATS.CandidatePipeline do
         ├─ decline ─────▶  offer_declined
         ├─ negotiate ───▶  generate_offer
         │
-        │  timeout: 3 days → follow-up email (repeating)
+        │  every: 3 days → follow-up email
         │  timeout: 14 days → offer expires
         │
         ▼
@@ -194,10 +194,9 @@ defmodule ATS.CandidatePipeline do
       transition :decline, to: :offer_declined
       transition :negotiate, to: :generate_offer
 
-      timeout :follow_up do
-        fire_after {3, :days}
+      every :follow_up do
+        interval {3, :days}
         action :send_offer_follow_up
-        repeat true
       end
 
       timeout :expire, fire_after: {14, :days}, transition_to: :offer_expired

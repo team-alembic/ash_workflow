@@ -11,19 +11,9 @@ defmodule AshWorkflow.Entities.Timeout do
   This enables data-driven deadlines: "3 months since their last session" rather than
   "3 months since they entered the active state."
 
-  ## `repeat: true` is not supported with custom fields
-
-  Repeating timeouts work by resetting `state_entered_at` to the current time after
-  each firing, which restarts the duration window. With a custom field, the extension
-  would need to implicitly update that field to "now" — but this is semantically wrong.
-  If `field: :last_session_date`, resetting it to "now" would claim a session happened
-  when it didn't. The field's value should only change when the real-world event it
-  represents actually occurs.
-
-  Rather than silently writing incorrect data, we reject this combination at compile
-  time. If you need periodic checks against a custom field, use a non-repeating timeout
-  with a short `check_interval` — the trigger will keep matching on every poll cycle
-  as long as the condition holds.
+  For a recurring action that fires on an interval for as long as a record sits
+  in its step, use `AshWorkflow.Entities.Every` instead — see its moduledoc for
+  why that is a separate entity rather than a `repeat` option here.
   """
 
   defstruct [
@@ -35,7 +25,6 @@ defmodule AshWorkflow.Entities.Timeout do
     self_scheduled?: false,
     __spark_metadata__: nil,
     field: :state_entered_at,
-    repeat: false,
     retry: nil
   ]
 
@@ -48,7 +37,6 @@ defmodule AshWorkflow.Entities.Timeout do
           check_interval: String.t() | nil,
           self_scheduled?: boolean(),
           field: atom(),
-          repeat: boolean(),
           retry: AshWorkflow.Entities.Retry.t() | nil
         }
 
@@ -76,11 +64,6 @@ defmodule AshWorkflow.Entities.Timeout do
     transition_to: [
       type: :atom,
       doc: "Step to force-transition to when the timeout fires."
-    ],
-    repeat: [
-      type: :boolean,
-      default: false,
-      doc: "If true, re-fire the timeout on the same interval."
     ],
     self_scheduled?: [
       type: :boolean,
