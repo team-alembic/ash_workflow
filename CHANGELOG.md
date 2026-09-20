@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-09-20
+
 ### Added
 
 - `AshWorkflow.Errors.NoMatchingRoute`, with `resource`, `step` and `action` fields, so a caller can match on the error rather than its message.
