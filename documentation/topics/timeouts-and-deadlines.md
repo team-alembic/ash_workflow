@@ -74,7 +74,7 @@ end
 
 `every` always requires `action` — there is no `transition_to`, because firing never leaves the step. That is the reason it exists as its own entity rather than a `repeat: true` flag on `timeout`: a timeout with both `repeat: true` and `transition_to` would be meaningless, since leaving the step stops the repeat before it ever comes round.
 
-Each `every` writes its own nilable `:utc_datetime_usec` attribute, holding the instant it last fired — named `<step>_<every>_last_fired_at` by default, or explicitly with `last_fired_field`. `interval` is measured against that column, not against `state_entered_at`, so two `every` entities on the same step — and any `timeout` sharing it — no longer share one anchor that firing resets out from under the others. A record whose column is still `nil` (never fired) is treated as due immediately.
+Each `every` writes its own nilable `:utc_datetime_usec` attribute, holding the instant it last fired — named `<step>_<every>_last_fired_at` by default, or explicitly with `last_fired_field`. `interval` is measured against that column, not against `state_entered_at`, so two `every` entities on the same step — and any `timeout` sharing it — no longer share one anchor that firing resets out from under the others. A record whose column is still `nil` (never fired) measures its interval from `state_entered_at` instead, so the first firing lands one whole interval after entry.
 
 A timeout never touches `state_entered_at` either, and uses Oban's `trigger_once?` to prevent re-firing after the action completes. Neither an action timeout nor an `every` moves any other deadline's anchor on the same step, so a `timeout :warn, fire_after: {30, :minutes}, action: :warn` cannot delay the `timeout :breach, fire_after: {1, :hours}, transition_to: :escalated` beside it, and neither can an `every`. A transition timeout (with `transition_to`) doesn't need either mechanism, since the state change naturally prevents re-firing.
 
@@ -90,7 +90,7 @@ every :reminder do
 end
 ```
 
-This fires on entry (day 0, since the `every` has never fired and its column is `nil`), then roughly at day 2, day 4 and day 6, then stops before day 8: four reminders, then silence. The last fire has to land strictly before `until`, and polling lag pushes each one slightly later than its nominal day. `AshWorkflow.Verifiers.ValidateEvery` rejects an `until` that is not strictly longer than `interval`, since anything shorter or equal leaves no room for a second fire.
+This fires roughly at day 2, day 4 and day 6, then stops before day 8: three reminders, then silence. Nothing fires on entry, since the first interval is measured from `state_entered_at`. The last fire has to land strictly before `until`, and polling lag pushes each one slightly later than its nominal day. `AshWorkflow.Verifiers.ValidateEvery` rejects an `until` that is not strictly longer than `interval`, since anything shorter or equal leaves no room to fire even once.
 
 `until` is measured against `state_entered_at` directly — the same attribute every other deadline on the step measures from. That works because firing an `every` no longer touches `state_entered_at` at all: it writes its own `interval` column instead (see above), so `state_entered_at` stays exactly where the record's genuine step entry left it for as long as the record occupies the step.
 

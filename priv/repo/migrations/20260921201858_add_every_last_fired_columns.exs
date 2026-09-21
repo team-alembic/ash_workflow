@@ -18,17 +18,9 @@ defmodule AshWorkflowTest.Repo.Migrations.AddEveryLastFiredColumns do
         name: "ash_workflow_every_until_workflows_state_state_entered_at_index"
       )
     )
-
-    execute("""
-    UPDATE every_until_workflows SET waiting_reminder_last_fired_at = state_entered_at;
-    """)
   end
 
   def down do
-    execute("""
-    SELECT 1;
-    """)
-
     create index(:every_until_workflows, [:state, :state_entered_at],
              name: "ash_workflow_every_until_workflows_state_state_entered_at_index",
              concurrently: true

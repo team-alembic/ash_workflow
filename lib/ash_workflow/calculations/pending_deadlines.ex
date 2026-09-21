@@ -25,9 +25,9 @@ defmodule AshWorkflow.Calculations.PendingDeadlines do
 
   A timeout whose `field` is `nil` on the record has no derivable deadline and
   is omitted. An `every` whose column is `nil` is different: it has never
-  fired, which is due *now* rather than not derivable — see
-  `AshWorkflow.Entities.Every` — so its entry reports `due_at` as the current
-  instant instead of being omitted.
+  fired, and its interval is measured from `state_entered_at` instead — see
+  `AshWorkflow.Entities.Every` — so its entry reports one whole interval after
+  the record entered the step, rather than being omitted.
   """
   use Ash.Resource.Calculation
 
@@ -45,7 +45,7 @@ defmodule AshWorkflow.Calculations.PendingDeadlines do
       |> Enum.map(& &1.field)
       |> Enum.uniq()
 
-    [Keyword.fetch!(opts, :state_attribute) | fields]
+    [Keyword.fetch!(opts, :state_attribute), :state_entered_at | fields]
   end
 
   @impl true
@@ -61,9 +61,16 @@ defmodule AshWorkflow.Calculations.PendingDeadlines do
     end)
   end
 
+  # A never-fired `every` measures its interval from `state_entered_at`, the
+  # same fallback `AshWorkflow.Transformers.AddScheduler` compiles into the
+  # trigger's `where`.
   defp deadline(%{kind: :every} = every, record) do
-    case as_datetime(Map.get(record, every.field)) do
-      nil -> [entry(every, DateTime.utc_now())]
+    from =
+      as_datetime(Map.get(record, every.field)) ||
+        as_datetime(Map.get(record, :state_entered_at))
+
+    case from do
+      nil -> []
       from -> [entry(every, due_at(from, every.fire_after))]
     end
   end

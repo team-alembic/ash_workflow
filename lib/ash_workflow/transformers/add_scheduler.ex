@@ -141,13 +141,16 @@ defmodule AshWorkflow.Transformers.AddScheduler do
     ago_unit = singular_unit(duration_unit)
     field = Every.last_fired_field(step_name, every)
 
-    # A record whose column is still `nil` has never fired this `every`, and is
-    # treated as due rather than waiting for a column that firing itself is what
-    # would write. See `AshWorkflow.Entities.Every`.
+    # A record whose column is still `nil` has never fired this `every`, so the
+    # interval is measured from `state_entered_at` instead: the first firing is
+    # one whole interval after the record entered the step, not on entry. See
+    # `AshWorkflow.Entities.Every`. Written as a disjunction rather than with a
+    # coalescing function, which Ash's expression language does not have.
     base_match =
       Ash.Expr.expr(
         ^in_step(state_attribute, step_name) and
-          (is_nil(^ref(field)) or ^ref(field) <= ago(^duration_value, ^ago_unit))
+          ((is_nil(^ref(field)) and state_entered_at <= ago(^duration_value, ^ago_unit)) or
+             ^ref(field) <= ago(^duration_value, ^ago_unit))
       )
 
     %Work{

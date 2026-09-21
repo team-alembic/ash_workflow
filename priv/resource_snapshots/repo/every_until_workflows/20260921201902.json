@@ -106,18 +106,9 @@
       "where": null
     }
   ],
-  "custom_statements": [
-    {
-      "after_tables": [],
-      "code?": false,
-      "down": "SELECT 1;",
-      "global?": false,
-      "name": "backfill_waiting_reminder_last_fired_at",
-      "up": "UPDATE every_until_workflows SET waiting_reminder_last_fired_at = state_entered_at;"
-    }
-  ],
+  "custom_statements": [],
   "has_create_action": true,
-  "hash": "46BD96D1ECE611DFDBC299557C5BBF959FA7AB9B70BE350091D0FF0525A4B962",
+  "hash": "A13A6D977131820A6B5784C536DD23C7E09B0ADE1757AE981FB350E693F08BFA",
   "identities": [],
   "multitenancy": {
     "attribute": null,

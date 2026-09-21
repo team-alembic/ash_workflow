@@ -60,7 +60,7 @@ defmodule AshWorkflow.Scheduler.EveryUntilTest do
   end
 
   test "firing writes the explicit last_fired_field, not a generated default name" do
-    record = create!()
+    record = create!() |> age_state_entered_at(1)
     refute Ash.load!(record, :reminder_fired_at).reminder_fired_at
 
     assert Precise.run_due(Workflow) == 1
@@ -93,8 +93,15 @@ defmodule AshWorkflow.Scheduler.EveryUntilTest do
     assert reloaded.state == :waiting
   end
 
-  test "a record that has never fired is treated as due" do
-    record = create!() |> age_state_entered_at(1)
+  test "a record that has never fired measures its interval from state_entered_at" do
+    record = create!()
+
+    # Nothing fires on entry: the nil column falls back to `state_entered_at`,
+    # which is the instant the record entered the step.
+    assert Precise.run_due(Workflow) == 0
+    assert reload(record).reminder_count == 0
+
+    record = age_state_entered_at(record, 1)
 
     assert Precise.run_due(Workflow) == 1
     assert reload(record).reminder_count == 1

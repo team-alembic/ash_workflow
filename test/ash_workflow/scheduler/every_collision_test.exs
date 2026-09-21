@@ -43,24 +43,31 @@ defmodule AshWorkflow.Scheduler.EveryCollisionTest do
     |> Ash.update!()
   end
 
-  # Both everys have never fired on a fresh record, and a nil column is due
-  # rather than waiting for a column only firing itself would write. Forcing
-  # both to "just fired" first is what lets the rest of these tests control
-  # each every's own schedule independently of that initial-fire behaviour.
+  # A nil column falls back to `state_entered_at`, so pinning both columns to
+  # "just fired" is what lets the rest of these tests age `state_entered_at`
+  # for the timeout's sake without dragging either every's schedule with it.
   defp mark_fired_now(record) do
     record
     |> age(:waiting_reminder_last_fired_at, 0)
     |> age(:waiting_digest_last_fired_at, 0)
   end
 
-  test "a never-fired record fires every every immediately, regardless of interval" do
+  test "a never-fired every measures its interval from state_entered_at" do
     record = create!()
 
-    assert Precise.run_due(Workflow) == 2
+    # Both columns are nil on a fresh record, so neither every is due on
+    # entry: each measures its first interval from `state_entered_at`.
+    assert Precise.run_due(Workflow) == 0
+
+    # An hour after entry :reminder has had its one-hour interval; :digest
+    # needs two, and it is measuring the same anchor.
+    record = age(record, :state_entered_at, 1)
+
+    assert Precise.run_due(Workflow) == 1
 
     reloaded = reload(record)
     assert reloaded.reminder_count == 1
-    assert reloaded.digest_count == 1
+    assert reloaded.digest_count == 0
   end
 
   test "both everys fire independently when both are due in the same sweep" do

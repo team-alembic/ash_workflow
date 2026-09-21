@@ -235,7 +235,6 @@ defmodule AshWorkflow do
       AshWorkflow.Transformers.AddActions,
       AshWorkflow.Transformers.AddScheduler,
       AshWorkflow.Transformers.AddIndexes,
-      AshWorkflow.Transformers.AddEveryBackfill,
       AshWorkflow.Transformers.AddPolicies,
       AshWorkflow.Transformers.AddCodeInterface,
       AshWorkflow.Transformers.AddCalculations

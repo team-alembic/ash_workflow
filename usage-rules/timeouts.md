@@ -132,11 +132,11 @@ every :reminder do
 end
 ```
 
-This fires on entry (day 0, since the `every` has never fired and its column
-is `nil`), then roughly at day 2, day 4 and day 6, then stops before day 8:
-four reminders, then silence. The last fire has to land strictly before
+This fires roughly at day 2, day 4 and day 6, then stops before day 8: three
+reminders, then silence. Nothing fires on entry, since the first interval is
+measured from `state_entered_at`. The last fire has to land strictly before
 `until`, which must be strictly longer than `interval` (equal to it leaves no
-room for a second fire).
+room to fire even once).
 
 `until` is measured against `state_entered_at` directly. `interval` measures
 against a different anchor — the `every`'s own last-fired column, described
@@ -330,7 +330,8 @@ end
 Firing writes that column, not `state_entered_at` — which is what keeps two
 `every` entities, or an `every` and a `timeout`, on the same step from
 resetting a deadline out from under each other. A record whose column is
-still `nil` (never fired) is treated as due immediately.
+still `nil` (never fired) measures its interval from `state_entered_at`
+instead, so the first fire lands one whole interval after entry.
 
 Not `field` — `timeout`'s `field` names an anchor AshWorkflow reads and never
 writes, while `last_fired_field` names a column AshWorkflow owns and writes on

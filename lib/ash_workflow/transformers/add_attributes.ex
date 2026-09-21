@@ -36,12 +36,11 @@ defmodule AshWorkflow.Transformers.AddAttributes do
   `AshWorkflow.Entities.Every` for why firing no longer touches
   `state_entered_at`.
 
-  Nilable because it is a new column on what may be an existing table: an
-  in-flight record written before this attribute existed has no value for it
-  until it next fires. `AshWorkflow.Transformers.AddEveryBackfill` generates a
-  migration backfilling it from `state_entered_at` for `AshPostgres.DataLayer`
-  resources; elsewhere, and until that backfill runs, a `nil` column is treated
-  as due.
+  Nilable because an `every` that has not fired yet has no last-fired instant,
+  which is also the case for an in-flight record written before the column
+  existed. A `nil` column means the interval is measured from
+  `state_entered_at` instead, so a record entering the step fires one whole
+  interval later and needs no backfill.
   """
   use Spark.Dsl.Transformer
 

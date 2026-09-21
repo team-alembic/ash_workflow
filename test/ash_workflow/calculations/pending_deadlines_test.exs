@@ -66,14 +66,16 @@ defmodule AshWorkflow.Calculations.PendingDeadlinesTest do
   end
 
   describe "a record with an every" do
-    test "reports due_at as now when the every's own column is nil (never fired)" do
+    test "measures from state_entered_at when the every's own column is nil (never fired)" do
       {:ok, record} = AshWorkflowTest.LoggedWorkflow.create(%{title: "test"})
       {:ok, record} = Ash.update(record, action: :process_intake)
 
       assert [reminder | _] = deadlines(record)
       assert reminder.name == :reminder
       assert reminder.kind == :every
-      assert DateTime.diff(DateTime.utc_now(), reminder.due_at, :second) in -5..5
+
+      entered_at = Ash.load!(record, :state_entered_at).state_entered_at
+      assert DateTime.diff(reminder.due_at, entered_at, :day) == 2
     end
 
     test "reports due_at as the next interval once the every has fired" do

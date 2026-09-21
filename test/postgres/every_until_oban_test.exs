@@ -5,7 +5,8 @@ defmodule AshWorkflowTest.Postgres.EveryUntilObanTest do
   `AshWorkflowTest.Postgres.EveryUntilWorkflow` reminds every hour and stops
   once the record has been in the step for 3 hours. `interval` is measured
   against `waiting_reminder_last_fired_at`, the `every`'s own last-fired
-  column, and `until` against `state_entered_at`. `age_field_by/4` ages either
+  column, falling back to `state_entered_at` until the first fire, and `until`
+  against `state_entered_at`. `age_field_by/4` ages either
   one independently, so a test can put a record on either side of a bound
   without waiting for a fire to actually happen.
   """
@@ -19,8 +20,14 @@ defmodule AshWorkflowTest.Postgres.EveryUntilObanTest do
     AshOban.schedule_and_run_triggers({Workflow, :__every_trigger_waiting_reminder})
   end
 
-  test "fires immediately since the every has never fired" do
+  test "fires one interval after entry when the every has never fired" do
     workflow = submit!()
+
+    run_trigger!()
+    assert %{failure: 0, discard: 0} = Oban.drain_queue(queue: :workflow, with_recursion: true)
+    assert Ash.get!(Workflow, workflow.id, authorize?: false).reminder_count == 0
+
+    workflow = age_field_by(workflow, :state_entered_at, 61, :minute)
 
     run_trigger!()
     assert %{failure: 0, discard: 0} = Oban.drain_queue(queue: :workflow, with_recursion: true)

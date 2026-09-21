@@ -258,13 +258,15 @@ defmodule AshWorkflow.Scheduler.Precise.Timeline do
     read(work.resource, filter, state, deadline_loads(work))
   end
 
-  # A repeating `every` whose column is still `nil` has never fired, and is
-  # due rather than waiting on a column that firing itself would write. See
+  # A repeating `every` whose column is still `nil` has never fired, so its
+  # interval is measured from `state_entered_at` instead. See
   # `AshWorkflow.Entities.Every`. A plain timeout's field has no such case: it
   # either measures `state_entered_at`, which always has a value, or a
   # data-driven field the record's own logic is responsible for populating.
   defp field_due(%Work{repeat?: true}, field, bound) do
-    Ash.Expr.expr(is_nil(^ref(field)) or ^ref(field) <= ^bound)
+    Ash.Expr.expr(
+      (is_nil(^ref(field)) and ^ref(:state_entered_at) <= ^bound) or ^ref(field) <= ^bound
+    )
   end
 
   defp field_due(%Work{repeat?: false}, field, bound) do
@@ -381,17 +383,18 @@ defmodule AshWorkflow.Scheduler.Precise.Timeline do
   # An automatic step has no deadline and is eligible the moment a record
   # occupies it, so it runs now. A timeout whose field is nil on this record
   # has no deadline yet — `due_at/2` cannot compute one — and arming nothing is
-  # correct until the field is written. A repeating `every`'s column is the
-  # one field that is nil by design until its first fire — see
-  # `AshWorkflow.Entities.Every` — so that case runs now rather than waiting on
-  # a write only firing itself would make. `AshWorkflow.Scheduler.due_at/2`
-  # stays unaware of this distinction; it belongs to the scheduler, not the
-  # shared deadline arithmetic.
+  # correct until the field is written. A repeating `every`'s column is the one
+  # field that is nil by design until its first fire — see
+  # `AshWorkflow.Entities.Every` — so the delay is computed from
+  # `state_entered_at` instead, putting the first firing one whole interval
+  # after entry. `AshWorkflow.Scheduler.due_at/2` stays unaware of this
+  # substitution; it belongs to the scheduler, not the shared deadline
+  # arithmetic.
   defp delay_ms(%Work{deadline: nil}, _record), do: 0
 
   defp delay_ms(%Work{deadline: %{field: field}, repeat?: true} = work, record) do
     case Map.get(record, field) do
-      nil -> 0
+      nil -> due_delay(work, Map.put(record, field, record.state_entered_at))
       _fired_at -> due_delay(work, record)
     end
   end

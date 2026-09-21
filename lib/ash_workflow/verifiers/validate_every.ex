@@ -44,13 +44,11 @@ defmodule AshWorkflow.Verifiers.ValidateEvery do
     end
   end
 
-  # An `every` fires immediately on entry, since its last-fired column starts
-  # `nil` and a `nil` column is due regardless of `interval`. `until` does not
-  # guard that first fire — it guards whether a *second* one is possible.
-  # After the first fire, the column holds the entry instant, so the next fire
-  # needs `entry + interval` to land before the bound, `entry + until`: that
-  # is `until > interval` strictly. Equal durations leave zero room between
-  # the two and the every fires once, on entry, and never again.
+  # An `every`'s first fire lands one whole `interval` after entry, since its
+  # last-fired column starts `nil` and the interval is then measured from
+  # `state_entered_at`. The bound is `entry + until`, so that first fire
+  # happens only if `interval < until`: that is `until > interval` strictly.
+  # Equal durations leave no room and the every never fires at all.
   defp validate_until(_step, %{until: nil}), do: {:cont, :ok}
 
   defp validate_until(step, %{until: until, interval: interval} = every) do

@@ -98,8 +98,9 @@ defmodule AshWorkflow.Transformers.AddCalculations do
   # An `every` writes its own last-fired column on every fire, so unlike a
   # non-repeating action timeout its `due_at` never goes stale: it is always
   # the next instant the action will run. A record that has never fired has a
-  # nil column, so — like any other nil `field` here — it is omitted rather
-  # than shown as overdue.
+  # nil column, and `AshWorkflow.Calculations.PendingDeadlines` measures from
+  # `state_entered_at` for it, rather than omitting it the way it omits any
+  # other nil `field`.
   defp every_entry(step, every) do
     %{
       name: every.name,

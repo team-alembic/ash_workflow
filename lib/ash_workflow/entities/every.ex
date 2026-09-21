@@ -30,9 +30,11 @@ defmodule AshWorkflow.Entities.Every do
   AshWorkflow owns and writes on every fire. Reusing the name would give it
   two opposite meanings.
 
-  A record whose column is still `nil` — never fired — is treated as due,
-  both by the generated Oban trigger and by
-  `AshWorkflow.Scheduler.Precise.Timeline`.
+  A record whose column is still `nil` has never fired this `every`, and the
+  interval is then measured from `state_entered_at`, so the first firing lands
+  one whole interval after the record entered the step rather than on entry.
+  Both the generated Oban trigger and
+  `AshWorkflow.Scheduler.Precise.Timeline` apply that fallback.
 
   ## Bounding an `every` with `until`
 
