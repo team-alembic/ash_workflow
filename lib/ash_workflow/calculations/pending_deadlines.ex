@@ -19,12 +19,15 @@ defmodule AshWorkflow.Calculations.PendingDeadlines do
   fired, and it will still appear here with a `due_at` in the past. Read a past
   `due_at` as "was due", not "will fire".
 
-  An `every` entry does not have this problem: firing an `every`'s action
-  resets `state_entered_at`, so its `due_at` is always the next instant it will
-  run, never a stale past one.
+  An `every` entry does not have the stale-past-`due_at` problem a
+  non-repeating action timeout has: firing an `every` writes its own
+  last-fired column, so its `due_at` is always the next instant it will run.
 
   A timeout whose `field` is `nil` on the record has no derivable deadline and
-  is omitted.
+  is omitted. An `every` whose column is `nil` is different: it has never
+  fired, which is due *now* rather than not derivable — see
+  `AshWorkflow.Entities.Every` — so its entry reports `due_at` as the current
+  instant instead of being omitted.
   """
   use Ash.Resource.Calculation
 
@@ -58,21 +61,22 @@ defmodule AshWorkflow.Calculations.PendingDeadlines do
     end)
   end
 
+  defp deadline(%{kind: :every} = every, record) do
+    case as_datetime(Map.get(record, every.field)) do
+      nil -> [entry(every, DateTime.utc_now())]
+      from -> [entry(every, due_at(from, every.fire_after))]
+    end
+  end
+
   defp deadline(timeout, record) do
     case as_datetime(Map.get(record, timeout.field)) do
-      nil ->
-        []
-
-      from ->
-        [
-          %{
-            name: timeout.name,
-            due_at: due_at(from, timeout.fire_after),
-            kind: timeout.kind,
-            target: timeout.target
-          }
-        ]
+      nil -> []
+      from -> [entry(timeout, due_at(from, timeout.fire_after))]
     end
+  end
+
+  defp entry(timeout, due_at) do
+    %{name: timeout.name, due_at: due_at, kind: timeout.kind, target: timeout.target}
   end
 
   # A `fire_at` timeout carries no duration: its field holds the deadline itself.

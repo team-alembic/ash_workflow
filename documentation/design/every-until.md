@@ -3,9 +3,16 @@
 > **Superseded.** The `repeat_started_at` design this document explains was
 > replaced by [issue #89](https://github.com/team-alembic/ash_workflow/issues/89):
 > `every` now writes its own per-`every` last-fired column instead of resetting
-> `state_entered_at`, which is the "lapsed objection" option recorded below
-> under "What is still open". `until` now measures `state_entered_at` directly.
-> See `AshWorkflow.Entities.Every`'s moduledoc for the current design. This
+> `state_entered_at`, close to the "lapsed objection" option recorded below
+> under "What is still open" — giving `every` its own anchor — but not
+> identical to it. That option proposed `coalesce(last_fired_at,
+> state_entered_at)`, which would have kept a never-fired `every`'s first fire
+> at `state_entered_at + interval`. What was built instead treats a `nil`
+> column as due immediately, so a fresh record's `every` entities fire on
+> entry, not after their first `interval`; a generated migration backfills
+> existing rows' columns from `state_entered_at` so that transition is not
+> retroactive. `until` now measures `state_entered_at` directly. See
+> `AshWorkflow.Entities.Every`'s moduledoc for the current design. This
 > document is kept for the history of how `repeat_started_at` came to exist
 > and why it was eventually replaced, not as a description of current
 > behavior.

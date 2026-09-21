@@ -5,9 +5,11 @@ defmodule AshWorkflowTest.EveryUntilWorkflow do
 
   Uses `AshWorkflow.Scheduler.Precise` so `Precise.run_due/2` can drive the
   timeout synchronously, and `set_clock` (a plain update action outside the
-  workflow) so a test can move `state_entered_at` — the one anchor `interval`
-  and `until` both ultimately depend on, now that firing writes its own
-  column instead of resetting `state_entered_at`.
+  workflow) so a test can move `state_entered_at` — the anchor `until`
+  measures against — independently of `:reminder`'s own last-fired column,
+  which `interval` measures against instead. `:reminder` names that column
+  explicitly with `last_fired_field`, exercising the override rather than the
+  generated default.
 
       waiting ──(resolve)──▶ resolved
               │
@@ -29,6 +31,7 @@ defmodule AshWorkflowTest.EveryUntilWorkflow do
         interval {1, :hours}
         action :send_reminder
         until {3, :hours}
+        last_fired_field(:reminder_fired_at)
       end
     end
 

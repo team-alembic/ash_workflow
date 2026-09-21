@@ -59,6 +59,16 @@ defmodule AshWorkflow.Scheduler.EveryUntilTest do
     refute is_nil(reloaded.state_entered_at)
   end
 
+  test "firing writes the explicit last_fired_field, not a generated default name" do
+    record = create!()
+    refute Ash.load!(record, :reminder_fired_at).reminder_fired_at
+
+    assert Precise.run_due(Workflow) == 1
+
+    reloaded = Ash.load!(reload(record), :reminder_fired_at)
+    assert reloaded.reminder_fired_at
+  end
+
   test "fires on schedule while under the bound, leaving state_entered_at where it was" do
     record = create!() |> age_state_entered_at(1)
 

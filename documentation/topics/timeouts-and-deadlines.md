@@ -90,7 +90,7 @@ every :reminder do
 end
 ```
 
-This fires roughly at day 2, day 4 and day 6, then stops before day 8. Three reminders, then silence, not four: the last fire has to land strictly before `until`, and polling lag pushes each one slightly later than its nominal day. `AshWorkflow.Verifiers.ValidateEvery` rejects an `until` that is not strictly longer than `interval`, since anything shorter or equal leaves no room for even one fire.
+This fires on entry (day 0, since the `every` has never fired and its column is `nil`), then roughly at day 2, day 4 and day 6, then stops before day 8: four reminders, then silence. The last fire has to land strictly before `until`, and polling lag pushes each one slightly later than its nominal day. `AshWorkflow.Verifiers.ValidateEvery` rejects an `until` that is not strictly longer than `interval`, since anything shorter or equal leaves no room for a second fire.
 
 `until` is measured against `state_entered_at` directly — the same attribute every other deadline on the step measures from. That works because firing an `every` no longer touches `state_entered_at` at all: it writes its own `interval` column instead (see above), so `state_entered_at` stays exactly where the record's genuine step entry left it for as long as the record occupies the step.
 

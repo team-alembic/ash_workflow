@@ -105,16 +105,29 @@ defmodule AshWorkflow.Scheduler.EveryCollisionTest do
   end
 
   test "an every does not starve a transition_to timeout on the same step" do
-    record = create!() |> mark_fired_now() |> age(:state_entered_at, 4)
+    record =
+      create!()
+      |> mark_fired_now()
+      |> age(:waiting_reminder_last_fired_at, 1)
+      |> age(:state_entered_at, 4)
 
-    # Hour 4: :escalation needs five, so it is not yet due.
-    Precise.run_due(Workflow)
-    assert reload(record).state == :waiting
+    entered_at = reload(record).state_entered_at
+
+    # Hour 4: :reminder is due against its one-hour interval and fires;
+    # :digest, still "just fired", is not; :escalation needs five hours, so
+    # it is not yet due either.
+    assert Precise.run_due(Workflow) == 1
+
+    reloaded = reload(record)
+    assert reloaded.reminder_count == 1
+    assert reloaded.state == :waiting
+
+    # The fire did not move state_entered_at — the anchor escalation measures
+    # from is exactly where ageing left it, not reset by the every firing.
+    assert DateTime.compare(reloaded.state_entered_at, entered_at) == :eq
 
     # Six hours after the record genuinely entered the step, escalation has
-    # had its five hours and fires. `state_entered_at` was never touched by
-    # the everys firing, so this sets it 6 hours ago outright rather than
-    # ageing forward from wherever a reset might have left it.
+    # had its five hours and fires.
     record |> reload() |> age(:state_entered_at, 6)
     Precise.run_due(Workflow)
 

@@ -132,10 +132,11 @@ every :reminder do
 end
 ```
 
-This fires roughly at day 2, day 4 and day 6, then stops before day 8. Three
-reminders, then silence, not four: the last fire has to land strictly before
+This fires on entry (day 0, since the `every` has never fired and its column
+is `nil`), then roughly at day 2, day 4 and day 6, then stops before day 8:
+four reminders, then silence. The last fire has to land strictly before
 `until`, which must be strictly longer than `interval` (equal to it leaves no
-room for even one fire).
+room for a second fire).
 
 `until` is measured against `state_entered_at` directly. `interval` measures
 against a different anchor — the `every`'s own last-fired column, described

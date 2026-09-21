@@ -78,17 +78,27 @@ defmodule AshWorkflow.Transformers.AddAttributes do
     |> Enum.reduce({:ok, dsl}, fn field, {:ok, dsl} -> add_every_last_fired_field(dsl, field) end)
   end
 
+  # A `last_fired_field` naming the workflow's own state attribute is invalid
+  # — `AshWorkflow.Verifiers.ValidateEvery` rejects it — but this transformer
+  # runs before `AshStateMachine.Transformers.AddState` adds that attribute,
+  # so without this guard it would add a bogus datetime column under that name
+  # first, and `AddState` would crash on the conflict instead of the verifier
+  # reporting a clear error.
   defp add_every_last_fired_field(dsl, field) do
-    case ResourceInfo.attribute(dsl, field) do
-      nil ->
-        Builder.add_attribute(dsl, field, :utc_datetime_usec,
-          allow_nil?: true,
-          writable?: false,
-          public?: true
-        )
+    if field == AshWorkflow.Info.state_attribute(dsl) do
+      {:ok, dsl}
+    else
+      case ResourceInfo.attribute(dsl, field) do
+        nil ->
+          Builder.add_attribute(dsl, field, :utc_datetime_usec,
+            allow_nil?: true,
+            writable?: false,
+            public?: true
+          )
 
-      _exists ->
-        {:ok, dsl}
+        _exists ->
+          {:ok, dsl}
+      end
     end
   end
 

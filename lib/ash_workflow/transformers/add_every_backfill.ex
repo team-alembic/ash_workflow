@@ -11,10 +11,18 @@ defmodule AshWorkflow.Transformers.AddEveryBackfill do
   moment this ships: `up` sets the column to the same instant firing used to
   reset before this change, `state_entered_at`.
 
-  Follows exactly how `AshWorkflow.Transformers.AddIndexes` builds into
-  `[:postgres, :custom_indexes]`, but against
-  `[:postgres, :custom_statements]`: one `AshPostgres.Statement` per `every`.
-  `down` is `SELECT 1;` — a data backfill has no real inverse.
+  Builds into `[:postgres, :custom_statements]` the same way
+  `AshWorkflow.Transformers.AddIndexes` builds into `[:postgres,
+  :custom_indexes]`: one `AshPostgres.Statement` per `every`, deduplicated by
+  statement name rather than by the field-list comparison `AddIndexes` uses,
+  since a statement has no field list to compare. `down` is `SELECT 1;` — a
+  data backfill has no real inverse.
+
+  The generated `UPDATE` names the table via the resource's `[:postgres]
+  :schema` option when set. It does not qualify by a tenant's schema under
+  schema-based multitenancy, since that schema is only known per connection at
+  runtime, not at compile time when this transformer runs — a tenant resource
+  needs its own backfill, run per tenant.
 
   Resources on other data layers are untouched.
   """
@@ -48,19 +56,26 @@ defmodule AshWorkflow.Transformers.AddEveryBackfill do
     if statement_exists?(dsl, name) do
       dsl
     else
-      table = Transformer.get_option(dsl, [:postgres], :table)
-
       statement =
         Transformer.build_entity!(
           AshPostgres.DataLayer,
           [:postgres, :custom_statements],
           :statement,
           name: name,
-          up: "UPDATE #{table} SET #{field} = state_entered_at;",
+          up: "UPDATE #{qualified_table(dsl)} SET #{field} = state_entered_at;",
           down: "SELECT 1;"
         )
 
       Transformer.add_entity(dsl, [:postgres, :custom_statements], statement)
+    end
+  end
+
+  defp qualified_table(dsl) do
+    table = Transformer.get_option(dsl, [:postgres], :table)
+
+    case Transformer.get_option(dsl, [:postgres], :schema) do
+      nil -> table
+      schema -> "#{schema}.#{table}"
     end
   end
 
@@ -72,8 +87,12 @@ defmodule AshWorkflow.Transformers.AddEveryBackfill do
     |> Enum.any?(&(&1.name == name))
   end
 
-  # `every` fields must already have been added before the backfill can name
-  # them.
+  # Naming a backfill statement reads `Every.last_fired_field/2`, which is
+  # pure naming and needs no attribute lookup, so this transformer does not
+  # itself depend on `AddAttributes` having run. It runs after it anyway, so
+  # the generated migration's structural `alter table` (adding the column)
+  # and this data-only `UPDATE` land in the same deploy in the order a reader
+  # would expect: column added, then backfilled.
   def after?(AshWorkflow.Transformers.AddAttributes), do: true
   def after?(_), do: false
 end

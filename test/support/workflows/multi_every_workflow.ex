@@ -3,9 +3,10 @@ defmodule AshWorkflowTest.MultiEveryWorkflow do
   Two `every` entities and a `transition_to` timeout sharing one step, to pin
   down what they do to each other.
 
-  All three measure against `state_entered_at`, and an `every`'s firing resets
-  it. See `AshWorkflow.Scheduler.EveryCollisionTest` for what that costs the
-  slower `every` and the timeout.
+  Each `every` measures its own `interval` against its own last-fired column;
+  the timeout measures against `state_entered_at`, which neither `every`
+  touches. See `AshWorkflow.Scheduler.EveryCollisionTest` for what that
+  independence buys over sharing one anchor.
 
       waiting ──(escalation, 5 hours)──▶ escalated
               ├─ every 1 hour ──▶ send_reminder
