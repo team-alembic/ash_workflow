@@ -110,6 +110,40 @@ Use cases include:
 >
 > A timeout against a custom field is not a periodic check. Its trigger keeps matching while the condition holds, but `trigger_once?` stops the action running a second time for the same record, so the reminder fires once. For a genuinely periodic check, add the cadence to the field itself — advance `:next_check_at` in the timeout action — so the condition stops matching until the next window opens.
 
+## Firing at an instant a field already holds with `fire_at`
+
+`field` is the anchor `fire_after` measures an offset from. When the field already holds the deadline instant, there is no offset to measure, and `fire_at` names the field directly:
+
+```elixir
+step :dormant do
+  timeout :review do
+    fire_at :next_check_at
+    transition_to :dormant_review
+  end
+end
+```
+
+The generated trigger checks `next_check_at <= now()`. The timeout fires once that instant has passed, at whatever resolution the selected scheduler polls with, so `AshWorkflow.Scheduler.Oban` fires it within a minute of the instant and `AshWorkflow.Scheduler.Precise` arms a timer for it.
+
+`fire_at` takes a datetime attribute or an expression calculation, checked at compile time exactly as `field` is. `fire_at` and `fire_after` are mutually exclusive and exactly one is required, and `fire_at` cannot be combined with `field`.
+
+`fire_at` belongs to `timeout` alone. An `every` declares an `interval` and measures it against `state_entered_at`, so there is no deadline field for `fire_at` to name.
+
+Before `fire_at` existed, the way to express this was `fire_after: {1, :seconds}` against the deadline field, since `AshWorkflow.Duration.validate/1` requires a positive integer and there was no way to say "no offset". Use `fire_at` instead. The sentinel handed `AshWorkflow.Verifiers.ValidateTimeoutPrecision` a duration that meant nothing, and that verifier now skips a `fire_at` timeout: a timeout that promises no duration cannot promise a precision the scheduler misses.
+
+`fire_at` pairs with the periodic-check pattern described above. A timeout action that advances `:next_check_at` to the next window stops the condition matching until that window opens.
+
+```elixir
+step :monitoring do
+  timeout :check do
+    fire_at :next_check_at
+    action :run_check
+  end
+end
+```
+
+`AshWorkflow.Scheduler.due_at/2` reads the deadline field off the record with `Map.get/2`, which finds `%Ash.NotLoaded{}` for a calculation nobody loaded, and returns `nil` for it. `AshWorkflow.Scheduler.Precise.Timeline` loads a calculation deadline field with the records it sweeps, so a `fire_at` calculation arms a timer there. A caller computing `due_at/2` from a record of its own has to load the calculation first, which is [issue #70](https://github.com/team-alembic/ash_workflow/issues/70).
+
 ## Duration units
 
 Supported units: `:seconds`, `:minutes`, `:hours`, `:days`.

@@ -19,6 +19,14 @@ defmodule AshWorkflow.Scheduler.Work do
   eligible. A scheduler that registers deadlines ahead of time uses this, and
   can arm a timer to the microsecond.
 
+  It has two shapes, because a timeout declares its deadline in two ways.
+  `%{field: :state_entered_at, fire_after: {3, :days}}` means the instant is that
+  field plus that duration, which is `fire_after` in the DSL. A `fire_after` of
+  `nil` means the field holds the instant itself and no arithmetic applies, which
+  is `fire_at` in the DSL. `AshWorkflow.Scheduler.due_at/2` resolves both to a
+  `DateTime`, so an implementation that only arms timers never has to match on
+  the shape.
+
   A step has no `deadline` — it is eligible as soon as a record occupies it.
   A timeout has both, and they agree: `match` is true exactly when `deadline`
   has passed.
@@ -46,7 +54,7 @@ defmodule AshWorkflow.Scheduler.Work do
 
   @type deadline :: %{
           field: atom(),
-          fire_after: {pos_integer(), AshWorkflow.Entities.Timeout.duration_unit()}
+          fire_after: {pos_integer(), AshWorkflow.Entities.Timeout.duration_unit()} | nil
         }
 
   @type t :: %__MODULE__{

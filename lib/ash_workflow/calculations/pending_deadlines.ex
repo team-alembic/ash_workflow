@@ -10,8 +10,8 @@ defmodule AshWorkflow.Calculations.PendingDeadlines do
   ## What this is not
 
   This is the schedule *implied* by the DSL and the record's current field
-  values — `field + fire_after`, computed on read. It is not a record of what has
-  already fired.
+  values — `field + fire_after`, or the `fire_at` field itself, computed on read.
+  It is not a record of what has already fired.
 
   For a transition timeout that distinction does not arise: firing changes the
   state, so the deadline leaves the list. But a non-repeating action timeout
@@ -64,18 +64,20 @@ defmodule AshWorkflow.Calculations.PendingDeadlines do
         []
 
       from ->
-        {value, unit} = timeout.fire_after
-
         [
           %{
             name: timeout.name,
-            due_at: DateTime.add(from, value, singular_unit(unit)),
+            due_at: due_at(from, timeout.fire_after),
             kind: timeout.kind,
             target: timeout.target
           }
         ]
     end
   end
+
+  # A `fire_at` timeout carries no duration: its field holds the deadline itself.
+  defp due_at(from, nil), do: from
+  defp due_at(from, {value, unit}), do: DateTime.add(from, value, singular_unit(unit))
 
   # Timeout fields are verified to be a datetime type, but that includes the
   # naive variants, which have no zone to compare against.
