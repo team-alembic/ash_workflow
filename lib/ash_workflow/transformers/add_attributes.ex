@@ -7,7 +7,19 @@ defmodule AshWorkflow.Transformers.AddAttributes do
 
   - Type: `:utc_datetime_usec`
   - `allow_nil?: false` with a default of `DateTime.utc_now/0`
-  - `public?: true` and `writable?: true`
+  - `public?: true` and `writable?: false`
+
+  `writable?: false` keeps the attribute out of every action's `accept` list and
+  rejects it as an argument, so nothing outside AshWorkflow can move a record's
+  anchor. `AshWorkflow.Changes.RecordEvent` writes it with
+  `Ash.Changeset.force_change_attribute/3`, which bypasses `writable?`, and the
+  atomic path writes it through the `%{state_entered_at: expr(now())}` map
+  `atomic/3` returns. Both are unaffected.
+
+  Every deadline on a step measures from this attribute, so a write from
+  outside moves every one of them at once. A caller that genuinely needs to set
+  it (backfilling imported records, say) can still reach it with
+  `force_change_attribute/3` or the data layer directly.
 
   Does NOT add the `:state` attribute — that is handled by
   AshStateMachine's `AddState` transformer.
@@ -26,7 +38,7 @@ defmodule AshWorkflow.Transformers.AddAttributes do
         Builder.add_attribute(dsl, :state_entered_at, :utc_datetime_usec,
           allow_nil?: false,
           default: &DateTime.utc_now/0,
-          writable?: true,
+          writable?: false,
           public?: true
         )
 

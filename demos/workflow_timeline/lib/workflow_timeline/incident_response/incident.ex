@@ -60,8 +60,20 @@ defmodule WorkflowTimeline.IncidentResponse.Incident do
     end
 
     update :seed_snapshot do
-      accept [:state_entered_at]
+      accept []
       require_atomic? false
+
+      argument :state_entered_at, :utc_datetime_usec, allow_nil?: false
+
+      # `state_entered_at` is not writable, so the seeder reaches it the same
+      # way AshWorkflow does. See `AshWorkflow.Transformers.AddAttributes`.
+      change fn changeset, _ctx ->
+        Ash.Changeset.force_change_attribute(
+          changeset,
+          :state_entered_at,
+          Ash.Changeset.get_argument(changeset, :state_entered_at)
+        )
+      end
     end
   end
 
