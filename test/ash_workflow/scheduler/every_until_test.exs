@@ -1,10 +1,9 @@
 defmodule AshWorkflow.Scheduler.EveryUntilTest do
   @moduledoc """
   `until` bounds an `every` by wall-clock time since the record entered the
-  step, not since it last fired. `AshWorkflowTest.EveryUntilWorkflow` reminds
-  every hour and stops after 3 hours, so these tests age `state_entered_at`
-  (the anchor firing keeps pushing forward) and `repeat_started_at` (the fixed
-  anchor `until` measures against) independently, and drive the firing with
+  step, measured against `state_entered_at`. `AshWorkflowTest.EveryUntilWorkflow`
+  reminds every hour and stops after 3 hours, so these tests age
+  `state_entered_at` and drive the firing with
   `AshWorkflow.Scheduler.Precise.run_due/2` so no real clock has to pass.
   """
   use ExUnit.Case, async: false
@@ -40,61 +39,42 @@ defmodule AshWorkflow.Scheduler.EveryUntilTest do
 
   defp ago(amount, :hour), do: DateTime.add(DateTime.utc_now(), -amount, :hour)
 
-  defp set_clock(record, attrs) do
-    {entered_at, attrs} = Map.pop(attrs, :state_entered_at)
-
+  defp age_state_entered_at(record, hours) do
     record
-    |> Ash.Changeset.for_update(:set_clock, attrs)
-    |> force_state_entered_at(entered_at)
+    |> Ash.Changeset.for_update(:set_clock, %{})
+    |> Ash.Changeset.force_change_attribute(:state_entered_at, ago(hours, :hour))
     |> Ash.update!()
   end
 
-  defp force_state_entered_at(changeset, nil), do: changeset
-
-  defp force_state_entered_at(changeset, entered_at),
-    do: Ash.Changeset.force_change_attribute(changeset, :state_entered_at, entered_at)
-
   defp reload(record), do: Ash.get!(Workflow, record.id)
 
-  test "entering the step sets repeat_started_at alongside state_entered_at" do
+  test "entering the step sets state_entered_at" do
     record = create!()
 
     assert record.reminder_count == 0
 
-    # Both attributes come from the resource, loaded fresh from the data layer,
-    # since `Ash.Changeset.for_create/3` does not select non-accepted fields.
+    # Loaded fresh from the data layer, since `Ash.Changeset.for_create/3`
+    # does not select non-accepted fields.
     reloaded = reload(record)
     refute is_nil(reloaded.state_entered_at)
   end
 
-  test "fires on schedule while under the bound, resetting state_entered_at but not repeat_started_at" do
-    record = create!()
-
-    aged =
-      set_clock(record, %{
-        state_entered_at: ago(1, :hour),
-        repeat_started_at: ago(1, :hour)
-      })
+  test "fires on schedule while under the bound, leaving state_entered_at where it was" do
+    record = create!() |> age_state_entered_at(1)
 
     assert Precise.run_due(Workflow) == 1
 
-    reloaded = reload(aged)
+    reloaded = reload(record)
     assert reloaded.reminder_count == 1
     assert reloaded.state == :waiting
 
-    # Firing reset state_entered_at to re-arm the next hour, but left
-    # repeat_started_at where it was — otherwise the bound could never be
-    # reached, since firing is exactly what keeps moving state_entered_at.
-    assert DateTime.diff(reloaded.state_entered_at, DateTime.utc_now(), :second) > -5
+    # Firing wrote the every's own last-fired column, not state_entered_at, so
+    # the anchor `until` measures against is still where it was set.
+    assert DateTime.diff(reloaded.state_entered_at, ago(1, :hour), :second) in -5..5
   end
 
-  test "stops matching once repeat_started_at is past the bound, even though interval has elapsed" do
-    record = create!()
-
-    set_clock(record, %{
-      state_entered_at: ago(1, :hour),
-      repeat_started_at: ago(4, :hour)
-    })
+  test "stops matching once state_entered_at is past the bound, even though interval has elapsed" do
+    record = create!() |> age_state_entered_at(4)
 
     assert Precise.run_due(Workflow) == 0
 
@@ -103,46 +83,21 @@ defmodule AshWorkflow.Scheduler.EveryUntilTest do
     assert reloaded.state == :waiting
   end
 
-  test "a record with no repeat_started_at (pre-existing data) is treated as bound-not-reached" do
-    record = create!()
-
-    aged =
-      record
-      |> Ash.Changeset.for_update(:set_clock, %{})
-      |> Ash.Changeset.force_change_attribute(:state_entered_at, ago(1, :hour))
-      |> Ash.Changeset.force_change_attribute(:repeat_started_at, nil)
-      |> Ash.update!()
+  test "a record that has never fired is treated as due" do
+    record = create!() |> age_state_entered_at(1)
 
     assert Precise.run_due(Workflow) == 1
-
-    reloaded = reload(aged)
-    assert reloaded.reminder_count == 1
+    assert reload(record).reminder_count == 1
   end
 
-  test "a repeat fire backfills a nil repeat_started_at from the pre-firing state_entered_at, once" do
-    record = create!()
-    stale_entry = ago(1, :hour)
-
-    aged =
-      record
-      |> Ash.Changeset.for_update(:set_clock, %{})
-      |> Ash.Changeset.force_change_attribute(:state_entered_at, stale_entry)
-      |> Ash.Changeset.force_change_attribute(:repeat_started_at, nil)
-      |> Ash.update!()
+  test "firing again after the interval elapses does not reopen the bound" do
+    record = create!() |> age_state_entered_at(1)
 
     assert Precise.run_due(Workflow) == 1
+    assert reload(record).reminder_count == 1
 
-    once_backfilled = reload(aged)
-    assert DateTime.compare(once_backfilled.repeat_started_at, stale_entry) == :eq
-
-    # A second fire, further within the bound the backfilled anchor now
-    # implies, must not move repeat_started_at again — only the first fire
-    # after the attribute was unset backfills it.
-    set_clock(once_backfilled, %{state_entered_at: ago(1, :hour)})
-    assert Precise.run_due(Workflow) == 1
-
-    twice_fired = reload(once_backfilled)
-    assert twice_fired.reminder_count == 2
-    assert DateTime.compare(twice_fired.repeat_started_at, stale_entry) == :eq
+    aged_again = record |> reload() |> age_state_entered_at(4)
+    assert Precise.run_due(Workflow) == 0
+    assert reload(aged_again).reminder_count == 1
   end
 end

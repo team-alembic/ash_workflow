@@ -5,10 +5,10 @@ defmodule AshWorkflow.Verifiers.ValidateEvery do
   Checks that `until` is strictly longer than `interval`.
 
   Separate from `AshWorkflow.Verifiers.ValidateTimeoutFields`, which is about a
-  timeout's `field` — a concept `every` does not have. `every` always measures
-  against `state_entered_at` and its bound always measures against
-  `AshWorkflow.Entities.Every.until_anchor/0`, so there is no field to
-  validate, only the one duration comparison below.
+  timeout's `field` — a concept `every` does not have. `every` measures its
+  `interval` against its own last-fired column, and its `until` bound always
+  measures against `state_entered_at`, so there is no field to validate, only
+  the one duration comparison below.
   """
   use Spark.Dsl.Verifier
 
@@ -27,11 +27,12 @@ defmodule AshWorkflow.Verifiers.ValidateEvery do
     end)
   end
 
-  # An `every` fires when its anchor is at or before `now - interval`, and the
-  # bound requires `repeat_started_at` to be after `now - until`. Both anchors
-  # start out at the same instant, so the first fire needs `now - until < now -
-  # interval`, which is `until > interval` strictly. Equal durations leave zero
-  # room between the two conditions and the every never fires at all.
+  # An `every` fires when its own last-fired column is nil or at or before
+  # `now - interval`, and the bound requires `state_entered_at` to be after
+  # `now - until`. A never-fired record has both anchors at the same instant,
+  # so the first fire needs `now - until < now - interval`, which is
+  # `until > interval` strictly. Equal durations leave zero room between the
+  # two conditions and the every never fires at all.
   defp validate_until(_step, %{until: nil}), do: {:cont, :ok}
 
   defp validate_until(step, %{until: until, interval: interval} = every) do

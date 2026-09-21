@@ -37,15 +37,12 @@ defmodule AshWorkflowTest.DataCase do
   def age_by(record, amount, unit), do: age_field_by(record, :state_entered_at, amount, unit)
 
   @doc """
-  Like `age_by/3`, but for `repeat_started_at` — the anchor `until` measures
-  against, which a real transition sets once and firing never moves. A test
-  ages it independently of `state_entered_at` to put a record on either side
-  of the bound without waiting for a fire to actually happen.
+  Ages an arbitrary datetime column on a record's row, the same way `age_by/3`
+  ages `state_entered_at` — writing through Ecto so a test can put an `every`'s
+  own last-fired column, or `state_entered_at`, on either side of a bound
+  without waiting for a fire to actually happen.
   """
-  def age_repeat_started_at_by(record, amount, unit),
-    do: age_field_by(record, :repeat_started_at, amount, unit)
-
-  defp age_field_by(record, field, amount, unit) do
+  def age_field_by(record, field, amount, unit) do
     at = DateTime.add(DateTime.utc_now(), -amount, unit)
     table = DataLayerInfo.table(record.__struct__)
 

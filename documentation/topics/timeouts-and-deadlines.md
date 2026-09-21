@@ -74,11 +74,9 @@ end
 
 `every` always requires `action` — there is no `transition_to`, because firing never leaves the step. That is the reason it exists as its own entity rather than a `repeat: true` flag on `timeout`: a timeout with both `repeat: true` and `transition_to` would be meaningless, since leaving the step stops the repeat before it ever comes round.
 
-Each time `every`'s action runs, the extension resets `state_entered_at` to the current time. This restarts the interval — so `interval: {3, :days}` means the action fires every 3 days, not on every scheduler cycle.
+Each `every` writes its own nilable `:utc_datetime_usec` attribute, holding the instant it last fired — named `<step>_<every>_last_fired_at` by default, or explicitly with `last_fired_field`. `interval` is measured against that column, not against `state_entered_at`, so two `every` entities on the same step — and any `timeout` sharing it — no longer share one anchor that firing resets out from under the others. A record whose column is still `nil` (never fired) is treated as due immediately.
 
-This reset is why `state_entered_at` is a timer anchor rather than a reliable "when did we enter this state" fact — a workflow that's been waiting for nine days with reminders every two reports `state_entered_at` as two days ago. If you need the honest answer, see [Workflow history](workflow-history.md), which adds an `entered_current_state_at` calculation that ignores these resets.
-
-A timeout never resets `state_entered_at` and uses Oban's `trigger_once?` to prevent re-firing after the action completes. Resetting it would push every other deadline on the same step back by the same amount, so a `timeout :warn, fire_after: {30, :minutes}, action: :warn` cannot delay the `timeout :breach, fire_after: {1, :hours}, transition_to: :escalated` beside it. A transition timeout (with `transition_to`) doesn't need either mechanism, since the state change naturally prevents re-firing.
+A timeout never touches `state_entered_at` either, and uses Oban's `trigger_once?` to prevent re-firing after the action completes. Neither an action timeout nor an `every` moves any other deadline's anchor on the same step, so a `timeout :warn, fire_after: {30, :minutes}, action: :warn` cannot delay the `timeout :breach, fire_after: {1, :hours}, transition_to: :escalated` beside it, and neither can an `every`. A transition timeout (with `transition_to`) doesn't need either mechanism, since the state change naturally prevents re-firing.
 
 ### Bounding `every` with `until`
 
@@ -94,7 +92,7 @@ end
 
 This fires roughly at day 2, day 4 and day 6, then stops before day 8. Three reminders, then silence, not four: the last fire has to land strictly before `until`, and polling lag pushes each one slightly later than its nominal day. `AshWorkflow.Verifiers.ValidateEvery` rejects an `until` that is not strictly longer than `interval`, since anything shorter or equal leaves no room for even one fire.
 
-`until` is not measured against `state_entered_at`, the same attribute `interval` measures against and resets on every firing — a bound checked against it would never be reached. It is measured against `repeat_started_at`, an attribute the extension adds when some `every` declares `until`. Every genuine step entry writes it to the same instant as `state_entered_at`: a manual transition, an automatic step completing, a transition timeout, an undo, or the initial create. An `every`'s own firing resets `state_entered_at` to re-arm itself, and never touches `repeat_started_at` — so it answers "when did the record enter this step", immune to the resets `state_entered_at` cannot avoid.
+`until` is measured against `state_entered_at` directly — the same attribute every other deadline on the step measures from. That works because firing an `every` no longer touches `state_entered_at` at all: it writes its own `interval` column instead (see above), so `state_entered_at` stays exactly where the record's genuine step entry left it for as long as the record occupies the step.
 
 Reaching `until` only stops the firing. It does not transition state, and it fires no notification of its own. The record stays in the step, silent, until something else moves it. If you also want a transition once reminders run out, declare it as a second, ordinary timeout rather than looking for a bound-triggered transition:
 
@@ -140,7 +138,7 @@ Use cases include:
 
 > #### `every` has no `field` option {: .warning}
 >
-> `every` resets `state_entered_at` to restart the interval. With a custom field, this reset would need to update that field to "now" — but that's semantically wrong. If `field: :last_session_date`, resetting it to "now" would falsely claim a session occurred. So `every` always measures against `state_entered_at`, and cannot be pointed at a custom field the way `timeout` can.
+> `timeout`'s `field` names an anchor AshWorkflow reads and never writes. `every` writes its own column on every fire — named with `last_fired_field`, not `field` — so reusing the name would give it two opposite meanings. Pointing that column at an arbitrary existing field would mean writing "now" to an attribute representing a real-world event that did not happen; if `field: :last_session_date`, that would falsely claim a session occurred. So `every` always writes and measures against its own generated column, and cannot be pointed at a custom field the way `timeout` can.
 >
 > A timeout against a custom field is not a periodic check. Its trigger keeps matching while the condition holds, but `trigger_once?` stops the action running a second time for the same record, so the reminder fires once. For a genuinely periodic check, add the cadence to the field itself — advance `:next_check_at` in the timeout action — so the condition stops matching until the next window opens.
 
@@ -168,7 +166,7 @@ A literal also reaches Postgres as a bind parameter, so a timeout's `where` clau
 
 `AshWorkflow.Scheduler.due_at/2` and the `pending_deadlines` calculation would also have to evaluate the expression per record to produce an instant, rather than doing the arithmetic directly.
 
-The anchor pays none of that. It is a column or an expression the data layer already knows how to compute, the duration beside it stays checkable and indexable, and the two compose to the same deadline. `every` has no anchor to point anywhere — it always measures against `state_entered_at` — so this dynamism is not available to `interval` or `until` at all; see [`every` has no `field` option](#every-has-no-field-option) above.
+The anchor pays none of that. It is a column or an expression the data layer already knows how to compute, the duration beside it stays checkable and indexable, and the two compose to the same deadline. `every` has no anchor to point anywhere else — `interval` always measures against its own generated column, and `until` always measures against `state_entered_at` — so this dynamism is not available to either at all; see [`every` has no `field` option](#every-has-no-field-option) above.
 ## Firing at an instant a field already holds with `fire_at`
 
 `field` is the anchor `fire_after` measures an offset from. When the field already holds the deadline instant, there is no offset to measure, and `fire_at` names the field directly:
@@ -186,7 +184,7 @@ The generated trigger checks `next_check_at <= now()`. The timeout fires once th
 
 `fire_at` takes a datetime attribute or an expression calculation, checked at compile time exactly as `field` is. `fire_at` and `fire_after` are mutually exclusive and exactly one is required, and `fire_at` cannot be combined with `field`.
 
-`fire_at` belongs to `timeout` alone. An `every` declares an `interval` and measures it against `state_entered_at`, so there is no deadline field for `fire_at` to name.
+`fire_at` belongs to `timeout` alone. An `every` declares an `interval` and measures it against its own generated column, so there is no deadline field for `fire_at` to name.
 
 Before `fire_at` existed, the way to express this was `fire_after: {1, :seconds}` against the deadline field, since `AshWorkflow.Duration.validate/1` requires a positive integer and there was no way to say "no offset". Use `fire_at` instead. The sentinel handed `AshWorkflow.Verifiers.ValidateTimeoutPrecision` a duration that meant nothing, and that verifier now skips a `fire_at` timeout: a timeout that promises no duration cannot promise a precision the scheduler misses.
 
@@ -357,6 +355,8 @@ config :my_app, Oban,
 
 ## The `state_entered_at` attribute
 
-The extension auto-adds a `state_entered_at` (`utc_datetime_usec`) attribute to the resource. It's set when the record is created and updated every time the state changes on manual transitions and automatic step completions. Timeout durations are calculated from this timestamp.
+The extension auto-adds a `state_entered_at` (`utc_datetime_usec`) attribute to the resource. It's set when the record is created and updated every time the state changes on manual transitions and automatic step completions. Timeout durations are calculated from this timestamp by default, and `until` always measures against it.
 
 If you need to define this attribute yourself (e.g., with a custom default or source), the extension skips adding it.
+
+It also auto-adds one nilable `:utc_datetime_usec` attribute per `every`, named `<step>_<every>_last_fired_at` by default — see [Recurring actions with `every`](#recurring-actions-with-every) above.

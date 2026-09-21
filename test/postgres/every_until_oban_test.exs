@@ -3,11 +3,11 @@ defmodule AshWorkflowTest.Postgres.EveryUntilObanTest do
   Exercises `until` against a real database and a real Oban trigger.
 
   `AshWorkflowTest.Postgres.EveryUntilWorkflow` reminds every hour and stops
-  once the record has been in the step for 3 hours. `age_by/3` ages
-  `state_entered_at` — the anchor firing keeps pushing forward — and
-  `age_repeat_started_at_by/3` ages `repeat_started_at` — the fixed anchor
-  `until` measures against — independently, so a test can put a record on
-  either side of the bound without waiting for a fire to actually happen.
+  once the record has been in the step for 3 hours. `interval` is measured
+  against `waiting_reminder_last_fired_at`, the `every`'s own last-fired
+  column, and `until` against `state_entered_at`. `age_field_by/4` ages either
+  one independently, so a test can put a record on either side of a bound
+  without waiting for a fire to actually happen.
   """
   use AshWorkflowTest.DataCase
 
@@ -19,9 +19,20 @@ defmodule AshWorkflowTest.Postgres.EveryUntilObanTest do
     AshOban.schedule_and_run_triggers({Workflow, :__every_trigger_waiting_reminder})
   end
 
+  test "fires immediately since the every has never fired" do
+    workflow = submit!()
+
+    run_trigger!()
+    assert %{failure: 0, discard: 0} = Oban.drain_queue(queue: :workflow, with_recursion: true)
+
+    reloaded = Ash.get!(Workflow, workflow.id, authorize?: false)
+    assert reloaded.reminder_count == 1
+    assert reloaded.state == :waiting
+  end
+
   test "fires once the interval has elapsed, while still under the bound" do
     workflow = submit!()
-    aged = age_by(workflow, 61, :minute)
+    aged = age_field_by(workflow, :waiting_reminder_last_fired_at, 61, :minute)
 
     run_trigger!()
     assert %{failure: 0, discard: 0} = Oban.drain_queue(queue: :workflow, with_recursion: true)
@@ -31,11 +42,11 @@ defmodule AshWorkflowTest.Postgres.EveryUntilObanTest do
     assert reloaded.state == :waiting
   end
 
-  test "keeps firing on schedule as long as repeat_started_at is within the bound" do
+  test "keeps firing on schedule as long as state_entered_at is within the bound" do
     workflow = submit!()
 
     for expected_count <- 1..3 do
-      age_by(workflow, 61, :minute)
+      age_field_by(workflow, :waiting_reminder_last_fired_at, 61, :minute)
 
       run_trigger!()
       assert %{failure: 0, discard: 0} = Oban.drain_queue(queue: :workflow, with_recursion: true)
@@ -46,11 +57,11 @@ defmodule AshWorkflowTest.Postgres.EveryUntilObanTest do
     end
   end
 
-  test "stops firing once repeat_started_at is past until, even though the interval has elapsed" do
+  test "stops firing once state_entered_at is past until, even though the interval has elapsed" do
     workflow = submit!()
 
-    age_by(workflow, 61, :minute)
-    age_repeat_started_at_by(workflow, 4, :hour)
+    age_field_by(workflow, :waiting_reminder_last_fired_at, 61, :minute)
+    age_by(workflow, 4, :hour)
 
     run_trigger!()
     assert %{failure: 0, discard: 0} = Oban.drain_queue(queue: :workflow, with_recursion: true)
@@ -66,8 +77,8 @@ defmodule AshWorkflowTest.Postgres.EveryUntilObanTest do
   test "leaving and re-entering the step resets the bound" do
     workflow = submit!()
 
-    age_by(workflow, 61, :minute)
-    age_repeat_started_at_by(workflow, 4, :hour)
+    age_field_by(workflow, :waiting_reminder_last_fired_at, 61, :minute)
+    age_by(workflow, 4, :hour)
 
     run_trigger!()
     Oban.drain_queue(queue: :workflow, with_recursion: true)

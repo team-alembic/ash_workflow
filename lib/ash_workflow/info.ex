@@ -4,6 +4,7 @@ defmodule AshWorkflow.Info do
   """
 
   alias Ash.Resource.Info, as: ResourceInfo
+  alias AshWorkflow.Entities.Every
   alias AshWorkflow.Entities.Step
   alias AshWorkflow.Entities.Timeout
   alias AshWorkflow.Entities.Transition
@@ -252,7 +253,10 @@ defmodule AshWorkflow.Info do
   def recommended_indexes(resource) do
     steps = steps(resource) |> Enum.reject(&Step.terminal?/1)
 
-    every_fields = if Enum.any?(steps, &(&1.everys != [])), do: [:state_entered_at], else: []
+    every_fields =
+      Enum.flat_map(steps, fn step ->
+        Enum.map(step.everys, &Every.last_fired_field(step.name, &1))
+      end)
 
     timeout_fields =
       steps

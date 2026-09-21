@@ -33,11 +33,12 @@ defmodule AshWorkflow.Calculations.EnteredCurrentStateAtTest do
                       50_000
     end
 
-    test "stays fixed while an every fires and keeps state_entered_at moving" do
+    test "stays fixed while an every fires, alongside state_entered_at" do
       {:ok, record} = AshWorkflowTest.LoggedWorkflow.create(%{title: "test"})
       {:ok, record} = Ash.update(record, action: :process_intake)
 
       entered_review_at = Ash.load!(record, :entered_current_state_at).entered_current_state_at
+      state_entered_at_after_automatic = record.state_entered_at
 
       {:ok, record} = Ash.update(record, action: :send_reminder)
       {:ok, record} = Ash.update(record, action: :send_reminder)
@@ -45,7 +46,7 @@ defmodule AshWorkflow.Calculations.EnteredCurrentStateAtTest do
       loaded = Ash.load!(record, [:entered_current_state_at, :state_entered_at])
 
       assert loaded.entered_current_state_at == entered_review_at
-      assert DateTime.compare(loaded.state_entered_at, entered_review_at) == :gt
+      assert loaded.state_entered_at == state_entered_at_after_automatic
     end
   end
 end

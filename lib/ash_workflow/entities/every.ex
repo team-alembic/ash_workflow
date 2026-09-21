@@ -7,27 +7,37 @@ defmodule AshWorkflow.Entities.Every do
   never leaves the step — there is no `transition_to` — so `every` always
   requires an `action`.
 
-  ## Why there is no `field` option
+  ## Storage
 
-  `AshWorkflow.Entities.Timeout` lets `fire_after` measure against a custom
-  datetime field instead of `state_entered_at`. `every` does not offer that,
-  because a recurring action works by resetting `state_entered_at` to the
-  current time after each firing, which restarts the interval. With a custom
-  field, the extension would need to implicitly update that field to "now" —
-  but that is semantically wrong. If the field were `:last_session_date`,
-  resetting it to "now" would claim a session happened when it didn't. The
-  field's value should only change when the real-world event it represents
-  actually occurs.
+  `AshWorkflow.Transformers.AddAttributes` adds one nilable
+  `:utc_datetime_usec` attribute per `every`, holding the instant it last
+  fired. Its `interval` is measured against that column, not against
+  `state_entered_at`, so two `every` entities on the same step — and any
+  `timeout` sharing the step — no longer share one anchor that one firing
+  resets out from under the others.
 
-  Rather than silently writing incorrect data, `every` always measures against
-  `state_entered_at`. If you need a periodic check against a custom field, use
-  a non-repeating `timeout` with a short `check_interval` — its trigger keeps
-  matching on every poll cycle as long as the condition holds.
+  Named `<step>_<every>_last_fired_at` by default, or explicitly with
+  `last_fired_field`:
+
+      every :reminder do
+        interval {1, :hours}
+        action :send_reminder
+        last_fired_field :reminder_last_fired_at
+      end
+
+  Not `field` — `AshWorkflow.Entities.Timeout`'s `field` names an anchor
+  AshWorkflow reads and never writes. `last_fired_field` names a column
+  AshWorkflow owns and writes on every fire. Reusing the name would give it
+  two opposite meanings.
+
+  A record whose column is still `nil` — never fired — is treated as due,
+  both by the generated Oban trigger and by
+  `AshWorkflow.Scheduler.Precise.Timeline`.
 
   ## Bounding an `every` with `until`
 
   `every` alone fires forever. `until` stops it after a fixed amount of
-  wall-clock time:
+  wall-clock time since the record entered the step:
 
       every :reminder do
         interval {2, :days}
@@ -35,15 +45,12 @@ defmodule AshWorkflow.Entities.Every do
         until {8, :days}
       end
 
-  `until` cannot be measured against `state_entered_at`, the same attribute
-  `interval` measures against, because firing is what keeps resetting it — a
-  bound checked against it would never be reached. It is measured against
-  `repeat_started_at` instead, an attribute `AshWorkflow.Transformers.AddAttributes`
-  adds when some `every` declares `until`. Every genuine step entry writes it
-  alongside `state_entered_at`; no `every` firing touches it. See
-  `AshWorkflow.Changes.RecordEvent`'s `:repeat_fire?` option for how that
-  distinction is made, and `AshWorkflow.Verifiers.ValidateEvery` for why
-  `until` must be strictly longer than `interval`.
+  `until` is measured against `state_entered_at` directly. An `every`'s own
+  firing writes its `last_fired_field`, not `state_entered_at`, so
+  `state_entered_at` stays put for as long as the record occupies the step —
+  nothing moves the anchor `until` measures against. See
+  `AshWorkflow.Verifiers.ValidateEvery` for why `until` must be strictly
+  longer than `interval`.
 
   Reaching the bound only stops the firing. It does not transition state —
   compose a second, ordinary timeout with a `fire_after` equal to the bound
@@ -56,6 +63,7 @@ defmodule AshWorkflow.Entities.Every do
     :action,
     :until,
     :check_interval,
+    :last_fired_field,
     self_scheduled?: false,
     __spark_metadata__: nil,
     retry: nil
@@ -68,6 +76,7 @@ defmodule AshWorkflow.Entities.Every do
           action: atom(),
           until: AshWorkflow.Duration.t() | nil,
           check_interval: String.t() | nil,
+          last_fired_field: atom() | nil,
           self_scheduled?: boolean(),
           retry: AshWorkflow.Entities.Retry.t() | nil
         }
@@ -94,8 +103,8 @@ defmodule AshWorkflow.Entities.Every do
       Stop firing once this much wall-clock time has passed since the record
       entered the step.
 
-      Measured against `repeat_started_at`, never against `state_entered_at`,
-      which every firing resets. Must be strictly longer than `interval`,
+      Measured against `state_entered_at` directly, which an `every`'s own
+      firing no longer touches. Must be strictly longer than `interval`,
       since equal to it leaves no room to fire even once.
       """
     ],
@@ -125,6 +134,15 @@ defmodule AshWorkflow.Entities.Every do
       workflow-level `check_interval`. Defaults to the workflow's setting,
       which itself defaults to every minute.
       """
+    ],
+    last_fired_field: [
+      type: :atom,
+      doc: """
+      The datetime attribute this `every` writes its last-fired instant to,
+      and measures `interval` against. Defaults to
+      `<step>_<every>_last_fired_at`. AshWorkflow adds this attribute and
+      owns every write to it — see `AshWorkflow.Transformers.AddAttributes`.
+      """
     ]
   ]
 
@@ -133,8 +151,14 @@ defmodule AshWorkflow.Entities.Every do
   def validate_duration(value), do: AshWorkflow.Duration.validate(value)
 
   @doc """
-  The attribute `until` is measured against.
+  The attribute this `every` writes its last-fired instant to, and measures
+  `interval` against: `last_fired_field` if given, otherwise
+  `<step_name>_<every_name>_last_fired_at`.
   """
-  @spec until_anchor() :: atom()
-  def until_anchor, do: :repeat_started_at
+  @spec last_fired_field(atom(), t()) :: atom()
+  def last_fired_field(_step_name, %__MODULE__{last_fired_field: field}) when not is_nil(field),
+    do: field
+
+  def last_fired_field(step_name, %__MODULE__{name: name}),
+    do: :"#{step_name}_#{name}_last_fired_at"
 end

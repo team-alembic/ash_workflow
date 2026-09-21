@@ -1,5 +1,15 @@
 # Bounding `every` with `until`
 
+> **Superseded.** The `repeat_started_at` design this document explains was
+> replaced by [issue #89](https://github.com/team-alembic/ash_workflow/issues/89):
+> `every` now writes its own per-`every` last-fired column instead of resetting
+> `state_entered_at`, which is the "lapsed objection" option recorded below
+> under "What is still open". `until` now measures `state_entered_at` directly.
+> See `AshWorkflow.Entities.Every`'s moduledoc for the current design. This
+> document is kept for the history of how `repeat_started_at` came to exist
+> and why it was eventually replaced, not as a description of current
+> behavior.
+
 ## The question
 
 `every` fires forever. The ask: give it a wall-clock ceiling — "remind every

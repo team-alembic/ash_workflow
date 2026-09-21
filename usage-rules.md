@@ -320,7 +320,7 @@ every :follow_up do
 end
 ```
 
-`until` is never measured against `state_entered_at`, which `every` resets on every firing. It must be strictly longer than `interval`. See `usage-rules/timeouts.md` for the full explanation.
+`until` is measured against `state_entered_at` directly — `interval` measures against the `every`'s own last-fired column instead, so firing never moves it. `until` must be strictly longer than `interval`. See `usage-rules/timeouts.md` for the full explanation.
 
 ### Transition Timeout (force state change)
 
@@ -388,7 +388,7 @@ When configured, the resource gains:
 
 Both take an `effective: true` option, which omits rows a later undo reversed. See Undo below.
 
-An `every` writes a log row with `from_state == to_state` — it's not a state change, but it's a recorded event, and it's what lets the log reproduce `state_entered_at`'s value. This means `state_entered_at` (a timer anchor, reset each time an `every` fires) and `entered_current_state_at` (ignores those resets, the honest "entered this state" fact) can disagree. See [Workflow history](documentation/topics/workflow-history.md) for the full explanation and the documented aggregate-query recipe for "how many records were in state S at time Y".
+An `every` writes a log row with `from_state == to_state` — it's not a state change, but it's a recorded event, so it shows up in history even though it never touches `state_entered_at`. `entered_current_state_at` walks the log to the same instant `state_entered_at` already holds for any record whose history is complete; they diverge only for a record whose `state_entered_at` was set by something other than a logged event (imported data, or the backfill task's single `:initial` row). See [Workflow history](documentation/topics/workflow-history.md) for the full explanation and the documented aggregate-query recipe for "how many records were in state S at time Y".
 
 This is not an audit trail (attribute-level changes) — pair it with AshPaperTrail for that — and not event sourcing; `state` stays a plain column.
 

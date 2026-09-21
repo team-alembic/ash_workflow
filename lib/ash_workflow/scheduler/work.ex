@@ -52,11 +52,11 @@ defmodule AshWorkflow.Scheduler.Work do
   ## `until`
 
   Only set for an `every` that bounds itself. `match` already folds the bound
-  in — checked against `AshWorkflow.Entities.Every.until_anchor/0`, not
-  against `deadline`'s own `field` — so an implementation that reads `match`
-  needs nothing else. `until` is exposed on `Work` for one that wants to
-  filter ahead of a full match evaluation, the way
-  `AshWorkflow.Scheduler.Precise.Timeline`'s recovery sweep does.
+  in — checked against `state_entered_at`, not against `deadline`'s own
+  `field` — so an implementation that reads `match` needs nothing else.
+  `until` is exposed on `Work` for one that wants to filter ahead of a full
+  match evaluation, the way `AshWorkflow.Scheduler.Precise.Timeline`'s
+  recovery sweep does.
   """
 
   @type kind :: :step | :timeout
