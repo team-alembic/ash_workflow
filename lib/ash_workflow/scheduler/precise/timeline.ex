@@ -36,7 +36,6 @@ defmodule AshWorkflow.Scheduler.Precise.Timeline do
 
   require Logger
 
-  alias AshWorkflow.Entities.Every
   alias AshWorkflow.Info
   alias AshWorkflow.Scheduler
   alias AshWorkflow.Scheduler.Leader
@@ -253,10 +252,25 @@ defmodule AshWorkflow.Scheduler.Precise.Timeline do
     step = work.step
 
     filter =
-      Ash.Expr.expr(state == ^step and ^ref(field) <= ^bound)
+      Ash.Expr.expr(state == ^step and ^field_due(work, field, bound))
       |> until_filter(work)
 
     read(work.resource, filter, state, deadline_loads(work))
+  end
+
+  # A repeating `every` whose column is still `nil` has never fired, so its
+  # interval is measured from `state_entered_at` instead. See
+  # `AshWorkflow.Entities.Every`. A plain timeout's field has no such case: it
+  # either measures `state_entered_at`, which always has a value, or a
+  # data-driven field the record's own logic is responsible for populating.
+  defp field_due(%Work{repeat?: true}, field, bound) do
+    Ash.Expr.expr(
+      (is_nil(^ref(field)) and ^ref(:state_entered_at) <= ^bound) or ^ref(field) <= ^bound
+    )
+  end
+
+  defp field_due(%Work{repeat?: false}, field, bound) do
+    Ash.Expr.expr(^ref(field) <= ^bound)
   end
 
   # A `fire_at` deadline is the field itself, so the horizon's cutoff is already
@@ -287,10 +301,9 @@ defmodule AshWorkflow.Scheduler.Precise.Timeline do
   defp until_filter(filter, %Work{until: nil}), do: filter
 
   defp until_filter(filter, %Work{until: {value, unit}}) do
-    anchor = Every.until_anchor()
     bound = DateTime.add(DateTime.utc_now(), -value, singular(unit))
 
-    Ash.Expr.expr(^filter and (is_nil(^ref(anchor)) or ^ref(anchor) > ^bound))
+    Ash.Expr.expr(^filter and ^ref(:state_entered_at) > ^bound)
   end
 
   defp read(resource, filter, state, loads \\ []) do
@@ -370,10 +383,25 @@ defmodule AshWorkflow.Scheduler.Precise.Timeline do
   # An automatic step has no deadline and is eligible the moment a record
   # occupies it, so it runs now. A timeout whose field is nil on this record
   # has no deadline yet — `due_at/2` cannot compute one — and arming nothing is
-  # correct until the field is written.
+  # correct until the field is written. A repeating `every`'s column is the one
+  # field that is nil by design until its first fire — see
+  # `AshWorkflow.Entities.Every` — so the delay is computed from
+  # `state_entered_at` instead, putting the first firing one whole interval
+  # after entry. `AshWorkflow.Scheduler.due_at/2` stays unaware of this
+  # substitution; it belongs to the scheduler, not the shared deadline
+  # arithmetic.
   defp delay_ms(%Work{deadline: nil}, _record), do: 0
 
-  defp delay_ms(work, record) do
+  defp delay_ms(%Work{deadline: %{field: field}, repeat?: true} = work, record) do
+    case Map.get(record, field) do
+      nil -> due_delay(work, Map.put(record, field, record.state_entered_at))
+      _fired_at -> due_delay(work, record)
+    end
+  end
+
+  defp delay_ms(work, record), do: due_delay(work, record)
+
+  defp due_delay(work, record) do
     case Scheduler.due_at(work, record) do
       nil ->
         nil

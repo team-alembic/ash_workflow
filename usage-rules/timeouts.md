@@ -132,16 +132,16 @@ every :reminder do
 end
 ```
 
-This fires roughly at day 2, day 4 and day 6, then stops before day 8. Three
-reminders, then silence, not four: the last fire has to land strictly before
+This fires roughly at day 2, day 4 and day 6, then stops before day 8: three
+reminders, then silence. Nothing fires on entry, since the first interval is
+measured from `state_entered_at`. The last fire has to land strictly before
 `until`, which must be strictly longer than `interval` (equal to it leaves no
-room for even one fire).
+room to fire even once).
 
-`until` is not measured against `interval`'s own anchor (`state_entered_at`).
-Firing is what resets that anchor on every fire, so a bound checked against it
-would never be reached. It is measured against `repeat_started_at` instead: an
-attribute the extension adds, set when the record genuinely enters the step
-and left untouched by every fire after that.
+`until` is measured against `state_entered_at` directly. `interval` measures
+against a different anchor — the `every`'s own last-fired column, described
+below — which is what lets `until` measure the record's time in the step
+without firing ever moving it.
 
 Reaching the bound only stops the firing. It does not transition state. To
 also force a transition once reminders run out, declare a second, ordinary
@@ -313,12 +313,30 @@ end
 The field must exist and must be a datetime type — both are checked at compile
 time.
 
-### `every` has no `field` option
+### `every`'s own last-fired column, and why there is no `field` option
 
-`every` works by resetting `state_entered_at` after each firing. With a
-custom field, that would mean writing "now" to a field representing a real-world
-event that did not happen — so `every` always measures against
-`state_entered_at` and offers no `field` option at all.
+`every` measures its `interval` against a nilable datetime column it owns:
+one added automatically per `every`, named `<step>_<every>_last_fired_at` by
+default, or explicitly with `last_fired_field`:
+
+```elixir
+every :reminder do
+  interval {1, :hours}
+  action :send_reminder
+  last_fired_field :reminder_last_fired_at
+end
+```
+
+Firing writes that column, not `state_entered_at` — which is what keeps two
+`every` entities, or an `every` and a `timeout`, on the same step from
+resetting a deadline out from under each other. A record whose column is
+still `nil` (never fired) measures its interval from `state_entered_at`
+instead, so the first fire lands one whole interval after entry.
+
+Not `field` — `timeout`'s `field` names an anchor AshWorkflow reads and never
+writes, while `last_fired_field` names a column AshWorkflow owns and writes on
+every fire. Reusing the name would give it two opposite meanings, so `every`
+has no `field` option at all.
 
 For periodic checks against a custom field, use a timeout with a short
 `check_interval`; it keeps matching on every poll while the condition holds.
@@ -347,7 +365,7 @@ The timeout fires once `next_check_at` has passed, at whatever resolution the se
 
 `fire_at` and `fire_after` are mutually exclusive, and exactly one of them is required. `field` is the anchor `fire_after` measures from, so declaring it alongside `fire_at` is a compile error too.
 
-Only `timeout` takes `fire_at`. An `every` declares an `interval` measured against `state_entered_at`, and has no deadline field to name.
+Only `timeout` takes `fire_at`. An `every` declares an `interval` measured against its own last-fired column, and has no deadline field to name.
 
 Do not write `fire_after: {1, :seconds}` against a deadline-carrying field. That was the only way to say "no offset" before `fire_at` existed, and it hands `AshWorkflow.Verifiers.ValidateTimeoutPrecision` a duration that means nothing.
 

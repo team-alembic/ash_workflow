@@ -19,12 +19,15 @@ defmodule AshWorkflow.Calculations.PendingDeadlines do
   fired, and it will still appear here with a `due_at` in the past. Read a past
   `due_at` as "was due", not "will fire".
 
-  An `every` entry does not have this problem: firing an `every`'s action
-  resets `state_entered_at`, so its `due_at` is always the next instant it will
-  run, never a stale past one.
+  An `every` entry does not have the stale-past-`due_at` problem a
+  non-repeating action timeout has: firing an `every` writes its own
+  last-fired column, so its `due_at` is always the next instant it will run.
 
   A timeout whose `field` is `nil` on the record has no derivable deadline and
-  is omitted.
+  is omitted. An `every` whose column is `nil` is different: it has never
+  fired, and its interval is measured from `state_entered_at` instead — see
+  `AshWorkflow.Entities.Every` — so its entry reports one whole interval after
+  the record entered the step, rather than being omitted.
   """
   use Ash.Resource.Calculation
 
@@ -42,7 +45,7 @@ defmodule AshWorkflow.Calculations.PendingDeadlines do
       |> Enum.map(& &1.field)
       |> Enum.uniq()
 
-    [Keyword.fetch!(opts, :state_attribute) | fields]
+    [Keyword.fetch!(opts, :state_attribute), :state_entered_at | fields]
   end
 
   @impl true
@@ -58,21 +61,29 @@ defmodule AshWorkflow.Calculations.PendingDeadlines do
     end)
   end
 
+  # A never-fired `every` measures its interval from `state_entered_at`, the
+  # same fallback `AshWorkflow.Transformers.AddScheduler` compiles into the
+  # trigger's `where`.
+  defp deadline(%{kind: :every} = every, record) do
+    from =
+      as_datetime(Map.get(record, every.field)) ||
+        as_datetime(Map.get(record, :state_entered_at))
+
+    case from do
+      nil -> []
+      from -> [entry(every, due_at(from, every.fire_after))]
+    end
+  end
+
   defp deadline(timeout, record) do
     case as_datetime(Map.get(record, timeout.field)) do
-      nil ->
-        []
-
-      from ->
-        [
-          %{
-            name: timeout.name,
-            due_at: due_at(from, timeout.fire_after),
-            kind: timeout.kind,
-            target: timeout.target
-          }
-        ]
+      nil -> []
+      from -> [entry(timeout, due_at(from, timeout.fire_after))]
     end
+  end
+
+  defp entry(timeout, due_at) do
+    %{name: timeout.name, due_at: due_at, kind: timeout.kind, target: timeout.target}
   end
 
   # A `fire_at` timeout carries no duration: its field holds the deadline itself.

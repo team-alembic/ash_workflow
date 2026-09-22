@@ -45,13 +45,6 @@ defmodule AshWorkflow.Transformers.AddScheduler do
     resource = Transformer.get_persisted(dsl, :module)
     state_attribute = AshWorkflow.Info.state_attribute(dsl)
 
-    # `every_works` before `timeout_works`: a scheduler implementation adds
-    # entities to the DSL in reverse, so a timeout added after an `every` ends
-    # up scheduled and run first within the same poll. That matters when both
-    # are due together on the same step — an `every` resets
-    # `state_entered_at`, and a transition timeout's `where` measures against
-    # it, so letting the transition timeout run first keeps it from losing a
-    # race against the `every` moving the goalposts.
     works =
       step_works(steps, resource, state_attribute) ++
         every_works(steps, resource, state_attribute) ++
@@ -146,12 +139,18 @@ defmodule AshWorkflow.Transformers.AddScheduler do
     step_name = step.name
     {duration_value, duration_unit} = every.interval
     ago_unit = singular_unit(duration_unit)
-    field = :state_entered_at
+    field = Every.last_fired_field(step_name, every)
 
+    # A record whose column is still `nil` has never fired this `every`, so the
+    # interval is measured from `state_entered_at` instead: the first firing is
+    # one whole interval after the record entered the step, not on entry. See
+    # `AshWorkflow.Entities.Every`. Written as a disjunction rather than with a
+    # coalescing function, which Ash's expression language does not have.
     base_match =
       Ash.Expr.expr(
         ^in_step(state_attribute, step_name) and
-          ^ref(field) <= ago(^duration_value, ^ago_unit)
+          ((is_nil(^ref(field)) and state_entered_at <= ago(^duration_value, ^ago_unit)) or
+             ^ref(field) <= ago(^duration_value, ^ago_unit))
       )
 
     %Work{
@@ -186,23 +185,17 @@ defmodule AshWorkflow.Transformers.AddScheduler do
     Ash.Expr.expr(^ref(field) <= ago(^value, ^ago_unit))
   end
 
-  # `until` cannot be checked against `state_entered_at`, because firing is
-  # what keeps resetting it. See `AshWorkflow.Entities.Every`. It is checked
-  # against `repeat_started_at` instead, which every genuine step entry sets
-  # and no firing touches. Once that instant is further in the past than the
-  # bound, this clause is false for the rest of the step visit, so the record
-  # never matches again until it leaves and re-enters. That is exactly "the
-  # firing stops".
+  # `until` is checked against `state_entered_at`, which an `every`'s own
+  # firing no longer touches — see `AshWorkflow.Entities.Every`. Once that
+  # instant is further in the past than the bound, this clause is false for
+  # the rest of the step visit, so the record never matches again until it
+  # leaves and re-enters. That is exactly "the firing stops".
   defp until_match(match, %Every{until: nil}), do: match
 
   defp until_match(match, %Every{until: {until_value, until_unit}}) do
     until_ago_unit = singular_unit(until_unit)
-    anchor = Every.until_anchor()
 
-    Ash.Expr.expr(
-      ^match and
-        (is_nil(^ref(anchor)) or ^ref(anchor) > ago(^until_value, ^until_ago_unit))
-    )
+    Ash.Expr.expr(^match and ^ref(:state_entered_at) > ago(^until_value, ^until_ago_unit))
   end
 
   # ago/2 expects singular duration names (:day, :hour, :minute, :second)

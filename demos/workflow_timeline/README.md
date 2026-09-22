@@ -58,9 +58,9 @@ at that instant — read straight from its transition log, not from its current
 The thin white ticks on a band are same-state rows (`from_state ==
 to_state`) — the `:status_reminder` every firing while nothing about the
 incident changed. Each band also shows `state_entered_at` next to
-`entered_current_state_at`; once a reminder has fired, the two diverge,
-because `state_entered_at` moves every time the every resets its own timer
-and `entered_current_state_at` does not.
+`entered_current_state_at`; a reminder firing moves neither, because the every
+writes its own `investigating_status_reminder_last_fired_at` column and leaves
+`state_entered_at` where the transition into the step set it.
 
 Click **Generate incident history** to add another incident with a random,
 backdated scenario without restarting the server.
@@ -111,8 +111,8 @@ mix test
 `test/incident_response_test.exs` covers the transition log itself: every
 `triggered_by` value gets a dedicated test, an every produces
 `from_state == to_state` rows, `state_at/2` is checked before the first row,
-between two rows, and after the last, and `entered_current_state_at` is shown
-diverging from `state_entered_at` once the every fires.
+between two rows, and after the last, and an every firing is shown moving
+neither `entered_current_state_at` nor `state_entered_at`.
 
 `test/timeline_live_test.exs` renders the timeline, exercises the "Generate
 incident history" button, and drives the slider via `render_change/3` to

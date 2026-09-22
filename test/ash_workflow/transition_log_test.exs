@@ -101,14 +101,24 @@ defmodule AshWorkflow.TransitionLogTest do
       assert record.state_entered_at == entered_review_at
     end
 
-    test "an every resets state_entered_at to re-arm its trigger" do
+    test "an every leaves state_entered_at where it was" do
       {:ok, record} = LoggedWorkflow.create(%{title: "test"})
       {:ok, record} = Ash.update(record, action: :process_intake)
       entered_review_at = record.state_entered_at
 
       {:ok, record} = Ash.update(record, action: :send_reminder)
 
-      assert DateTime.after?(record.state_entered_at, entered_review_at)
+      assert record.state_entered_at == entered_review_at
+    end
+
+    test "an every writes its own last-fired column instead" do
+      {:ok, record} = LoggedWorkflow.create(%{title: "test"})
+      {:ok, record} = Ash.update(record, action: :process_intake)
+      refute Ash.load!(record, :review_reminder_last_fired_at).review_reminder_last_fired_at
+
+      {:ok, record} = Ash.update(record, action: :send_reminder)
+
+      assert Ash.load!(record, :review_reminder_last_fired_at).review_reminder_last_fired_at
     end
 
     test "firing an every twice writes two from_state == to_state rows" do
@@ -171,7 +181,7 @@ defmodule AshWorkflow.TransitionLogTest do
   end
 
   describe "entered_current_state_at vs state_entered_at" do
-    test "entered_current_state_at ignores every rows, state_entered_at does not" do
+    test "entered_current_state_at ignores every rows, and now so does state_entered_at" do
       {:ok, record} = LoggedWorkflow.create(%{title: "test"})
       {:ok, record} = Ash.update(record, action: :process_intake)
 
@@ -183,7 +193,7 @@ defmodule AshWorkflow.TransitionLogTest do
       loaded = Ash.load!(record, [:entered_current_state_at, :state_entered_at])
 
       assert loaded.entered_current_state_at == entered_review_at
-      assert loaded.state_entered_at != state_entered_at_after_automatic
+      assert loaded.state_entered_at == state_entered_at_after_automatic
     end
   end
 

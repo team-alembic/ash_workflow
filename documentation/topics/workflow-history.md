@@ -101,45 +101,43 @@ first and only time it fires, and a recurring
 one on every scheduler cycle while the workflow stays in that state.
 
 This looks redundant at first — nothing about the state changed — but it's
-deliberate for two reasons:
+what makes the history complete. "Reminder sent three times, then escalated"
+is only visible in the log if the reminders are in it.
 
-- It's what makes the history complete. "Reminder sent three times, then
-  escalated" is only visible in the log if the reminders are in it.
-- It's what makes the timer anchor derivable at all. An `every` re-arms its
-  own Oban trigger by moving `state_entered_at` forward (see
-  [Timeouts and deadlines](timeouts-and-deadlines.md)). If those rows were
-  excluded from the log, the log couldn't reproduce that value — the whole
-  point of the log is that it's the source of truth `state_entered_at`
-  projects from.
+Firing an `every` writes its own last-fired column (see
+[Timeouts and deadlines](timeouts-and-deadlines.md)), not `state_entered_at`,
+so logging the firing is not what keeps any anchor derivable — it's purely a
+record of the event.
 
 ## `state_entered_at` vs `entered_current_state_at`
 
-This is the sharpest distinction the log makes possible, and it's easy to
-mix up because the two values agree everywhere except the case that matters.
+`state_entered_at` is the resource's own anchor, written only on a genuine
+step entry: a manual transition, an automatic step completing, a transition
+timeout, an undo, or the initial create. Neither an action timeout nor an
+`every` firing touches it.
 
-`state_entered_at` is a **timer anchor**. It moves every time any event is
-recorded for the workflow — including an `every` firing, which changes nothing
-about the state — because that movement is the mechanism that reschedules the
-next Oban firing. It answers "when did the timer last reset", not "when did we
-get here".
+`entered_current_state_at` is a calculation, only added when a
+`transition_log` is configured, that walks the log and returns the
+`occurred_at` of the most recent row where `from_state != to_state`. Most step
+entries write a row with `from_state != to_state` (except the `:initial` row,
+where `from_state` is `nil`), and an action timeout or `every` always writes
+`from_state == to_state`, so the two values usually agree: `entered_current_state_at`
+walks the log to the same instant `state_entered_at` already holds.
 
-`entered_current_state_at` is a calculation, only added when a `transition_log`
-is configured, that walks the log and returns the `occurred_at` of the most
-recent row where `from_state != to_state`. It ignores `every` rows entirely.
-It answers "when did we actually enter this state" — the question the
-library couldn't answer before the log existed.
-
-| Value | Definition | Moved by an `every` firing? |
-|---|---|---|
-| `state_entered_at` | `occurred_at` of the most recent row, any row | Yes |
-| `entered_current_state_at` | `occurred_at` of the most recent row where `from_state != to_state` | No |
-
-A workflow that's been sitting in `:awaiting_review` for nine days, sending a
-reminder every two, reports a `state_entered_at` of two days ago and an
-`entered_current_state_at` of nine days ago. Use `state_entered_at` for
-scheduling — it's what the generated Oban triggers filter on — and
-`entered_current_state_at` for anything you show a human or reason about as
-"how long has this actually been waiting".
+They diverge in two cases. The first is the log's own stated limit: a record
+whose `state_entered_at` was set by something other than a logged event —
+imported data, or `mix ash_workflow.backfill_transition_log`'s single
+`:initial` row standing in for history that predates the log. The second is a
+manual transition or automatic step whose target is the step the record is
+already in: that still touches `state_entered_at` — it's a genuine step
+entry, not an every or timeout firing — but writes a log row with
+`from_state == to_state`, which `entered_current_state_at` filters out the
+same as any other same-state row. In either case `state_entered_at` reports
+whatever the column actually holds, and `entered_current_state_at` reports
+what the log — possibly missing history, or filtering out a same-state entry
+— can account for. Prefer `state_entered_at` for scheduling, since it's what
+the generated Oban triggers filter on, and `entered_current_state_at` when
+you specifically want the value the *log* attests to.
 
 ## Querying
 

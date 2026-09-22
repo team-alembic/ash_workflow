@@ -21,9 +21,10 @@ defmodule AshWorkflow.Transformers.AddActions do
     target state and records the event (`triggered_by: :timeout`).
 
   - **`every` action injection** — appends `AshWorkflow.Changes.RecordEvent`
-    (`triggered_by: :timeout`, resetting `state_entered_at`) onto the action an
-    `every` names, so each firing re-arms the interval and is logged the same
-    way a timeout's firing is.
+    (`triggered_by: :timeout`, writing the `every`'s own last-fired column via
+    `:every_field`) onto the action an `every` names, so each firing re-arms
+    the interval and is logged the same way a timeout's firing is, without
+    touching `state_entered_at`.
 
   - **Undo action** — when the workflow declares an `undo` block, a single
     `:undo` update action that rewinds the record to the state before its most
@@ -49,6 +50,7 @@ defmodule AshWorkflow.Transformers.AddActions do
   alias AshWorkflow.Changes.ConditionalTransition
   alias AshWorkflow.Changes.RecordEvent
   alias AshWorkflow.Changes.UndoTransition
+  alias AshWorkflow.Entities.Every
   alias AshWorkflow.Entities.Route
   alias AshWorkflow.Entities.Step
   alias AshWorkflow.Entities.Transition
@@ -408,11 +410,10 @@ defmodule AshWorkflow.Transformers.AddActions do
 
   # Every timeout that names an action gets `RecordEvent`: a one-shot reminder
   # is a workflow event, and the log's contract is one row per event. A
-  # timeout never resets `state_entered_at` — that would push every other
+  # timeout never touches `state_entered_at` — that would push every other
   # deadline on the step back — so `touch_state_entered_at` is always false
-  # here; only `every` resets it, in `add_every_changes/2`. Two timeouts may
-  # name the same action, so the actions are deduplicated before the change is
-  # appended.
+  # here. Two timeouts may name the same action, so the actions are
+  # deduplicated before the change is appended.
   defp inject_action_timeout_changes(dsl, steps) do
     steps
     |> Enum.flat_map(fn step ->
@@ -436,7 +437,7 @@ defmodule AshWorkflow.Transformers.AddActions do
             Transformer.build_entity!(ResourceDsl, [:actions, :update], :change,
               change: {
                 RecordEvent,
-                triggered_by: :timeout, touch_state_entered_at: false, repeat_fire?: false
+                triggered_by: :timeout, touch_state_entered_at: false
               }
             )
 
@@ -452,10 +453,11 @@ defmodule AshWorkflow.Transformers.AddActions do
     end)
   end
 
-  # Every `every` always resets `state_entered_at` when its action runs: that
-  # reset is how it re-arms its own trigger for the next interval, the same
-  # mechanism a repeating timeout used to rely on. Two everys may name the same
-  # action, so the actions are deduplicated before the change is appended.
+  # Every `every` writes its own last-fired column when its action runs: that
+  # write is how it re-arms its own trigger for the next interval, without
+  # touching `state_entered_at`, which every other deadline on the step
+  # measures from. Two everys may name the same action, so the actions are
+  # deduplicated before the change is appended.
   defp add_every_changes(dsl, steps) do
     steps
     |> Enum.flat_map(fn step -> Enum.map(step.everys, &{step, &1}) end)
@@ -471,11 +473,13 @@ defmodule AshWorkflow.Transformers.AddActions do
               "every :#{every.name} on step :#{step.name} references action :#{every.action}, but no such action is defined on the resource."
 
         existing_action ->
+          field = Every.last_fired_field(step.name, every)
+
           record_event_change =
             Transformer.build_entity!(ResourceDsl, [:actions, :update], :change,
               change: {
                 RecordEvent,
-                triggered_by: :timeout, touch_state_entered_at: true, repeat_fire?: true
+                triggered_by: :timeout, touch_state_entered_at: false, every_field: field
               }
             )
 

@@ -27,28 +27,32 @@ defmodule AshWorkflow.Transformers.AddAttributes do
   If the user has already defined a `state_entered_at` attribute, this transformer
   is a no-op.
 
-  ## `repeat_started_at`
+  ## `every` last-fired columns
 
-  Also adds `repeat_started_at` (`:utc_datetime_usec`, nilable) when some
-  `every` bounds its firing with `until`. Unlike `state_entered_at`, an
-  `every`'s own firing never touches it. See `AshWorkflow.Entities.Every` for
-  why the bound needs an anchor firing cannot move.
+  Also adds one nilable `:utc_datetime_usec` attribute per `every`, named by
+  `AshWorkflow.Entities.Every.last_fired_field/2`. `AshWorkflow.Changes.RecordEvent`
+  writes it on that `every`'s firing, and `AshWorkflow.Transformers.AddScheduler`
+  measures the `every`'s `interval` against it instead of `state_entered_at`. See
+  `AshWorkflow.Entities.Every` for why firing no longer touches
+  `state_entered_at`.
 
-  Nilable because it is a new column on what may be an existing table: an
-  in-flight record written before this attribute existed has no value for it
-  until it next enters a step, and the bound treats that as "not yet reached"
-  rather than raising.
+  Nilable because an `every` that has not fired yet has no last-fired instant,
+  which is also the case for an in-flight record written before the column
+  existed. A `nil` column means the interval is measured from
+  `state_entered_at` instead, so a record entering the step fires one whole
+  interval later and needs no backfill.
   """
   use Spark.Dsl.Transformer
 
   alias Ash.Resource.Builder
   alias Ash.Resource.Info, as: ResourceInfo
+  alias AshWorkflow.Entities.Every
   alias AshWorkflow.Entities.Step
   alias Spark.Dsl.Transformer, as: DslTransformer
 
   def transform(dsl) do
     with {:ok, dsl} <- add_state_entered_at(dsl) do
-      add_repeat_started_at(dsl)
+      add_every_last_fired_fields(dsl)
     end
   end
 
@@ -67,24 +71,41 @@ defmodule AshWorkflow.Transformers.AddAttributes do
     end
   end
 
-  defp add_repeat_started_at(dsl) do
-    if needs_repeat_started_at?(dsl) and ResourceInfo.attribute(dsl, :repeat_started_at) == nil do
-      Builder.add_attribute(dsl, :repeat_started_at, :utc_datetime_usec,
-        allow_nil?: true,
-        writable?: true,
-        public?: true
-      )
-    else
+  defp add_every_last_fired_fields(dsl) do
+    dsl
+    |> every_fields()
+    |> Enum.reduce({:ok, dsl}, fn field, {:ok, dsl} -> add_every_last_fired_field(dsl, field) end)
+  end
+
+  # A `last_fired_field` naming the workflow's own state attribute is invalid
+  # — `AshWorkflow.Verifiers.ValidateEvery` rejects it — but this transformer
+  # runs before `AshStateMachine.Transformers.AddState` adds that attribute,
+  # so without this guard it would add a bogus datetime column under that name
+  # first, and `AddState` would crash on the conflict instead of the verifier
+  # reporting a clear error.
+  defp add_every_last_fired_field(dsl, field) do
+    if field == AshWorkflow.Info.state_attribute(dsl) do
       {:ok, dsl}
+    else
+      case ResourceInfo.attribute(dsl, field) do
+        nil ->
+          Builder.add_attribute(dsl, field, :utc_datetime_usec,
+            allow_nil?: true,
+            writable?: false,
+            public?: true
+          )
+
+        _exists ->
+          {:ok, dsl}
+      end
     end
   end
 
-  defp needs_repeat_started_at?(dsl) do
+  defp every_fields(dsl) do
     dsl
     |> DslTransformer.get_entities([:workflow])
     |> Enum.filter(&match?(%Step{}, &1))
-    |> Enum.flat_map(& &1.everys)
-    |> Enum.any?(&(&1.until != nil))
+    |> Enum.flat_map(fn step -> Enum.map(step.everys, &Every.last_fired_field(step.name, &1)) end)
   end
 
   def before?(AshStateMachine.Transformers.AddState), do: true
