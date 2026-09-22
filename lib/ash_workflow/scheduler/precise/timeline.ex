@@ -249,13 +249,19 @@ defmodule AshWorkflow.Scheduler.Precise.Timeline do
 
   defp due_records(%Work{deadline: %{field: field, fire_after: fire_after}} = work, state, cutoff) do
     bound = bound(cutoff, fire_after)
-    step = work.step
 
     filter =
-      Ash.Expr.expr(state == ^step and ^field_due(work, field, bound))
+      Ash.Expr.expr(^in_step(work) and ^field_due(work, field, bound))
       |> until_filter(work)
 
     read(work.resource, filter, state, deadline_loads(work))
+  end
+
+  # `Work.match` already reads the attribute the workflow named, and this filter
+  # is rebuilt rather than reused so the horizon's bound can be folded in, so it
+  # has to read the same attribute rather than assume `state`.
+  defp in_step(%Work{resource: resource, step: step}) do
+    Ash.Expr.expr(^ref(Info.state_attribute(resource)) == ^step)
   end
 
   # A repeating `every` whose column is still `nil` has never fired, so its
