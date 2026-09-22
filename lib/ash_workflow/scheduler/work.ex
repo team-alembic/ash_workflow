@@ -48,6 +48,15 @@ defmodule AshWorkflow.Scheduler.Work do
   between them. It is always present, defaulting to
   `%AshWorkflow.Entities.Retry{}`, one attempt and no retry, so a scheduler
   implementation can read `work.retry.max_attempts` without a nil check.
+
+  ## `until`
+
+  Only set for an `every` that bounds itself. `match` already folds the bound
+  in — checked against `AshWorkflow.Entities.Every.until_anchor/0`, not
+  against `deadline`'s own `field` — so an implementation that reads `match`
+  needs nothing else. `until` is exposed on `Work` for one that wants to
+  filter ahead of a full match evaluation, the way
+  `AshWorkflow.Scheduler.Precise.Timeline`'s recovery sweep does.
   """
 
   @type kind :: :step | :timeout
@@ -68,6 +77,7 @@ defmodule AshWorkflow.Scheduler.Work do
           match: Ash.Expr.t(),
           deadline: deadline() | nil,
           repeat?: boolean(),
+          until: AshWorkflow.Duration.t() | nil,
           once?: boolean(),
           self_scheduled?: boolean(),
           retry: AshWorkflow.Entities.Retry.t(),
@@ -85,6 +95,7 @@ defmodule AshWorkflow.Scheduler.Work do
     :deadline,
     on_error: nil,
     repeat?: false,
+    until: nil,
     once?: false,
     self_scheduled?: false,
     retry: %AshWorkflow.Entities.Retry{},

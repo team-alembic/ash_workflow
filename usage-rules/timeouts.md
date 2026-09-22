@@ -119,6 +119,59 @@ end
 
 An action timeout fires once after the deadline and then stops. `every` fires every interval (e.g., every 3 days) as long as the workflow remains in that step. `every` always requires `action` and has no `transition_to`, since firing never leaves the step — a repeating action that also left the step would never come round to repeat.
 
+### Bounding `every` with `until`
+
+`every` alone fires forever. `until` stops it after a fixed amount of
+wall-clock time:
+
+```elixir
+every :reminder do
+  interval {2, :days}
+  action :send_review_reminder
+  until {8, :days}
+end
+```
+
+This fires roughly at day 2, day 4 and day 6, then stops before day 8. Three
+reminders, then silence, not four: the last fire has to land strictly before
+`until`, which must be strictly longer than `interval` (equal to it leaves no
+room for even one fire).
+
+`until` is not measured against `interval`'s own anchor (`state_entered_at`).
+Firing is what resets that anchor on every fire, so a bound checked against it
+would never be reached. It is measured against `repeat_started_at` instead: an
+attribute the extension adds, set when the record genuinely enters the step
+and left untouched by every fire after that.
+
+Reaching the bound only stops the firing. It does not transition state. To
+also force a transition once reminders run out, declare a second, ordinary
+timeout with a `fire_after` equal to the bound:
+
+```elixir
+step :awaiting_response do
+  every :reminder do
+    interval {2, :days}
+    action :send_review_reminder
+    until {8, :days}
+  end
+
+  timeout :give_up, fire_after: {8, :days}, transition_to: :escalated
+end
+```
+
+### Durations are constants
+
+`fire_after` and `until` take literal duration tuples, never expressions. A
+per-record deadline goes in a timeout's anchor instead: point `field` at an
+attribute or an expression calculation and leave the duration fixed. `every`
+has no `field`, so this dynamism is not available to `interval` or `until`.
+
+An expression duration would defeat
+`AshWorkflow.Verifiers.ValidateTimeoutPrecision`, which compares the duration
+against the scheduler's floor at compile time, and it would turn an indexed
+range scan into a per-row computed comparison. See
+`documentation/topics/timeouts-and-deadlines.md` for the full reasoning.
+
 ## Combining Multiple Timeouts
 
 A single step can have multiple timeouts with different deadlines:

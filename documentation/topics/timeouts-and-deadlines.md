@@ -80,6 +80,40 @@ This reset is why `state_entered_at` is a timer anchor rather than a reliable "w
 
 A timeout never resets `state_entered_at` and uses Oban's `trigger_once?` to prevent re-firing after the action completes. Resetting it would push every other deadline on the same step back by the same amount, so a `timeout :warn, fire_after: {30, :minutes}, action: :warn` cannot delay the `timeout :breach, fire_after: {1, :hours}, transition_to: :escalated` beside it. A transition timeout (with `transition_to`) doesn't need either mechanism, since the state change naturally prevents re-firing.
 
+### Bounding `every` with `until`
+
+`every` alone fires forever. `until` stops it after a fixed amount of wall-clock time:
+
+```elixir
+every :reminder do
+  interval {2, :days}
+  action :send_review_reminder
+  until {8, :days}
+end
+```
+
+This fires roughly at day 2, day 4 and day 6, then stops before day 8. Three reminders, then silence, not four: the last fire has to land strictly before `until`, and polling lag pushes each one slightly later than its nominal day. `AshWorkflow.Verifiers.ValidateEvery` rejects an `until` that is not strictly longer than `interval`, since anything shorter or equal leaves no room for even one fire.
+
+`until` is not measured against `state_entered_at`, the same attribute `interval` measures against and resets on every firing — a bound checked against it would never be reached. It is measured against `repeat_started_at`, an attribute the extension adds when some `every` declares `until`. Every genuine step entry writes it to the same instant as `state_entered_at`: a manual transition, an automatic step completing, a transition timeout, an undo, or the initial create. An `every`'s own firing resets `state_entered_at` to re-arm itself, and never touches `repeat_started_at` — so it answers "when did the record enter this step", immune to the resets `state_entered_at` cannot avoid.
+
+Reaching `until` only stops the firing. It does not transition state, and it fires no notification of its own. The record stays in the step, silent, until something else moves it. If you also want a transition once reminders run out, declare it as a second, ordinary timeout rather than looking for a bound-triggered transition:
+
+```elixir
+step :awaiting_response do
+  every :reminder do
+    interval {2, :days}
+    action :send_review_reminder
+    until {8, :days}
+  end
+
+  timeout :give_up, fire_after: {8, :days}, transition_to: :escalated
+end
+```
+
+The two share nothing at runtime. `give_up` is exactly the transition timeout described in [Transition timeouts](#transition-timeouts) above, just given a `fire_after` equal to the bound. Composing two this way keeps `until` doing one thing rather than growing a second, transition-shaped meaning.
+
+`until` bounds wall-clock time, not a count of firings. A workflow that wants to say "at most 4 reminders" rather than "for at most 8 days" needs a firing counter, which is a different feature. Nothing here tracks how many times an `every` has fired, only when it started. See `documentation/design/every-until.md` for the alternatives considered, including why the bound is not measured against a per-record anchor of its own the way a timeout's `field` can be.
+
 ## Data-driven deadlines with `field`
 
 By default, timeouts measure duration against `state_entered_at` — when the workflow entered its current state. The `field` option lets you measure against any datetime attribute or calculation instead:
@@ -110,6 +144,31 @@ Use cases include:
 >
 > A timeout against a custom field is not a periodic check. Its trigger keeps matching while the condition holds, but `trigger_once?` stops the action running a second time for the same record, so the reminder fires once. For a genuinely periodic check, add the cadence to the field itself — advance `:next_check_at` in the timeout action — so the condition stops matching until the next window opens.
 
+### Durations are constants, anchors are not
+
+`fire_after` and `until` take a literal duration tuple. Neither takes an Ash expression, so there is no way to write "fire a number of days that this record carries in a column". The dynamism goes in a timeout's anchor instead: point `field` at an attribute or an expression calculation, and leave the duration fixed. When the record already carries the deadline instant rather than a delay, name it with `fire_at` and skip the offset entirely.
+
+```elixir
+# Each record carries its own delay, folded into the anchor
+calculate :respond_by, :utc_datetime_usec,
+          expr(datetime_add(state_entered_at, response_sla_seconds, :second))
+
+timeout :chase do
+  fire_after {1, :minutes}   # "once respond_by has passed"
+  field :respond_by
+  action :chase_response
+end
+```
+
+Two things break if the duration itself becomes an expression, and only one of them is about speed.
+
+`AshWorkflow.Verifiers.ValidateTimeoutPrecision` compares the duration against the selected scheduler's floor at compile time, and rejects a deadline the scheduler cannot honour. An expression has no value to compare, so that check stops existing and the DSL can promise a precision cron cannot keep.
+
+A literal also reaches Postgres as a bind parameter, so a timeout's `where` clause is `state = $1 AND state_entered_at <= $2`, which the `(state, field)` index from `AshWorkflow.Transformers.AddIndexes` serves as a range scan. `AshWorkflow.Scheduler.Precise.Timeline` computes its horizon bound in Elixir for the same reason. A per-row duration turns both into a computed comparison, and the index stops helping.
+
+`AshWorkflow.Scheduler.due_at/2` and the `pending_deadlines` calculation would also have to evaluate the expression per record to produce an instant, rather than doing the arithmetic directly.
+
+The anchor pays none of that. It is a column or an expression the data layer already knows how to compute, the duration beside it stays checkable and indexable, and the two compose to the same deadline. `every` has no anchor to point anywhere — it always measures against `state_entered_at` — so this dynamism is not available to `interval` or `until` at all; see [`every` has no `field` option](#every-has-no-field-option) above.
 ## Firing at an instant a field already holds with `fire_at`
 
 `field` is the anchor `fire_after` measures an offset from. When the field already holds the deadline instant, there is no offset to measure, and `fire_at` names the field directly:

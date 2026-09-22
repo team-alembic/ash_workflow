@@ -42,6 +42,7 @@ spark_locals_without_parens = [
   undo: 0,
   undo: 1,
   undoable?: 1,
+  until: 1,
   when: 1,
   within: 1
 ]
