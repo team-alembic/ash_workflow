@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-22
+
+### Upgrading from 0.6.x
+
+- Rewrite every repeating timeout as an `every`. `timeout :nudge, fire_after: {1, :day}, action: :send_nudge, repeat: true` becomes `every :nudge, {1, :day}, action: :send_nudge`. The `repeat` option no longer compiles.
+- Run `mix ash.codegen add_every_last_fired_columns` and migrate. `AshWorkflow.Transformers.AddAttributes` now adds one column per `every`, and `AshWorkflow.Transformers.AddIndexes` a `(state, column)` index for each, so a resource that declares an `every` fails on insert until the migration runs.
+- Drop `state_entered_at` from any action's `accept` list. It is `writable?: false`, and a caller that genuinely needs to set it uses `Ash.Changeset.force_change_attribute/3`.
+
 ### Added
 
 - **`every`, a sibling entity to `timeout`.** Declares a recurring action that runs on an interval for as long as a record sits in its step: `every :nudge, {1, :day}, action: :send_reminder` or the block form with `interval`, `action`, `check_interval`, `self_scheduled?`, `last_fired_field` and a nested `retry`. Unlike `timeout`, `every` always requires `action`, has no `transition_to` and no `field`. It measures `interval` against its own nilable `:utc_datetime_usec` attribute, one per `every`, named `<step>_<every>_last_fired_at` by default or explicitly with `last_fired_field` — not `state_entered_at`, and not `field`, which names an anchor AshWorkflow reads and never writes. `AshWorkflow.Changes.RecordEvent` writes that column on every fire via its `:every_field` option, so two `every` entities on the same step, or an `every` and a `timeout`, no longer share (and reset) one anchor. A record whose column is still `nil` (never fired) measures its interval from `state_entered_at` instead, so the first firing lands one whole interval after the record entered the step and an existing table needs no backfill. Both the generated Oban trigger and `AshWorkflow.Scheduler.Precise.Timeline` apply that fallback, as does `AshWorkflow.Calculations.PendingDeadlines`. `AshWorkflow.Info.everys/2` reads the entities off a step. `AshWorkflow.Info.recommended_indexes/1` covers each `every`'s column with the same `(state, field)` composite index it gives a `timeout`.

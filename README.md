@@ -10,6 +10,45 @@ Declarative workflow orchestration for [Ash Framework](https://ash-hq.org). Defi
 
 AshWorkflow generates [ash_state_machine](https://hexdocs.pm/ash_state_machine) states and transitions, [ash_oban](https://hexdocs.pm/ash_oban) triggers for automatic steps, and Ash actions for manual transitions. You write the workflow; it handles the wiring.
 
+## Installation
+
+```bash
+mix igniter.install ash_workflow
+```
+
+That adds the dependency and sets up everything the generated DSL needs to
+run: Oban in your supervision tree via `AshOban.config/2`, the cron plugin,
+the `:workflow` queue that generated triggers publish to, `:ash_domains`
+config, and the formatter import for the workflow DSL.
+
+Pass `--queue` and `--queue-concurrency` to change the queue it configures.
+
+<details>
+<summary>Manual installation</summary>
+
+Add `ash_workflow` to your dependencies in `mix.exs`:
+
+```elixir
+def deps do
+  [
+    {:ash_workflow, "~> 0.7"}
+  ]
+end
+```
+
+Then configure Oban with a `:workflow` queue and the cron plugin, and start it
+with `AshOban.config/2`. See the
+[ash_oban documentation](https://hexdocs.pm/ash_oban) for details.
+
+</details>
+
+`ash_state_machine` and `ash_oban` come in as dependencies of `ash_workflow`,
+so do not declare them in `mix.exs` yourself. On the resource, add
+`AshWorkflow` and `AshOban` to `extensions`, and leave `AshStateMachine` out:
+`AshWorkflow.Transformers.AddStateMachine` adds that extension and writes its
+DSL. `AshOban` stays explicit because the scheduler that generates its
+triggers is one choice among several. See `AshWorkflow.Scheduler`.
+
 ## Concepts
 
 - **Step** — a state the workflow can be in. Some steps run automatically (background work via Oban), others wait for a human to trigger a transition.
@@ -30,12 +69,14 @@ defmodule MyApp.CandidatePipeline do
     extensions: [AshWorkflow, AshOban]
 
   workflow do
+    # Automatic: runs as soon as a record enters the step
     step :process_application do
       action :process_application
       on_success :recruiter_review
       on_error :application_failed
     end
 
+    # Manual: waits for someone to call a transition
     step :recruiter_review do
       policy actor_attribute_equals(:role, :recruiter)
 
@@ -54,49 +95,17 @@ defmodule MyApp.CandidatePipeline do
     step :awaiting_screen_result do
       policy actor_attribute_equals(:role, :recruiter)
 
-      transition :pass, to: :onsite_interview
+      transition :pass, to: :hired
       transition :fail, to: :rejected
       transition :reschedule, to: :phone_screen
 
-      timeout :nudge, fire_after: {5, :days}, action: :remind_interviewer
-    end
-
-    step :onsite_interview do
-      action :schedule_onsite
-      on_success :awaiting_onsite_result
-    end
-
-    step :awaiting_onsite_result do
-      policy actor_attribute_equals(:role, :hiring_manager)
-
-      transition :offer, to: :send_offer
-      transition :reject_candidate, to: :rejected
-    end
-
-    step :send_offer do
-      action :send_offer_email
-      on_success :awaiting_offer_response
-    end
-
-    step :awaiting_offer_response do
-      transition :accept, to: :onboarding
-      transition :decline, to: :offer_declined
-      transition :negotiate, to: :send_offer
-
-      timeout :expire, fire_after: {14, :days}, transition_to: :offer_expired
-    end
-
-    step :onboarding do
-      action :start_onboarding_tasks
-      on_success :hired
+      every :nudge, {5, :days}, action: :remind_interviewer
     end
 
     step :hired, terminal: true
     step :rejected, terminal: true
-    step :offer_declined, terminal: true
-    step :offer_expired, terminal: true
-    step :application_failed, terminal: true
     step :escalated_review, terminal: true
+    step :application_failed, terminal: true
   end
 
   attributes do
@@ -105,46 +114,24 @@ defmodule MyApp.CandidatePipeline do
     attribute :position, :string, allow_nil?: false
   end
 
-  # Automatic steps need user-defined actions with business logic.
-  # The extension injects transition_state and state_entered_at changes.
+  # You write the actions an automatic step, a timeout or an `every` names.
+  # The extension appends its own changes to them.
   actions do
     update :process_application do
       accept []
       change MyApp.Changes.ParseResume
     end
 
-    update :schedule_phone_screen do
-      accept []
-      change MyApp.Changes.SendCalendlyLink
-    end
-
-    update :schedule_onsite do
-      accept []
-      change MyApp.Changes.SendOnsiteInvite
-    end
-
-    update :send_offer_email do
-      accept []
-      change MyApp.Changes.GenerateAndSendOffer
-    end
-
-    update :start_onboarding_tasks do
-      accept []
-      change MyApp.Changes.CreateOnboardingChecklist
-    end
-
     update :send_review_reminder do
       accept []
       change MyApp.Changes.NotifyRecruiter
     end
-
-    update :remind_interviewer do
-      accept []
-      change MyApp.Changes.NudgeInterviewer
-    end
   end
 end
 ```
+
+The full pipeline, with the onsite and offer stages, is in
+[`examples/ats/candidate_pipeline.ex`](https://github.com/team-alembic/ash_workflow/blob/main/examples/ats/candidate_pipeline.ex).
 
 ## Automatic vs Manual Steps
 
@@ -258,29 +245,48 @@ When the transformer detects that you've defined policies targeting a transition
 
 ## Timeouts and Deadlines
 
-Timeouts let you react to a workflow being stuck in a state. They're implemented as Oban triggers that poll on a cron schedule (default: every minute) and check whether the workflow has been in the expected state long enough.
+Three time-based rules live inside a step. All of them are polled by the
+scheduler rather than scheduled per record.
 
 ```elixir
 step :recruiter_review do
   transition :approve, to: :phone_screen
-  transition :reject_application, to: :rejected
 
-  # Send a reminder after 2 days, but stay in the same state
+  # Runs an action and stays in the step
   timeout :reminder, fire_after: {2, :days}, action: :send_review_reminder
 
-  # Force a transition after 7 days
+  # Forces a transition
   timeout :escalation, fire_after: {7, :days}, transition_to: :escalated_review
+
+  # Fires on an instant the record already holds
+  timeout :interview_due do
+    fire_at :scheduled_for
+    transition_to :interview_missed
+  end
+
+  # Recurs while the record sits here, and gives up after 8 days
+  every :nudge do
+    interval {2, :days}
+    action :remind_interviewer
+    until {8, :days}
+  end
 end
 ```
 
-**Action timeouts** run an Ash action but don't change state. Use these for reminders, notifications, or logging.
+`fire_after` measures from `state_entered_at`, the attribute the extension
+maintains, or from a datetime attribute named with `field`. `fire_at` names an
+attribute or expression calculation that already holds the deadline instant, so
+there is no offset to compute. `every` measures from its own
+`<step>_<every>_last_fired_at` column rather than from `state_entered_at`, so
+firing never pushes back a deadline beside it, and its first run lands one whole
+interval after the record entered the step. `until` bounds the repetition
+against `state_entered_at`, and reaching it stops the firing without changing
+state.
 
-**Transition timeouts** force the workflow into a new state. Use these for escalations, expirations, or SLA enforcement.
-
-Timeouts are implemented as polling, not as scheduled jobs: each timeout — and
-each automatic step — gets its own Oban cron scheduler that queries for records
-past their deadline. `check_interval` controls how often, and defaults to every
-minute. Set it once per workflow, and override individual timeouts as needed:
+Each timeout, each `every` and each automatic step gets its own Oban cron
+scheduler that queries for records past their deadline. `check_interval` sets
+how often, once on the `workflow` section or per entity, and defaults to every
+minute:
 
 ```elixir
 workflow do
@@ -288,8 +294,6 @@ workflow do
 
   step :awaiting_review do
     transition :approve, to: :approved
-
-    timeout :nudge, fire_after: {2, :days}, action: :send_nudge
 
     timeout :daily_check do
       fire_after {3, :days}
@@ -303,11 +307,11 @@ end
 The cost scales with the number of triggers on the resource, not the number of
 records — eight triggers at the default interval is 480 scheduler queries an
 hour, whether or not anything is waiting. For workflows measured in days, an
-hourly interval behaves the same to users at a fraction of the cost. See
+hourly interval behaves the same to users at a fraction of the cost.
+`AshWorkflow.Scheduler.Precise` arms a timer per deadline instead of polling,
+for deadlines shorter than cron can ask for. See
 [Timeouts and deadlines](documentation/topics/timeouts-and-deadlines.md) for
 details.
-
-The extension auto-manages a `state_entered_at` timestamp attribute on the resource to track when the current state was entered. Timeout durations are calculated from this timestamp.
 
 Supported duration units: `:seconds`, `:minutes`, `:hours`, `:days`.
 
@@ -319,14 +323,15 @@ From the workflow DSL, the extension generates:
 |-------|------|-----|
 | **Extensions** | AshStateMachine | Auto-added via `add_extensions`. Add `AshOban` yourself — see Scheduling |
 | **State machine** | States, transitions, initial state | Via `ash_state_machine` DSL injection |
-| **Scheduled work** | One `Scheduler.Work` per automatic step and timeout | Handed to the selected `AshWorkflow.Scheduler` |
+| **Scheduled work** | One `Scheduler.Work` per automatic step, timeout and `every` | Handed to the selected `AshWorkflow.Scheduler` |
 | **Oban triggers** | One trigger per unit of work | `AshWorkflow.Scheduler.Oban`, the default |
 | **Actions** | One update per transition, plus a read action | Ash actions with `transition_state` change |
 | **Timeout actions** | Hidden `__timeout_*` update actions | For timeouts with `transition_to` |
+| **Indexes** | One `(state, field)` composite per deadline field | `AshPostgres.DataLayer` resources; opt out with `generate_indexes? false` |
 | **Policies** | Step-level `policy` declarations | Ash policies on generated transition actions |
 | **Code interface** | One function per transition name | Ash code interface definitions |
-| **Calculations** | `:steps`, `:current_step`, `:available_actions` | Workflow introspection |
-| **Attributes** | `state_entered_at` | Added if not already defined |
+| **Calculations** | `:steps`, `:current_step`, `:available_actions`, `:pending_deadlines` | Workflow introspection |
+| **Attributes** | `state_entered_at`, plus one last-fired column per `every` | Added if not already defined |
 
 The initial state is the step with `initial true`, or the first non-terminal step by declaration order if none is marked. Declaration order is easy to trip over, so mark the step when the reading order is not the running order:
 
@@ -367,45 +372,6 @@ All generation follows a **generate-if-missing** pattern: if you've already defi
 
 Workflows are started through your own create action — AshWorkflow does not generate one. A newly created record enters the initial step implicitly, because `state_entered_at` defaults on create.
 
-## Installation
-
-```bash
-mix igniter.install ash_workflow
-```
-
-That adds the dependency and sets up everything the generated DSL needs to
-run: Oban in your supervision tree via `AshOban.config/2`, the cron plugin,
-the `:workflow` queue that generated triggers publish to, `:ash_domains`
-config, and the formatter import for the workflow DSL.
-
-Pass `--queue` and `--queue-concurrency` to change the queue it configures.
-
-<details>
-<summary>Manual installation</summary>
-
-Add `ash_workflow` to your dependencies in `mix.exs`:
-
-```elixir
-def deps do
-  [
-    {:ash_workflow, "~> 0.5"}
-  ]
-end
-```
-
-Then configure Oban with a `:workflow` queue and the cron plugin, and start it
-with `AshOban.config/2`. See the
-[ash_oban documentation](https://hexdocs.pm/ash_oban) for details.
-
-</details>
-
-`ash_state_machine` and `ash_oban` come in as dependencies of `ash_workflow`,
-so do not declare them in `mix.exs` yourself. On the resource, add
-`AshWorkflow` and `AshOban` to `extensions`, and leave `AshStateMachine` out:
-`AshWorkflow.Transformers.AddStateMachine` adds that extension and writes its
-DSL. `AshOban` stays explicit because the scheduler that generates its
-triggers is one choice among several. See `AshWorkflow.Scheduler`.
-
 ## Demos
 
 Runnable applications live in [`demos/`](https://github.com/team-alembic/ash_workflow/tree/main/demos), each with its own test suite
@@ -418,6 +384,7 @@ that CI runs:
 | [`order_fulfilment`](https://github.com/team-alembic/ash_workflow/tree/main/demos/order_fulfilment) | Error handling across a long automatic chain, with recovery looping back into it |
 | [`subscription_dunning`](https://github.com/team-alembic/ash_workflow/tree/main/demos/subscription_dunning) | `every` for recurring actions, and deadlines measured against a date on the record |
 | [`support_ticket_sla`](https://github.com/team-alembic/ash_workflow/tree/main/demos/support_ticket_sla) | Priority routing, one transition name meaning different things per step, per-queue SLAs |
+| [`workflow_timeline`](https://github.com/team-alembic/ash_workflow/tree/main/demos/workflow_timeline) | The transition log rendered as a timeline, and undo as an append-only operation |
 
 ## Contributing
 
