@@ -112,12 +112,18 @@ defmodule DocumentApproval.DocumentTest do
       run_workflow_triggers(Document)
       assert reload(ctx.document).nudges_sent == 1
 
-      # An every resets state_entered_at, so the next nudge needs the
-      # clock moved on again rather than firing immediately.
+      # Firing wrote in_review_nudge_last_fired_at, so the next nudge is two
+      # days out from that instant rather than from state_entered_at.
       run_workflow_triggers(Document)
       assert reload(ctx.document).nudges_sent == 1
 
-      age_by(ctx.document, 3, :day)
+      ctx.document
+      |> reload()
+      |> set_datetime(
+        :in_review_nudge_last_fired_at,
+        DateTime.add(DateTime.utc_now(), -3, :day)
+      )
+
       run_workflow_triggers(Document)
       assert reload(ctx.document).nudges_sent == 2
     end

@@ -122,7 +122,15 @@ defmodule SupportTicketSla.TicketTest do
       assert reload(ticket).stale_flags == 1
       assert reload(ticket).state == :backlog
 
-      age_by(ticket, 31, :day)
+      # Flagging wrote backlog_stale_last_fired_at, so the next flag is thirty
+      # days out from that instant rather than from state_entered_at.
+      ticket
+      |> reload()
+      |> set_datetime(
+        :backlog_stale_last_fired_at,
+        DateTime.add(DateTime.utc_now(), -31, :day)
+      )
+
       run_workflow_triggers(Ticket)
       assert reload(ticket).stale_flags == 2
     end

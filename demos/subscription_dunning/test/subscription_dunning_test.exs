@@ -58,12 +58,19 @@ defmodule SubscriptionDunning.SubscriptionTest do
       assert reload(ctx.sub).dunning_emails_sent == 1
       assert reload(ctx.sub).state == :grace_period, "an action timeout does not change state"
 
-      # Repeating works by resetting the clock, so the next send needs the clock
-      # moved on again rather than firing on the next poll.
+      # Sending wrote grace_period_dunning_email_last_fired_at, so the next
+      # send is three days out from that instant rather than firing on the
+      # next poll.
       run_workflow_triggers(Subscription)
       assert reload(ctx.sub).dunning_emails_sent == 1
 
-      age_by(ctx.sub, 4, :day)
+      ctx.sub
+      |> reload()
+      |> set_datetime(
+        :grace_period_dunning_email_last_fired_at,
+        DateTime.add(DateTime.utc_now(), -4, :day)
+      )
+
       run_workflow_triggers(Subscription)
       assert reload(ctx.sub).dunning_emails_sent == 2
     end

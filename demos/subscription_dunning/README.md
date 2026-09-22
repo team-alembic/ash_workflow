@@ -16,9 +16,11 @@ end
 ```
 
 Fires every three days for as long as the subscription stays in
-`:grace_period`. It works by resetting `state_entered_at` each time it fires,
-which is why the clock has to move on again before the next send — visible
-directly in the tests.
+`:grace_period`. Each send writes `grace_period_dunning_email_last_fired_at`,
+the every's own column, which is why that column has to move on again before
+the next send — visible directly in the tests. `state_entered_at` stays where
+the transition into `:grace_period` left it, so the `:grace_expired` timeout
+beside it keeps counting from the genuine entry.
 
 ## One-shot: measured against a date on the record
 

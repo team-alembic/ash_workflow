@@ -152,7 +152,15 @@ defmodule OrderFulfilment.OrderTest do
       assert reload(order).supplier_chases == 1
       assert reload(order).state == :backordered
 
-      age_by(order, 3, :day)
+      # Chasing wrote backordered_chase_supplier_last_fired_at, so the next
+      # chase is two days out from that instant, not from state_entered_at.
+      order
+      |> reload()
+      |> set_datetime(
+        :backordered_chase_supplier_last_fired_at,
+        DateTime.add(DateTime.utc_now(), -3, :day)
+      )
+
       run_workflow_triggers(Order)
       assert reload(order).supplier_chases == 2
     end
