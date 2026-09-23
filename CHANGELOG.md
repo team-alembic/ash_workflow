@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-09-22
+
+### Fixed
+
+- `AshWorkflow.Scheduler.Precise.Timeline`'s sweep now reads the attribute a workflow named with `state_attribute`. It built its step predicate as `state == ^step`, so a workflow keeping its state anywhere other than `state` matched no records: a deadline nothing had armed was never recovered, and one inside the horizon was never armed. `Timeline.deadline_changed/2` was unaffected, since it arms from `AshWorkflow.Scheduler.Work.match`, which `AshWorkflow.Transformers.AddScheduler` has always built through the named attribute. The sweep rebuilds that predicate rather than reusing `match` so the horizon's bound reaches the data layer as a bind parameter, and it now builds it from `AshWorkflow.Info.state_attribute/1`.
+
 ## [0.7.0] - 2026-09-22
 
 ### Upgrading from 0.6.x
