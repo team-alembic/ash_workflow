@@ -384,11 +384,10 @@ When configured, the resource gains:
 
 - `state_at/3` — the state a record was in at a given `DateTime`, resolved by walking the log.
 - `history/2` — the full list of log rows for a record, ordered oldest first.
-- `entered_current_state_at` — a calculation for when the state last *actually* changed, ignoring `every` rows (see below).
 
 Both take an `effective: true` option, which omits rows a later undo reversed. See Undo below.
 
-An `every` writes a log row with `from_state == to_state` — it's not a state change, but it's a recorded event, so it shows up in history even though it never touches `state_entered_at`. `entered_current_state_at` usually walks the log to the same instant `state_entered_at` already holds, but they diverge for a record whose `state_entered_at` was set by something other than a logged event (imported data, or the backfill task's single `:initial` row), and for a manual transition or automatic step whose target is the step the record is already in — a genuine step entry that still writes a same-state log row. See [Workflow history](documentation/topics/workflow-history.md) for the full explanation and the documented aggregate-query recipe for "how many records were in state S at time Y".
+An `every` writes a log row with `from_state == to_state` — it's not a state change, but it's a recorded event, so it shows up in history even though it never touches `state_entered_at`. `state_entered_at` is written only on a genuine step entry; use it for "when did the record enter this step". See [Workflow history](documentation/topics/workflow-history.md) for the full explanation and the documented aggregate-query recipe for "how many records were in state S at time Y".
 
 This is not an audit trail (attribute-level changes) — pair it with AshPaperTrail for that — and not event sourcing; `state` stays a plain column.
 

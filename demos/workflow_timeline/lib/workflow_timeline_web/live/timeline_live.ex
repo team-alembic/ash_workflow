@@ -61,7 +61,7 @@ defmodule WorkflowTimelineWeb.TimelineLive do
 
   defp load_bands(socket, slider_position: slider_position) do
     %{results: incidents} =
-      IncidentResponse.list_incidents!(authorize?: false, load: [:entered_current_state_at])
+      IncidentResponse.list_incidents!(authorize?: false)
 
     bands = Enum.map(incidents, &build_band/1)
 
@@ -85,8 +85,7 @@ defmodule WorkflowTimelineWeb.TimelineLive do
       incident: incident,
       history: history,
       segments: segments,
-      state_entered_at: incident.state_entered_at,
-      entered_current_state_at: incident.entered_current_state_at
+      state_entered_at: incident.state_entered_at
     }
   end
 
@@ -268,7 +267,6 @@ defmodule WorkflowTimelineWeb.TimelineLive do
 
             <div class="flex justify-between text-xs text-stone-400 mt-2">
               <span>state_entered_at: {format_time(band.state_entered_at)}</span>
-              <span>entered_current_state_at: {format_time(band.entered_current_state_at)}</span>
               <span>reminders sent: {band.incident.status_updates_sent}</span>
             </div>
           </div>

@@ -53,6 +53,11 @@ the pre-undo row and reports the earlier time while the column reports the
 rewind. The two silently disagree and "projection of the log" stops being true.
 With a row, both fall out unchanged.
 
+(`entered_current_state_at` was later removed. Once each `every` wrote its own
+last-fired column, `state_entered_at` agreed with it except where the
+calculation was worse. The row-per-undo argument stands on `state_at/3` and
+`history/1` alone.)
+
 **One row becomes three columns.** Matching what a row gives free needs
 `undone_at`, `undone_by_id`, and probably `undone_reason` — and even then the
 undo has no *position* in the log, so a timeline cannot order "approved 10:00 →

@@ -178,23 +178,15 @@ defmodule WorkflowTimeline.IncidentResponseTest do
     end
   end
 
-  describe "entered_current_state_at vs state_entered_at" do
-    test "an every firing moves neither one" do
+  describe "state_entered_at" do
+    test "an every firing leaves it where the step entry set it" do
       incident = report!()
       {:ok, incident} = Ash.update(incident, action: :classify_severity)
-
-      loaded = Ash.load!(incident, [:entered_current_state_at, :state_entered_at])
-      entered_investigating_at = loaded.entered_current_state_at
-      state_entered_at_after_automatic = loaded.state_entered_at
+      entered_investigating_at = incident.state_entered_at
 
       {:ok, incident} = Ash.update(incident, action: :send_status_update)
-      loaded = Ash.load!(incident, [:entered_current_state_at, :state_entered_at])
 
-      # The every logs a row and writes its own last-fired column. Neither the
-      # log-derived calculation nor the attribute other deadlines measure from
-      # moves, so the escalation timeout still counts from the genuine entry.
-      assert loaded.entered_current_state_at == entered_investigating_at
-      assert loaded.state_entered_at == state_entered_at_after_automatic
+      assert incident.state_entered_at == entered_investigating_at
     end
   end
 end

@@ -109,35 +109,28 @@ Firing an `every` writes its own last-fired column (see
 so logging the firing is not what keeps any anchor derivable — it's purely a
 record of the event.
 
-## `state_entered_at` vs `entered_current_state_at`
+## `state_entered_at`
 
 `state_entered_at` is the resource's own anchor, written only on a genuine
 step entry: a manual transition, an automatic step completing, a transition
 timeout, an undo, or the initial create. Neither an action timeout nor an
-`every` firing touches it.
+`every` firing touches it. Prefer it for "when did the record enter this
+step"; it's what the generated Oban triggers filter on.
 
-`entered_current_state_at` is a calculation, only added when a
-`transition_log` is configured, that walks the log and returns the
-`occurred_at` of the most recent row where `from_state != to_state`. Most step
-entries write a row with `from_state != to_state` (except the `:initial` row,
-where `from_state` is `nil`), and an action timeout or `every` always writes
-`from_state == to_state`, so the two values usually agree: `entered_current_state_at`
-walks the log to the same instant `state_entered_at` already holds.
+A transition into the step the record is already in is still a step entry, so
+it updates `state_entered_at`, but it logs a row with
+`from_state == to_state`. If you want the entry time the *log* attests to
+instead, derive it from `history/1`:
 
-They diverge in two cases. The first is the log's own stated limit: a record
-whose `state_entered_at` was set by something other than a logged event —
-imported data, or `mix ash_workflow.backfill_transition_log`'s single
-`:initial` row standing in for history that predates the log. The second is a
-manual transition or automatic step whose target is the step the record is
-already in: that still touches `state_entered_at` — it's a genuine step
-entry, not an every or timeout firing — but writes a log row with
-`from_state == to_state`, which `entered_current_state_at` filters out the
-same as any other same-state row. In either case `state_entered_at` reports
-whatever the column actually holds, and `entered_current_state_at` reports
-what the log — possibly missing history, or filtering out a same-state entry
-— can account for. Prefer `state_entered_at` for scheduling, since it's what
-the generated Oban triggers filter on, and `entered_current_state_at` when
-you specifically want the value the *log* attests to.
+```elixir
+record
+|> MyApp.Ticket.history()
+|> Enum.filter(&(&1.from_state != &1.to_state))
+|> List.last()
+|> then(&(&1 && &1.occurred_at))
+```
+
+That reads the log per record, so avoid it across a list load.
 
 ## Querying
 

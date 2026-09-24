@@ -9,7 +9,6 @@ defmodule AshWorkflow.Transformers.AddCalculations do
   - `:steps` — list of all workflow step names (static, same for every record)
   - `:current_step` — the name of the workflow's current step
   - `:pending_deadlines` — the timeouts ahead of the record in its current step
-  - `:entered_current_state_at` — only when a `transition_log` is configured
   """
   use Spark.Dsl.Transformer
 
@@ -59,17 +58,15 @@ defmodule AshWorkflow.Transformers.AddCalculations do
              :atom,
              {AshWorkflow.Calculations.CurrentStep, state_attribute: state_attribute},
              public?: true
-           ),
-         {:ok, dsl} <-
-           Builder.add_new_calculation(
-             dsl,
-             :pending_deadlines,
-             {:array, :map},
-             {AshWorkflow.Calculations.PendingDeadlines,
-              timeouts: timeouts_map(steps), state_attribute: state_attribute},
-             public?: true
            ) do
-      add_entered_current_state_at(dsl)
+      Builder.add_new_calculation(
+        dsl,
+        :pending_deadlines,
+        {:array, :map},
+        {AshWorkflow.Calculations.PendingDeadlines,
+         timeouts: timeouts_map(steps), state_attribute: state_attribute},
+        public?: true
+      )
     end
   end
 
@@ -109,22 +106,6 @@ defmodule AshWorkflow.Transformers.AddCalculations do
       kind: :every,
       target: nil
     }
-  end
-
-  defp add_entered_current_state_at(dsl) do
-    case AshWorkflow.Info.transition_log(dsl) do
-      nil ->
-        {:ok, dsl}
-
-      _log ->
-        Builder.add_new_calculation(
-          dsl,
-          :entered_current_state_at,
-          :utc_datetime_usec,
-          AshWorkflow.Calculations.EnteredCurrentStateAt,
-          public?: true
-        )
-    end
   end
 
   def after?(AshWorkflow.Transformers.AddCodeInterface), do: true
