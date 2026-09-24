@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Removed the `entered_current_state_at` calculation and `AshWorkflow.Calculations.EnteredCurrentStateAt`. The calculation existed because a repeating timeout reset `state_entered_at` on each firing. Since 0.7.0 each `every` writes its own `<step>_<every>_last_fired_at` column, so `state_entered_at` is written only on a genuine step entry and the two agree. Where they still differed, the calculation was wrong: a transition into the step the record is already in updates `state_entered_at` but logs a `from_state == to_state` row, which the calculation skipped. It also read `history/1` once per record and could not be used as a timeout `field`. Read `state_entered_at` instead. To get the entry time the log attests to, filter `history/1` for rows where `from_state != to_state`.
 
+### Added
+
+- A workflow resource with a `transition_log` now gets a public `has_many :transitions` relationship to the log resource, added by `AshWorkflow.Transformers.AddRelationships`. Its `destination_attribute` is the log's `belongs_to` foreign key back to the workflow. A user-defined `:transitions` relationship takes precedence.
+
 ## [0.7.1] - 2026-09-22
 
 ### Fixed

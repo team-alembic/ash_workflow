@@ -156,6 +156,24 @@ MyApp.Ticket.history(ticket)
 
 Rows come back ordered by `occurred_at` ascending, including `every` rows.
 
+### The `transitions` relationship
+
+Configuring `transition_log` adds a public `has_many :transitions` from the
+workflow resource to the log resource. Its `destination_attribute` is the log's
+`belongs_to` foreign key back to the workflow. Use it anywhere Ash accepts a
+relationship: loads, filters, aggregates, and calculations.
+
+```elixir
+Ash.load!(ticket, transitions: [sort: [occurred_at: :asc]])
+
+MyApp.Ticket
+|> Ash.Query.filter(exists(transitions, triggered_by == :timeout))
+|> Ash.read!()
+```
+
+A `:transitions` relationship you define yourself takes precedence, and the
+extension adds nothing.
+
 ### Aggregate query: how many were in state S at time Y
 
 This is "latest row per workflow, at or before a timestamp" — a query shape
