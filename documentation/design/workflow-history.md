@@ -74,6 +74,10 @@ reset" become two different questions. They are answered by two calculations:
 The first reproduces today's behaviour exactly. The second is the honest answer
 the library has never been able to give.
 
+(`entered_current_state_at` was later removed. Once each `every` wrote its own
+last-fired column, `state_entered_at` was only written on a genuine step entry,
+so the calculation added nothing but an N+1 read of the log.)
+
 ### `state_entered_at` stays a real column, written through from the log
 
 It is tempting to delete the attribute and derive it. We are not going to,

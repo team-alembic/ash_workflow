@@ -110,6 +110,10 @@ read. `EnteredCurrentStateAt` is a module calculation — it queries the
 transition log — so it hits exactly that rule. It would also make the bound
 depend on `transition_log` being configured, which the ask does not call for.
 
+(`EnteredCurrentStateAt` was later removed outright, after #91 gave each
+`every` its own last-fired column and `state_entered_at` stopped misreporting
+step entry.)
+
 A second attribute, `repeat_started_at`, is what was built. Added only when
 some `every` bounds its firing with `until`
 (`AshWorkflow.Transformers.AddAttributes.add_repeat_started_at/1`), it is

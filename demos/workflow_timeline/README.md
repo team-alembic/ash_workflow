@@ -57,9 +57,8 @@ at that instant — read straight from its transition log, not from its current
 
 The thin white ticks on a band are same-state rows (`from_state ==
 to_state`) — the `:status_reminder` every firing while nothing about the
-incident changed. Each band also shows `state_entered_at` next to
-`entered_current_state_at`; a reminder firing moves neither, because the every
-writes its own `investigating_status_reminder_last_fired_at` column and leaves
+incident changed. Each band also shows `state_entered_at`; a reminder firing
+leaves it alone, because the every writes its own `investigating_status_reminder_last_fired_at` column and leaves
 `state_entered_at` where the transition into the step set it.
 
 Click **Generate incident history** to add another incident with a random,
@@ -111,8 +110,8 @@ mix test
 `test/incident_response_test.exs` covers the transition log itself: every
 `triggered_by` value gets a dedicated test, an every produces
 `from_state == to_state` rows, `state_at/2` is checked before the first row,
-between two rows, and after the last, and an every firing is shown moving
-neither `entered_current_state_at` nor `state_entered_at`.
+between two rows, and after the last, and an every firing is shown leaving
+`state_entered_at` unchanged.
 
 `test/timeline_live_test.exs` renders the timeline, exercises the "Generate
 incident history" button, and drives the slider via `render_change/3` to
@@ -162,8 +161,8 @@ to undo.
 
 ## Why it's useful as a regression test
 
-Every band on screen depends on `history/1`, `state_at/2`,
-`entered_current_state_at`, and the `triggered_by` values all agreeing with
+Every band on screen depends on `history/1`, `state_at/2`, and the
+`triggered_by` values all agreeing with
 each other and with the real column `state_entered_at` — so a change that
 breaks any of those breaks this demo visibly, not just in an assertion.
 

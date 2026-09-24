@@ -1,3 +1,10 @@
+defmodule AshWorkflowTest.ModuleEnteredAtCalc do
+  use Ash.Resource.Calculation
+
+  @impl true
+  def calculate(records, _opts, _context), do: Enum.map(records, fn _ -> nil end)
+end
+
 defmodule AshWorkflow.Verifiers.ValidateTimeoutFieldsTest do
   use ExUnit.Case
 
@@ -86,7 +93,7 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutFieldsTest do
 
               timeout :bad_calc,
                 fire_after: {3, :days},
-                field: :entered_current_state_at,
+                field: :entered_at_calc,
                 transition_to: :escalated
             end
 
@@ -100,9 +107,9 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutFieldsTest do
           end
 
           calculations do
-            calculate :entered_current_state_at,
+            calculate :entered_at_calc,
                       :utc_datetime_usec,
-                      AshWorkflow.Calculations.EnteredCurrentStateAt
+                      AshWorkflowTest.ModuleEnteredAtCalc
           end
         end
         """,

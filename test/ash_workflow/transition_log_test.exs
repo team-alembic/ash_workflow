@@ -180,23 +180,6 @@ defmodule AshWorkflow.TransitionLogTest do
     end
   end
 
-  describe "entered_current_state_at vs state_entered_at" do
-    test "entered_current_state_at ignores every rows, and now so does state_entered_at" do
-      {:ok, record} = LoggedWorkflow.create(%{title: "test"})
-      {:ok, record} = Ash.update(record, action: :process_intake)
-
-      loaded = Ash.load!(record, [:entered_current_state_at, :state_entered_at])
-      entered_review_at = loaded.entered_current_state_at
-      state_entered_at_after_automatic = loaded.state_entered_at
-
-      {:ok, record} = Ash.update(record, action: :send_reminder)
-      loaded = Ash.load!(record, [:entered_current_state_at, :state_entered_at])
-
-      assert loaded.entered_current_state_at == entered_review_at
-      assert loaded.state_entered_at == state_entered_at_after_automatic
-    end
-  end
-
   describe "belongs_to_actor" do
     test "records the actor on the log row when present" do
       {:ok, reviewer} = Reviewer.create(%{name: "Alice"})

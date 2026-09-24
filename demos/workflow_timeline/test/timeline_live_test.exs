@@ -52,7 +52,6 @@ defmodule WorkflowTimelineWeb.TimelineLiveTest do
     assert html =~ "Checkout latency spike"
     assert html =~ "Elevated 5xx on API gateway"
     assert html =~ "state_entered_at"
-    assert html =~ "entered_current_state_at"
     assert html =~ "type=\"range\""
   end
 
