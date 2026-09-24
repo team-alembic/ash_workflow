@@ -41,6 +41,8 @@ defmodule AshWorkflowTest.Domain do
     resource AshWorkflowTest.SharedTimeoutNameWorkflow
     resource AshWorkflowTest.LoggedWorkflow
     resource AshWorkflowTest.LoggedTransition
+    resource AshWorkflowTest.OwnTransitionsWorkflow
+    resource AshWorkflowTest.OwnTransitionsLog
     resource AshWorkflowTest.Reviewer
     resource AshWorkflowTest.UndoWorkflow
     resource AshWorkflowTest.UndoLog

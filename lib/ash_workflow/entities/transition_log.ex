@@ -4,7 +4,9 @@ defmodule AshWorkflow.Entities.TransitionLog do
 
   When present, `AshWorkflow.Changes.RecordEvent` appends one row per workflow
   event to `resource`, and the resource gains the `state_at/2` and `history/1`
-  code interface functions.
+  code interface functions and a public `has_many :transitions` relationship to
+  `resource`. A `:transitions` relationship defined on the workflow resource
+  takes precedence.
 
   The log resource itself is user-owned, not generated — see
   `AshWorkflow.Verifiers.ValidateTransitionLog` for the schema it must satisfy.

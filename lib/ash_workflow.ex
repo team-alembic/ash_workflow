@@ -237,7 +237,8 @@ defmodule AshWorkflow do
       AshWorkflow.Transformers.AddIndexes,
       AshWorkflow.Transformers.AddPolicies,
       AshWorkflow.Transformers.AddCodeInterface,
-      AshWorkflow.Transformers.AddCalculations
+      AshWorkflow.Transformers.AddCalculations,
+      AshWorkflow.Transformers.AddRelationships
     ],
     verifiers: [
       AshWorkflow.Verifiers.ValidateWorkflow,
