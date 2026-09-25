@@ -8,6 +8,7 @@ defmodule AshWorkflowTest.Domain do
     resource AshWorkflowTest.ApprovalWorkflow
     resource AshWorkflowTest.TimeoutWorkflow
     resource AshWorkflowTest.PolicyWorkflow
+    resource AshWorkflowTest.ChartKeywordWorkflow
     resource AshWorkflowTest.FullPipeline
     resource AshWorkflowTest.LoopbackWorkflow
     resource AshWorkflowTest.CustomActionWorkflow
