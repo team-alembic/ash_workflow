@@ -42,11 +42,19 @@ defmodule AshWorkflow.Calculations.PendingDeadlines do
       opts[:timeouts]
       |> Map.values()
       |> List.flatten()
-      |> Enum.map(& &1.field)
+      |> Enum.flat_map(&[&1.field | time_zone_field(&1)])
       |> Enum.uniq()
 
     [Keyword.fetch!(opts, :state_attribute), :state_entered_at | fields]
   end
+
+  # A wall-clock `every` whose `time_zone` names an attribute cannot compute an
+  # occurrence without reading it.
+  defp time_zone_field(%{wall_clock: %AshWorkflow.WallClock{time_zone: zone}})
+       when is_atom(zone) and not is_nil(zone),
+       do: [zone]
+
+  defp time_zone_field(_entry), do: []
 
   @impl true
   @spec calculate([Ash.Resource.record()], Keyword.t(), map()) :: [[map()]]
@@ -64,6 +72,26 @@ defmodule AshWorkflow.Calculations.PendingDeadlines do
   # A never-fired `every` measures its interval from `state_entered_at`, the
   # same fallback `AshWorkflow.Transformers.AddScheduler` compiles into the
   # trigger's `where`.
+  # A wall-clock `every` reports the first occurrence of its local time after
+  # the last fire, or after entry when it has never fired. A record naming a
+  # zone the time zone database does not know has no computable occurrence and
+  # is omitted, the same way a nil timeout field is.
+  defp deadline(
+         %{kind: :every, wall_clock: %AshWorkflow.WallClock{} = wall_clock} = every,
+         record
+       ) do
+    from =
+      as_datetime(Map.get(record, every.field)) ||
+        as_datetime(Map.get(record, :state_entered_at))
+
+    time_zone = AshWorkflow.WallClock.time_zone_for(wall_clock, record)
+
+    case from && AshWorkflow.WallClock.next_occurrence(wall_clock, time_zone, from) do
+      nil -> []
+      due_at -> [entry(every, due_at)]
+    end
+  end
+
   defp deadline(%{kind: :every} = every, record) do
     from =
       as_datetime(Map.get(record, every.field)) ||

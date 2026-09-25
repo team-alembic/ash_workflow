@@ -106,6 +106,9 @@ defmodule AshWorkflow.MixProject do
       # optional dep was fetched but not compiled.
       {:igniter, "~> 0.6", optional: true, runtime: false},
       {:simple_sat, "~> 0.1", only: [:dev, :test]},
+      # The wall-clock `every` needs a real IANA database to place `at` in a
+      # zone. A host application configures its own; the suite needs one too.
+      {:tz, "~> 0.28", only: [:dev, :test]},
 
       # Postgres + Oban integration tests
       {:ash_postgres, "~> 2.0", only: [:dev, :test]},

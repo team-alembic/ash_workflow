@@ -54,4 +54,24 @@ defmodule AshWorkflowTest.DataCase do
 
     Map.put(record, field, at)
   end
+
+  @doc """
+  Writes an exact instant into a datetime column, the same way `age_field_by/4`
+  writes a relative one.
+
+  A wall-clock `every` is due relative to the most recent occurrence of a local
+  time, not relative to now, so its tests need to place a record on either side
+  of that occurrence rather than a fixed number of hours back.
+  """
+  def set_field(record, field, %DateTime{} = at) do
+    table = DataLayerInfo.table(record.__struct__)
+
+    {1, _} =
+      Repo.update_all(
+        from(r in table, where: r.id == type(^record.id, :binary_id)),
+        set: [{field, at}]
+      )
+
+    Map.put(record, field, at)
+  end
 end
