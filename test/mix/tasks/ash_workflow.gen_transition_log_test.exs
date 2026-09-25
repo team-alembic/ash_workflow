@@ -136,4 +136,15 @@ defmodule Mix.Tasks.AshWorkflow.Gen.TransitionLogTest do
 
     assert Enum.any?(igniter.warnings, &String.contains?(&1, "already has a `transition_log`"))
   end
+
+  test "reports an issue for a plain module that does not use AshWorkflow" do
+    igniter =
+      project()
+      |> Igniter.compose_task("ash_workflow.gen.transition_log", ["String"])
+
+    assert Enum.any?(
+             igniter.issues,
+             &String.contains?(&1, "does not use the AshWorkflow extension")
+           )
+  end
 end
