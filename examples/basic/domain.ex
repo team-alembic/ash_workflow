@@ -3,5 +3,9 @@ defmodule BasicWorkflow.Domain do
 
   resources do
     resource BasicWorkflow.DocumentApproval
+    resource BasicWorkflow.Incident
+    resource BasicWorkflow.IncidentTransition
+    resource BasicWorkflow.Subscription
+    resource BasicWorkflow.ScheduledPost
   end
 end

@@ -125,6 +125,7 @@ defmodule AshWorkflow.MixProject do
       source_ref: "v#{@version}",
       source_url: @source_url,
       extra_section: "GUIDES",
+      before_closing_body_tag: &before_closing_body_tag/1,
       extras: [
         {"README.md", title: "Home"},
         "documentation/tutorials/getting-started-with-ash-workflow.md",
@@ -136,6 +137,7 @@ defmodule AshWorkflow.MixProject do
         "documentation/topics/authorization.md",
         "documentation/topics/telemetry.md",
         "documentation/topics/workflows-and-relationships.md",
+        "documentation/topics/diagrams.md",
         "documentation/topics/bpmn-comparison.md",
         "documentation/dsls/DSL-AshWorkflow.md"
       ],
@@ -155,10 +157,57 @@ defmodule AshWorkflow.MixProject do
         ],
         Checks: [AshWorkflow.Checks],
         Telemetry: [AshWorkflow.Telemetry],
+        Charts: [
+          AshWorkflow.Charts,
+          AshWorkflow.Charts.Graph,
+          AshWorkflow.Charts.Graph.Node,
+          AshWorkflow.Charts.Graph.Edge,
+          AshWorkflow.Charts.Graph.Note,
+          AshWorkflow.Charts.Backend,
+          AshWorkflow.Charts.Mermaid,
+          AshWorkflow.Charts.Json
+        ],
         Internals: ~r/.*/
       ]
     ]
   end
+
+  # Draws the ```mermaid blocks in the guides, such as the one in
+  # documentation/topics/diagrams.md. This is the ExDoc recipe, on Mermaid 11.
+  defp before_closing_body_tag(:html) do
+    """
+    <script defer src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+    <script>
+      let initialized = false;
+
+      window.addEventListener("exdoc:loaded", () => {
+        if (!initialized) {
+          mermaid.initialize({
+            startOnLoad: false,
+            theme: document.body.className.includes("dark") ? "dark" : "default"
+          });
+          initialized = true;
+        }
+
+        let id = 0;
+        for (const codeEl of document.querySelectorAll("pre code.mermaid")) {
+          const preEl = codeEl.parentElement;
+          const graphDefinition = codeEl.textContent;
+          const graphEl = document.createElement("div");
+          const graphId = "mermaid-graph-" + id++;
+          mermaid.render(graphId, graphDefinition).then(({svg, bindFunctions}) => {
+            graphEl.innerHTML = svg;
+            bindFunctions?.(graphEl);
+            preEl.insertAdjacentElement("afterend", graphEl);
+            preEl.remove();
+          });
+        }
+      });
+    </script>
+    """
+  end
+
+  defp before_closing_body_tag(_format), do: ""
 
   defp aliases do
     [
