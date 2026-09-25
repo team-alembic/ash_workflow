@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - A workflow resource with a `transition_log` now gets a public `has_many :transitions` relationship to the log resource, added by `AshWorkflow.Transformers.AddRelationships`. Its `destination_attribute` is the log's `belongs_to` foreign key back to the workflow. A user-defined `:transitions` relationship takes precedence.
 
+### Security
+
+- Updated the locked `ash` from 3.33.5 to 3.33.11, which fixes EEF-CVE-2026-93477 (MEDIUM): private action arguments can be set by user input on the bulk update and bulk destroy paths. Introduced in 2.17.15 and fixed in 3.33.11. The `~> 3.0` constraint already allowed the fix; only the lockfile held the affected version. The demo lockfiles moved from 3.32.3 to the same version, with the packages ash requires. Ash 3.33.11 also refuses to compile a resource until the application sets `config :ash, default_string_length_count:`, so each demo now sets `:codepoints`, as this library's own config does.
+
 ## [0.7.1] - 2026-09-22
 
 ### Fixed

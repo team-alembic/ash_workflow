@@ -18,6 +18,9 @@ config :subscription_dunning, Oban,
 
 config :ash_oban, pro?: false
 
+# Ash 3.33.11 requires a choice. Codepoints is what SQL data layers count.
+config :ash, default_string_length_count: :codepoints
+
 if config_env() == :test do
   config :subscription_dunning, SubscriptionDunning.Repo, pool: Ecto.Adapters.SQL.Sandbox
 
