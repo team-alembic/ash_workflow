@@ -3,6 +3,15 @@ defmodule AshWorkflowTest.ChartKeywordWorkflow do
   Step names that are Mermaid keywords, for `AshWorkflow.Charts.Mermaid`.
 
   start → note ──(close)──→ end
+
+  The moduledoc holds a `workflow do` sample that differs from the real
+  block, so `AshWorkflowTest.ChartExamples` must not copy it:
+
+      use Ash.Resource, extensions: [AshWorkflow]
+
+      workflow do
+        step :sample, terminal: true
+      end
   """
 
   use Ash.Resource,

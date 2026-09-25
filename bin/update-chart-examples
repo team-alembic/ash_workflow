@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Regenerates the chart examples in documentation/topics/*.md from the
+# workflows in examples/. See AshWorkflowTest.ChartExamples for the markers.
+# The examples compile only in the test environment, hence MIX_ENV=test.
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+MIX_ENV=test mix run --no-start -e '
+case AshWorkflowTest.ChartExamples.update!() do
+  [] -> IO.puts("Chart examples are up to date.")
+  files -> Enum.each(files, &IO.puts("Updated #{&1}"))
+end
+'
