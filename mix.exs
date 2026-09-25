@@ -99,6 +99,7 @@ defmodule AshWorkflow.MixProject do
       {:ash, "~> 3.0"},
       {:ash_state_machine, "~> 0.2"},
       {:ash_oban, "~> 0.2"},
+      {:jason, "~> 1.4"},
       # `runtime: false` because igniter is only ever used at compile time, by
       # the mix tasks. Without it, a project depending on this library by path
       # — every demo — inherits igniter as an application to start, and fails
