@@ -47,4 +47,13 @@ defmodule AshWorkflow.ChartsTest do
     assert Charts.render(AshWorkflowTest.UndoWorkflow, EdgeCountBackend, undo: false, suffix: "!") ==
              "6 edges!"
   end
+
+  test "render/3 returns the Mermaid diagram as a string" do
+    assert Charts.render(AshWorkflowTest.PolicyWorkflow, :mermaid) =~ ~r/\AstateDiagram-v2\n/
+  end
+
+  test "mermaid_state_diagram/2 is render/3 with :mermaid" do
+    assert Charts.mermaid_state_diagram(AshWorkflowTest.UndoWorkflow, undo: false) ==
+             Charts.render(AshWorkflowTest.UndoWorkflow, :mermaid, undo: false)
+  end
 end
