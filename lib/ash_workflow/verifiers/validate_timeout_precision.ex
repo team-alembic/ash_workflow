@@ -71,6 +71,11 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutPrecision do
        when not is_nil(fire_at),
        do: :ok
 
+  # A wall-clock `every` names an occurrence rather than a duration. Two
+  # occurrences of the same daily time are a day apart, which clears every
+  # scheduler's floor, so there is nothing here to be too short.
+  defp validate(_step, :every, %{at: at}, _scheduler, _floor_ms) when not is_nil(at), do: :ok
+
   defp validate(step, kind, entity, {module, _opts}, floor_ms) do
     duration = duration(kind, entity)
 
