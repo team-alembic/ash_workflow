@@ -50,7 +50,10 @@ config :workflow_timeline, Oban,
 
 config :ash_oban, pro?: false
 
-config :ash, include_embedded_source_by_default?: false
+config :ash,
+  include_embedded_source_by_default?: false,
+  # Ash 3.33.11 requires a choice. Codepoints is what SQL data layers count.
+  default_string_length_count: :codepoints
 
 config :spark,
   formatter: [
