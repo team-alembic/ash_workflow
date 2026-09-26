@@ -88,7 +88,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
     end
 
     defp generate(igniter, workflow_module) do
-      if AshWorkflow in Spark.extensions(workflow_module) do
+      if AshWorkflow.Info.workflow?(workflow_module) do
         do_generate(igniter, workflow_module)
       else
         Igniter.add_issue(

@@ -372,6 +372,14 @@ All generation follows a **generate-if-missing** pattern: if you've already defi
 
 Workflows are started through your own create action — AshWorkflow does not generate one. A newly created record enters the initial step implicitly, because `state_entered_at` defaults on create.
 
+## Diagrams
+
+`mix ash_workflow.diagram MyApp.Candidate` prints a Mermaid state diagram of a
+workflow, drawn from the DSL. It shows step kinds, timeouts with their
+deadlines, route conditions, policies and the moves undo can rewind.
+`--format json` gives the same graph as data, for a client that draws it
+itself. See [Diagrams](documentation/topics/diagrams.md).
+
 ## Demos
 
 Runnable applications live in [`demos/`](https://github.com/team-alembic/ash_workflow/tree/main/demos), each with its own test suite

@@ -13,6 +13,18 @@ defmodule AshWorkflow.Info do
   alias Spark.Dsl.Extension
 
   @doc """
+  Returns `true` if the module is an Ash resource that uses the `AshWorkflow`
+  extension. Any other term, including a module that does not exist, gives
+  `false`.
+  """
+  @spec workflow?(term()) :: boolean()
+  def workflow?(module) when is_atom(module) do
+    Spark.Dsl.is?(module, Ash.Resource) and AshWorkflow in Spark.extensions(module)
+  end
+
+  def workflow?(_other), do: false
+
+  @doc """
   Returns all workflow step entities for a resource.
 
   Accepts either a compiled resource module or an in-progress DSL state, so

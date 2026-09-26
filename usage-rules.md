@@ -508,6 +508,25 @@ AshWorkflow generates these automatically — do NOT define them yourself:
 - **Domain**: The resource must belong to an Ash domain.
 - **Data layer**: Typically `AshPostgres.DataLayer`.
 
+## Diagrams
+
+Draw a workflow from its DSL. Do not hand-draw a diagram that can drift from
+the code:
+
+```elixir
+AshWorkflow.Charts.mermaid_state_diagram(MyApp.Candidate)
+AshWorkflow.Charts.render(MyApp.Candidate, :json)
+```
+
+```bash
+mix ash_workflow.diagram MyApp.Candidate
+mix ash_workflow.diagram --format json --output priv/diagrams
+```
+
+- For a workflow diagram, prefer `AshWorkflow.Charts`. It reads the DSL, so it shows step kinds, deadlines, route conditions, step notes and undo moves. `AshStateMachine.Charts` draws the generated state machine itself.
+- `undo: false` and `notes: false` (`--no-undo`, `--no-notes`) make a smaller chart.
+- A new format is a module that implements `AshWorkflow.Charts.Backend`. Pass the module to `AshWorkflow.Charts.render/3` in place of a format name.
+
 ## Common Patterns
 
 ### Loopback / Revision Cycles
