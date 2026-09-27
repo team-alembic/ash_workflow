@@ -297,6 +297,29 @@ defmodule AshWorkflow.Scheduler do
   @spec due_at(Work.t(), Ash.Resource.record()) :: DateTime.t() | nil
   def due_at(%Work{deadline: nil}, _record), do: nil
 
+  # A wall-clock `every` is next due at the first occurrence after its last
+  # fire, or after the record entered the step when it has never fired. The
+  # zone comes off the record, so a record naming a zone the time zone
+  # database does not know has no computable deadline and arms nothing.
+  def due_at(%Work{deadline: %{field: field, wall_clock: wall_clock}}, record) do
+    from = Map.get(record, field) || Map.get(record, :state_entered_at)
+
+    case from do
+      nil ->
+        nil
+
+      %Ash.NotLoaded{} ->
+        nil
+
+      from ->
+        AshWorkflow.WallClock.next_occurrence(
+          wall_clock,
+          AshWorkflow.WallClock.time_zone_for(wall_clock, record),
+          as_datetime(from)
+        )
+    end
+  end
+
   def due_at(%Work{deadline: %{field: field, fire_after: fire_after}}, record) do
     case Map.get(record, field) do
       nil -> nil

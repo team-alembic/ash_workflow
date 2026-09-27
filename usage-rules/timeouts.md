@@ -159,6 +159,69 @@ step :awaiting_response do
 end
 ```
 
+### Firing at a wall-clock time with `at`
+
+`interval` measures from the last fire, so `interval {1, :days}` drifts to whatever time the record entered the step. A daily digest usually has to go out at a fixed local time instead. `at` names that time, and `time_zone` places it:
+
+```elixir
+every :daily_digest do
+  at ~T[09:00:00]
+  on [:mon, :tue, :wed, :thu, :fri]
+  time_zone :candidate_time_zone
+  action :send_digest
+end
+```
+
+One of `at` and `interval` is required. `on` defaults to every day. `time_zone` is required alongside `at`, and takes either an attribute name on the record, as above, or a literal such as `"Australia/Sydney"`.
+
+An attribute is the case a global cron cannot express: two records sitting in the same step fire at 09:00 in their own zones, which are two different instants. The generated Oban trigger reads the zone out of each row.
+
+`time_zone` takes three things:
+
+- a literal string, `time_zone "Australia/Sydney"`, checked against the time zone database at compile time
+- an attribute on the record, `time_zone :candidate_time_zone`
+- an expression calculation, which is how a record reads its zone off a related one:
+
+```elixir
+calculate :candidate_time_zone, :string, expr(candidate.time_zone)
+```
+
+A calculation must be expression-based. The zone is read from the trigger's filter, which the data layer evaluates, and a module calculation runs in Elixir after the read. `AshWorkflow.Verifiers.ValidateEvery` rejects one, the same way `AshWorkflow.Verifiers.ValidateTimeoutFields` rejects a module calculation named as a timeout's `field`.
+
+The first fire is the first occurrence after the record entered the step, so a record entering at 09:30 on Monday waits until Tuesday. Firing writes the same `last_fired_field` column an `interval` `every` writes, which is what stops two polls in one morning sending two digests. `until` still applies, and is still measured against `state_entered_at`.
+
+A missed occurrence fires late rather than being skipped. If nothing polled at 09:00, the digest goes out whenever polling resumes that local day, once, no matter how many occurrences were missed.
+
+Across a daylight saving change, a local time that was skipped still fires that day, at the instant the clock jumped to. A local time that happens twice fires on the first of the two instants. See `AshWorkflow.WallClock`.
+
+### Striding with `interval` and `at` together
+
+`on` says which days are occurrences. An `interval` alongside `at` says how many of them to skip, so a fortnightly digest is both:
+
+```elixir
+every :fortnightly_digest do
+  interval {14, :days}
+  at ~T[09:00:00]
+  on [:mon]
+  time_zone :candidate_time_zone
+  action :send_digest
+end
+```
+
+That fires 09:00 on a Monday, fourteen local days after the last fire. An interval beside an `at` must be given in `:days` — a stride shorter than a day cannot land on the same wall-clock time twice running, so `AshWorkflow.Verifiers.ValidateEvery` rejects the other units.
+
+The stride counts local dates rather than elapsed duration, which is what keeps it exact. Firing at 09:00 writes the last-fired column microseconds after 09:00, so `last_fire + 14 days` falls just after the occurrence exactly fourteen days later, and a duration comparison would skip it and wait another week.
+
+A record that has never fired has no last fire to measure from, so the first firing lands one whole stride after `state_entered_at`.
+
+`at` needs a time zone database. Configure one in the host application:
+
+```elixir
+config :elixir, :time_zone_database, Tz.TimeZoneDatabase
+```
+
+`at` also needs a SQL data layer under `AshWorkflow.Scheduler.Oban`, because the occurrence is computed per row with `AT TIME ZONE`. `AshWorkflow.Scheduler.Precise` computes it in Elixir instead and works on any data layer.
+
 ### Durations are constants
 
 `fire_after` and `until` take literal duration tuples, never expressions. A

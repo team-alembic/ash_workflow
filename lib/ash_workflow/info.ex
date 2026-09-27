@@ -367,10 +367,12 @@ defmodule AshWorkflow.Info do
     the workflow has a `nil` `:to` and a non-`nil` `:action`. A `fire_at`
     timeout names the field holding its deadline, so it has a `nil`
     `:fire_after` and a `nil` `:field`.
-  * `:everys` — one entry per `every`, as `%{name:, interval:, action:,
-    until:, retry:}`. Always measures against `state_entered_at` and never has
-    a target, since firing never leaves the step. `:until` is `nil` unless the
-    `every` bounds its firing.
+  * `:everys` — one entry per `every`, as `%{name:, interval:, at:, on:,
+    time_zone:, action:, until:, retry:}`. Never has a target, since firing
+    never leaves the step. An `every` that measures a duration has an
+    `:interval` and a `nil` `:at`; one that fires at a wall-clock time has an
+    `:at`, an `:on` and a `:time_zone`, and a `nil` `:interval`. `:until` is
+    `nil` unless the `every` bounds its firing.
 
   ## Example
 
@@ -396,7 +398,7 @@ defmodule AshWorkflow.Info do
       #=>       %{name: :expire, to: :expired, fire_after: nil, fire_at: :offer_expires_at, field: nil, action: nil, retry: nil}
       #=>     ],
       #=>     everys: [
-      #=>       %{name: :chase, interval: {3, :days}, action: :send_reminder, until: nil, retry: nil}
+      #=>       %{name: :chase, interval: {3, :days}, at: nil, on: nil, time_zone: nil, action: :send_reminder, until: nil, retry: nil}
       #=>     ]
       #=>   },
       #=>   ...
@@ -464,6 +466,9 @@ defmodule AshWorkflow.Info do
     %{
       name: every.name,
       interval: every.interval,
+      at: every.at,
+      on: every.on,
+      time_zone: every.time_zone,
       action: every.action,
       until: every.until,
       retry: every.retry

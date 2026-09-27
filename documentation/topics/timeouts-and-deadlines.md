@@ -112,6 +112,109 @@ The two share nothing at runtime. `give_up` is exactly the transition timeout de
 
 `until` bounds wall-clock time, not a count of firings. A workflow that wants to say "at most 4 reminders" rather than "for at most 8 days" needs a firing counter, which is a different feature. Nothing here tracks how many times an `every` has fired, only when it started. See `documentation/design/every-until.md` for the alternatives considered, including why the bound is not measured against a per-record anchor of its own the way a timeout's `field` can be.
 
+### Firing at a wall-clock time with `at`
+
+`interval` measures from the last fire. That makes `interval {1, :days}` fire a day after whatever time the record happened to enter the step, and the drift compounds with polling lag. A daily digest is not that. It goes out at 09:00, and 09:00 means 09:00 where the recipient is.
+
+`at` names the local time and `time_zone` places it:
+
+```elixir
+every :daily_digest do
+  at ~T[09:00:00]
+  on [:mon, :tue, :wed, :thu, :fri]
+  time_zone :candidate_time_zone
+  action :send_digest
+end
+```
+
+One of `at` and `interval` is required — `AshWorkflow.Verifiers.ValidateEvery` rejects an `every` declaring neither. `on` defaults to every day. `time_zone` is required alongside `at`, and takes either an attribute name on the record or a literal such as `"Australia/Sydney"`.
+
+The attribute form is the reason this exists. A global cron can send every digest at one instant; it cannot send each record's digest at 09:00 in that record's own zone. Two records sitting in the same step, one in `Australia/Sydney` and one in `Europe/London`, are due nine to eleven hours apart depending on the season, and the trigger has to read the zone out of the row to know that.
+
+#### Where the zone comes from
+
+`time_zone` takes three things. A literal string is the static case, and `AshWorkflow.Verifiers.ValidateEvery` checks it against the time zone database at compile time:
+
+```elixir
+time_zone "Australia/Sydney"
+```
+
+An attribute names a column on the record itself. And a calculation covers everything else, including a zone that lives on a related record:
+
+```elixir
+calculate :candidate_time_zone, :string, expr(candidate.time_zone)
+```
+
+The calculation does the reaching, so `time_zone` stays one name and the trigger's filter stays one expression. There is no separate path syntax for relationships, because an expression calculation already is one, and it composes: a zone that falls back through two relationships, or defaults to a company-wide setting, is the same one option pointing at a longer expression.
+
+A calculation must be expression-based. The zone is read from the trigger's `where` clause, which the data layer evaluates, and a module calculation is computed in Elixir after the read — it would raise when the scheduler builds its query. `AshWorkflow.Verifiers.ValidateEvery` rejects one at compile time, the same check and the same reasoning `AshWorkflow.Verifiers.ValidateTimeoutFields` applies to a timeout's `field`.
+
+Whatever the zone comes from, the Elixir-side readers have to load it. `AshWorkflow.Scheduler.Precise.Timeline` adds a calculated `time_zone` to the loads it arms timers from, and `AshWorkflow.Calculations.PendingDeadlines` adds it to `load/3`. Without that, `Map.get/2` would find nothing on an unloaded calculation and the record would silently arm no timer.
+
+`at` changes when the `every` is due. It changes nothing else. Firing still writes the same `last_fired_field` column an `interval` `every` writes, which is what stops two polls in one morning sending two digests. The first fire is still the first occurrence after `state_entered_at`, so a record entering the step at 09:30 on Monday waits until Tuesday rather than firing on entry. `until` still bounds the firing, still measured against `state_entered_at`.
+
+#### Striding with `interval` and `at` together
+
+`on` says which days carry an occurrence. It cannot say *every other* Monday, because it is a set of weekdays and a fortnight is not. An `interval` alongside `at` says that instead:
+
+```elixir
+every :fortnightly_digest do
+  interval {14, :days}
+  at ~T[09:00:00]
+  on [:mon]
+  time_zone :candidate_time_zone
+  action :send_digest
+end
+```
+
+The two compose rather than compete. `at` and `on` lay down the occurrence grid, and the interval is a stride across it: the next fire is the first occurrence at least fourteen local days after the last one. An occurrence that falls inside the stride is skipped, and a stride that lands on a day `on` does not list waits for one that is listed, so `interval {10, :days}` with `on [:mon]` is still always a Monday.
+
+The stride counts local dates, not elapsed duration, and `AshWorkflow.Verifiers.ValidateEvery` rejects any unit but `:days` beside an `at`. Both follow from the same fact. Firing at 09:00 writes the last-fired column microseconds *after* 09:00, so `last_fire + 14 days` falls just after the occurrence exactly fourteen days later. A duration comparison would find that occurrence ineligible by those microseconds and slip the digest to the following week, every time. `Date.diff/2` between two local dates has no such margin, and no daylight saving exposure either, since a date has no offset to shift. A stride shorter than a day cannot be expressed as a date difference at all, which is the same reason `:hours` is rejected: a 36-hour stride never lands on 09:00 twice running, so it could only mean something other than what it says.
+
+A record that has never fired has no last fire to measure the stride from, so it is measured from `state_entered_at` and the first firing lands one whole stride after entry. That is what an `interval` `every` does today.
+
+#### What the trigger actually asks
+
+Under `AshWorkflow.Scheduler.Oban` the `where` clause is a Postgres fragment, because the zone is per row:
+
+```sql
+EXTRACT(ISODOW FROM (now() AT TIME ZONE candidate_time_zone))::int = ANY('{1,2,3,4,5}')
+AND (now() AT TIME ZONE candidate_time_zone)::time >= '09:00:00'::time
+AND coalesce(waiting_digest_last_fired_at, state_entered_at)
+    < ((date_trunc('day', now() AT TIME ZONE candidate_time_zone) + '09:00:00'::time)
+       AT TIME ZONE candidate_time_zone)
+```
+
+That is "today is a listed day, 09:00 has passed locally, and the last fire is older than today's 09:00". So `at` needs a SQL data layer under the Oban scheduler. A stride adds one more clause, comparing two dates in the row's own zone:
+
+```sql
+AND ((now() AT TIME ZONE candidate_time_zone)::date
+     - ((coalesce(waiting_digest_last_fired_at, state_entered_at) AT TIME ZONE 'UTC')
+        AT TIME ZONE candidate_time_zone)::date) >= 14
+```
+
+`state_entered_at` and the last-fired column are stored as naive timestamps holding UTC, so both clauses lift them to an instant with an explicit `AT TIME ZONE 'UTC'` before shifting into the row's zone. Leaving that implicit would resolve against the session's `TimeZone` setting, which nothing here controls.
+
+`AshWorkflow.Scheduler.Precise` asks the opposite question — *when* is this record next due — and computes it in Elixir through `AshWorkflow.WallClock`, so it needs no data layer support and runs on Ets. `AshWorkflow.Calculations.PendingDeadlines` reads the same function, so `pending_deadlines` reports the next occurrence rather than a last-fire-plus-duration.
+
+#### Missed occurrences and daylight saving
+
+A missed occurrence fires late rather than being skipped. If nothing polled at 09:00, the digest goes out whenever polling resumes, once, no matter how many occurrences were missed — the comparison is against the most recent occurrence, not against each one in turn. Once the local day rolls over, that occurrence is gone and the next one is tomorrow's.
+
+Across a daylight saving change, a local time that was skipped still fires that day, at the instant the clock jumped to. `~T[02:30:00]` on a day whose clocks go 02:00 to 03:00 fires at 03:00 local. Skipping the day instead would mean a digest silently missing one day a year, in whichever zones the rows happen to name. A local time that happens twice fires on the first of its two instants; the second is then no longer after the last fire, so nothing fires again.
+
+Both rules are pinned in `AshWorkflow.WallClock` and its tests.
+
+#### Configuring a time zone database
+
+Elixir ships no IANA database, so `at` needs one configured in the host application:
+
+```elixir
+config :elixir, :time_zone_database, Tz.TimeZoneDatabase
+```
+
+`AshWorkflow.Verifiers.ValidateEvery` checks a literal `time_zone` against that database at compile time. An attribute `time_zone` cannot be checked until runtime: a record holding a zone the database does not know has no computable occurrence, so it arms nothing and reports no pending deadline rather than raising.
+
 ## Data-driven deadlines with `field`
 
 By default, timeouts measure duration against `state_entered_at` — when the workflow entered its current state. The `field` option lets you measure against any datetime attribute or calculation instead:
