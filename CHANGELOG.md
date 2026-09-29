@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - A workflow resource with a `transition_log` now gets a public `has_many :transitions` relationship to the log resource, added by `AshWorkflow.Transformers.AddRelationships`. Its `destination_attribute` is the log's `belongs_to` foreign key back to the workflow. A user-defined `:transitions` relationship takes precedence.
+- `AshWorkflow.Info.transition_target/3` returns the step a transition would move a record to, without running it. It returns `{:ok, step}`, `{:ok, nil}` when the record's current step does not declare the transition or no route matches, and `{:error, error}` when a route's `when` fails to evaluate. It raises `ArgumentError` for a name no step declares. A route that reads accepted input sees it only when the transition runs, so the function takes an optional input map and applies the keys the transition accepts. It resolves routes through the same code as `AshWorkflow.Changes.ConditionalTransition`, which now shares its route matching and input merge with it, so a preview and the transition cannot disagree.
+- A generated `:transition_targets` calculation maps each transition of a record's current step to the step it would land in, such as `%{advance: :compliance, reject: :rejected}`. A transition maps to `nil` when no route matches or a route fails to evaluate, and a record at an automatic or terminal step gets an empty map. The map is not filtered by authorization. The calculation loads every field its routes reference, including fields on related resources. `AshWorkflow.Transformers.AddCalculations` adds it with `add_new_calculation`, so a user-defined `:transition_targets` takes precedence.
 
 ### Security
 

@@ -330,7 +330,7 @@ From the workflow DSL, the extension generates:
 | **Indexes** | One `(state, field)` composite per deadline field | `AshPostgres.DataLayer` resources; opt out with `generate_indexes? false` |
 | **Policies** | Step-level `policy` declarations | Ash policies on generated transition actions |
 | **Code interface** | One function per transition name | Ash code interface definitions |
-| **Calculations** | `:steps`, `:current_step`, `:available_actions`, `:pending_deadlines` | Workflow introspection |
+| **Calculations** | `:steps`, `:current_step`, `:available_actions`, `:transition_targets`, `:pending_deadlines` | Workflow introspection |
 | **Attributes** | `state_entered_at`, plus one last-fired column per `every` | Added if not already defined |
 
 The initial state is the step with `initial true`, or the first non-terminal step by declaration order if none is marked. Declaration order is easy to trip over, so mark the step when the reading order is not the running order:

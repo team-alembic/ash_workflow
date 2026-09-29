@@ -287,6 +287,24 @@ end
 
 AshWorkflow will inject its state-transition changes into the action you define. You only need to define actions that accept additional attributes — transitions with no extra input don't need a user-defined action.
 
+### Previewing Where a Transition Goes
+
+To find out which step a transition would move a record to without running it, call `AshWorkflow.Info.transition_target/3` or load the generated `:transition_targets` calculation. Do not re-implement route matching: both resolve routes through the same code the generated action runs.
+
+```elixir
+AshWorkflow.Info.transition_target(record, :advance)
+#=> {:ok, :compliance}
+
+record = Ash.load!(record, :transition_targets)
+record.transition_targets
+#=> %{advance: :compliance, reject: :rejected}
+```
+
+- `transition_target/3` returns `{:ok, step}`, `{:ok, nil}` when the current step does not declare the transition or no route matches, and `{:error, error}` when a route fails to evaluate. It raises `ArgumentError` for a name no step declares.
+- It loads nothing. A route that reads an unloaded relationship sees `nil`, in the preview and in the real action alike.
+- A route that reads accepted input sees it only when the transition runs. Pass the input as the third argument to preview a particular call.
+- `:transition_targets` has one key per transition of the current step, is not filtered by authorization, and maps a transition to `nil` when no route matches or a route fails to evaluate. It is an empty map at an automatic or terminal step. It loads the fields its routes reference.
+
 ## Timeouts
 
 Timeouts fire when a workflow stays in a step longer than a specified duration. They are checked via Oban cron jobs.
@@ -346,7 +364,7 @@ workflow do
 end
 ```
 
-- `state_attribute` (optional): the attribute the current step is stored in. Defaults to `:state`. AshWorkflow passes it down to `ash_state_machine`, so set it here rather than in a `state_machine` block. Everything generated follows it: the `match` expression on each unit of scheduled work, the `current_step`, `available_actions` and `pending_deadlines` calculations, and the recommended indexes. `state_entered_at` keeps its name either way.
+- `state_attribute` (optional): the attribute the current step is stored in. Defaults to `:state`. AshWorkflow passes it down to `ash_state_machine`, so set it here rather than in a `state_machine` block. Everything generated follows it: the `match` expression on each unit of scheduled work, the `current_step`, `available_actions`, `transition_targets` and `pending_deadlines` calculations, and the recommended indexes. `state_entered_at` keeps its name either way.
 - `queue` (optional): the Oban queue for all generated triggers. Defaults to `:workflow`. The queue MUST exist in your Oban config or Oban raises at boot.
 - `check_interval` (optional): Oban cron expression controlling how often every trigger on the resource polls — automatic steps and timeouts alike. Defaults to `"* * * * *"` (every minute). Individual timeouts can override it.
 

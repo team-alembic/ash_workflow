@@ -10,6 +10,7 @@ defmodule AshWorkflow.Info do
   alias AshWorkflow.Entities.Transition
   alias AshWorkflow.Entities.TransitionLog
   alias AshWorkflow.Entities.Undo
+  alias AshWorkflow.Routing
   alias Spark.Dsl.Extension
 
   @doc """
@@ -115,6 +116,67 @@ defmodule AshWorkflow.Info do
 
   defp declared_routes({step_name, %Transition{routes: routes}}) do
     Enum.map(routes, &%{from: step_name, to: &1.to, when: &1.when})
+  end
+
+  @doc """
+  Returns the step the transition `transition_name` would move `record` to,
+  without running it.
+
+  Resolves routes the same way the generated transition action does
+  (`AshWorkflow.Changes.ConditionalTransition`): in declaration order, first
+  match wins, scoped to the step the record is in. A static transition such as
+  `transition :reject, to: :rejected` resolves to its `to`.
+
+  Returns:
+
+  * `{:ok, step}` — the step the transition would land in
+  * `{:ok, nil}` — the transition would not move the record: the record's
+    current step does not declare it, or no route matches. The action itself
+    fails in both cases
+  * `{:error, error}` — a route's `when` failed to evaluate. The action fails
+    on the same error
+
+  Raises `ArgumentError` when no step declares `transition_name`.
+
+  Routes are evaluated against `record` as given, and this function loads
+  nothing. A `when` that reads an unloaded relationship or calculation sees
+  `nil`. The generated action does the same with the record it is called on,
+  so load what the routes read before previewing or running the transition.
+  The `:transition_targets` calculation loads it for you.
+
+  A route that reads accepted input sees that input only when the transition
+  runs. To preview a particular call, pass its input as `input`. Only the keys
+  the transition accepts are applied, the same as the action applies them.
+  Keys are attribute names as atoms, and values are used as given, not cast.
+
+  ## Example
+
+      AshWorkflow.Info.transition_target(candidate, :advance)
+      #=> {:ok, :compliance}
+
+      AshWorkflow.Info.transition_target(document, :decide, %{decision: :approve})
+      #=> {:ok, :approved}
+  """
+  @spec transition_target(Ash.Resource.record(), atom(), map()) ::
+          {:ok, atom() | nil} | {:error, term()}
+  def transition_target(%resource{} = record, transition_name, input \\ %{}) do
+    case transition(resource, transition_name) do
+      nil ->
+        raise ArgumentError,
+              "#{inspect(resource)} declares no transition named #{inspect(transition_name)}"
+
+      transition ->
+        record = Routing.with_input(record, input, transition.accepted_inputs)
+
+        transition.routes
+        |> Routing.guarded_routes(state_attribute(resource))
+        |> Routing.match(record, resource)
+        |> case do
+          {:ok, step} -> {:ok, step}
+          :no_match -> {:ok, nil}
+          {:error, _route, error} -> {:error, error}
+        end
+    end
   end
 
   @doc """

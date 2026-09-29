@@ -6,6 +6,8 @@ defmodule AshWorkflow.Transformers.AddCalculations do
   calculations take precedence):
 
   - `:available_actions` — list of user-facing transition names for the current step
+  - `:transition_targets` — map of each transition of the current step to the
+    step it would move the record to
   - `:steps` — list of all workflow step names (static, same for every record)
   - `:current_step` — the name of the workflow's current step
   - `:pending_deadlines` — the timeouts ahead of the record in its current step
@@ -40,6 +42,15 @@ defmodule AshWorkflow.Transformers.AddCalculations do
              :available_actions,
              {:array, :atom},
              {AshWorkflow.Calculations.AvailableActions,
+              steps_map: steps_map, state_attribute: state_attribute},
+             public?: true
+           ),
+         {:ok, dsl} <-
+           Builder.add_new_calculation(
+             dsl,
+             :transition_targets,
+             :map,
+             {AshWorkflow.Calculations.TransitionTargets,
               steps_map: steps_map, state_attribute: state_attribute},
              public?: true
            ),
