@@ -77,6 +77,109 @@ defmodule AshWorkflow.InfoTest do
     end
   end
 
+  describe "transition_target/3" do
+    alias AshWorkflowTest.TransitionTargetWorkflow
+
+    test "resolves each route of a conditional transition" do
+      {:ok, direct} = TransitionTargetWorkflow.create(%{title: "direct", track: :direct})
+      {:ok, standard} = TransitionTargetWorkflow.create(%{title: "standard", track: :standard})
+
+      assert Info.transition_target(direct, :advance) == {:ok, :activated}
+      assert Info.transition_target(standard, :advance) == {:ok, :compliance}
+    end
+
+    test "returns nil when no route matches" do
+      {:ok, untracked} = TransitionTargetWorkflow.create(%{title: "untracked"})
+
+      assert Info.transition_target(untracked, :advance) == {:ok, nil}
+    end
+
+    test "returns nil for a transition the current step does not declare" do
+      {:ok, rejected} = TransitionTargetWorkflow.create(%{title: "rejected", track: :direct})
+      {:ok, rejected} = Ash.update(rejected, action: :reject)
+
+      assert Info.transition_target(rejected, :advance) == {:ok, nil}
+    end
+
+    test "resolves an unconditional transition to its target" do
+      {:ok, screening} = TransitionTargetWorkflow.create(%{title: "screening"})
+
+      assert Info.transition_target(screening, :reject) == {:ok, :rejected}
+    end
+
+    test "resolves a shared name from the step the record is in" do
+      {:ok, record} = TransitionTargetWorkflow.create(%{title: "standard", track: :standard})
+      {:ok, in_compliance} = Ash.update(record, action: :advance)
+
+      assert Info.transition_target(in_compliance, :advance) == {:ok, :activated}
+    end
+
+    test "returns the error when a route fails to evaluate" do
+      {:ok, screening} = TransitionTargetWorkflow.create(%{title: "screening"})
+
+      assert {:error, %Ash.Error.Changes.InvalidAttribute{message: "unreadable"}} =
+               Info.transition_target(screening, :escalate)
+
+      assert {:error, _error} = Ash.update(screening, action: :escalate)
+    end
+
+    test "reads a related field that is loaded" do
+      {:ok, sponsor} = AshWorkflowTest.Reviewer.create(%{name: "Direct"})
+
+      {:ok, sponsored} =
+        TransitionTargetWorkflow.create(%{title: "sponsored", sponsor_id: sponsor.id})
+
+      sponsored = Ash.load!(sponsored, :sponsor)
+
+      assert Info.transition_target(sponsored, :refer) == {:ok, :activated}
+    end
+
+    test "reads an unloaded related field as nil, as the transition does" do
+      {:ok, sponsor} = AshWorkflowTest.Reviewer.create(%{name: "Direct"})
+
+      {:ok, unloaded} =
+        TransitionTargetWorkflow.create(%{title: "sponsored", sponsor_id: sponsor.id})
+
+      assert Info.transition_target(unloaded, :refer) == {:ok, nil}
+      assert {:error, _no_match} = Ash.update(unloaded, action: :refer)
+    end
+
+    test "applies accepted input the same way the action does" do
+      {:ok, document} = AshWorkflowTest.AcceptedRouteWorkflow.create(%{title: "undecided"})
+
+      assert Info.transition_target(document, :decide) == {:ok, nil}
+      assert Info.transition_target(document, :decide, %{decision: :approve}) == {:ok, :approved}
+      assert Info.transition_target(document, :decide, %{decision: :reject}) == {:ok, :rejected}
+    end
+
+    test "ignores input the transition does not accept" do
+      {:ok, document} = AshWorkflowTest.AcceptedRouteWorkflow.create(%{title: "unsigned"})
+
+      assert Info.transition_target(document, :sign_off, %{signed_by: "someone"}) ==
+               {:ok, :review}
+    end
+
+    test "agrees with the transition it previews" do
+      {:ok, direct} = TransitionTargetWorkflow.create(%{title: "direct", track: :direct})
+      {:ok, standard} = TransitionTargetWorkflow.create(%{title: "standard", track: :standard})
+
+      for record <- [direct, standard] do
+        {:ok, previewed} = Info.transition_target(record, :advance)
+        {:ok, advanced} = Ash.update(record, action: :advance)
+
+        assert advanced.state == previewed
+      end
+    end
+
+    test "raises for a name no step declares" do
+      {:ok, screening} = TransitionTargetWorkflow.create(%{title: "screening"})
+
+      assert_raise ArgumentError, ~r/declares no transition named :nonexistent/, fn ->
+        Info.transition_target(screening, :nonexistent)
+      end
+    end
+  end
+
   describe "available_actions/2" do
     test "returns transition names for manual steps" do
       assert Info.available_actions(AshWorkflowTest.ApprovalWorkflow, :review) == [

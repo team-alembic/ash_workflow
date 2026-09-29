@@ -239,6 +239,29 @@ doc.available_actions
 
 This is useful for building dynamic UIs that only show relevant buttons, or for agents and APIs that need to discover available actions without hard-coding workflow knowledge.
 
+### Where a transition would go
+
+A conditional transition picks its target when it runs. To label a button by where it leads, load `:transition_targets`. It maps each transition of the current step to the step it would move the record to:
+
+```elixir
+doc = Ash.load!(doc, :transition_targets)
+doc.transition_targets
+#=> %{approve: :approved, reject: :rejected}
+```
+
+For one transition, call `AshWorkflow.Info.transition_target/3`:
+
+```elixir
+AshWorkflow.Info.transition_target(doc, :approve)
+#=> {:ok, :approved}
+```
+
+Both resolve routes through the same code the generated action runs, so the preview and the transition agree. A transition maps to `nil` when no route matches. `transition_target/3` also returns `{:ok, nil}` for a transition the current step does not declare, and `{:error, error}` when a route fails to evaluate.
+
+A preview has no action input. A route that reads an accepted attribute sees the value on the record, not the one a caller is about to submit. To preview a particular call, pass the input: `AshWorkflow.Info.transition_target(doc, :decide, %{decision: :approve})`.
+
+`transition_target/3` loads nothing, and a route that reads an unloaded relationship sees `nil`. The generated action reads the record it is called on the same way. The calculation loads the fields its routes reference.
+
 ## Next steps
 
 - See [Automatic vs Manual Steps](documentation/topics/automatic-vs-manual-steps.md) for a deeper dive

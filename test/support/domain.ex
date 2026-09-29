@@ -35,6 +35,7 @@ defmodule AshWorkflowTest.Domain do
     resource AshWorkflowTest.WaitStateWorkflow
     resource AshWorkflowTest.NonPrimaryReadWorkflow
     resource AshWorkflowTest.FailingRouteWorkflow
+    resource AshWorkflowTest.TransitionTargetWorkflow
     resource AshWorkflowTest.ErrorPathWorkflow
     resource AshWorkflowTest.CheckIntervalWorkflow
     resource AshWorkflowTest.AuthorizedErrorPathWorkflow

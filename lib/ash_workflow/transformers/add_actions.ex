@@ -51,10 +51,10 @@ defmodule AshWorkflow.Transformers.AddActions do
   alias AshWorkflow.Changes.RecordEvent
   alias AshWorkflow.Changes.UndoTransition
   alias AshWorkflow.Entities.Every
-  alias AshWorkflow.Entities.Route
   alias AshWorkflow.Entities.Step
   alias AshWorkflow.Entities.Transition
   alias AshWorkflow.Info
+  alias AshWorkflow.Routing
   alias Spark.Dsl.Transformer
   alias Spark.Error.DslError
 
@@ -146,7 +146,12 @@ defmodule AshWorkflow.Transformers.AddActions do
   end
 
   defp add_transition_action(dsl, name, step_transitions, state_attribute) do
-    routes = build_routes_for_transition(step_transitions, state_attribute)
+    routes =
+      dsl
+      |> Info.transition(name)
+      |> Map.fetch!(:routes)
+      |> Routing.guarded_routes(state_attribute)
+
     is_conditional = length(routes) > 1 or has_explicit_routes?(step_transitions)
 
     accepted =
@@ -238,28 +243,6 @@ defmodule AshWorkflow.Transformers.AddActions do
   @doc "Name of the generated undo action."
   @spec undo_action_name() :: atom()
   def undo_action_name, do: :undo
-
-  defp build_routes_for_transition(step_transitions, state_attribute) do
-    require Ash.Expr
-
-    Enum.flat_map(step_transitions, fn {step_name, transition} ->
-      build_step_routes(step_name, transition, state_attribute)
-    end)
-  end
-
-  defp build_step_routes(step_name, transition, state_attribute) do
-    require Ash.Expr
-
-    in_step = Ash.Expr.expr(^Ash.Expr.ref(state_attribute) == ^step_name)
-
-    if Transition.conditional?(transition) do
-      Enum.map(transition.routes, fn route ->
-        %{route | when: Ash.Expr.expr(^in_step and ^route.when)}
-      end)
-    else
-      [%Route{to: transition.to, when: in_step}]
-    end
-  end
 
   defp has_explicit_routes?(step_transitions) do
     Enum.any?(step_transitions, fn {_step, t} ->

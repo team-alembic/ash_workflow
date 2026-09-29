@@ -35,11 +35,15 @@ defmodule AshWorkflow.Changes.ConditionalTransition do
   supplying input, so the only thing its routes could branch on is what its
   action computed.
 
+  `AshWorkflow.Info.transition_target/3` resolves routes the same way, so it
+  previews where this change would send a record.
+
   Used internally by the AddActions transformer for transitions with conditional
   routes. Not intended for direct use.
   """
   use Ash.Resource.Change
 
+  alias AshWorkflow.Routing
   alias AshWorkflow.Telemetry
 
   @impl true
@@ -50,8 +54,10 @@ defmodule AshWorkflow.Changes.ConditionalTransition do
     resource = changeset.resource
 
     Ash.Changeset.before_action(changeset, fn changeset ->
-      record = record_with_accepted_input(changeset, accept)
-      result = find_matching_target(routes, record, resource)
+      # Only accepted input, not every pending change: a route must still see
+      # the state before this call when one of the action's changes writes to it.
+      record = Routing.with_input(changeset.data, changeset.attributes, accept)
+      result = Routing.match(routes, record, resource)
 
       emit_route_evaluation(result, changeset, routes, transition_name)
 
@@ -66,7 +72,7 @@ defmodule AshWorkflow.Changes.ConditionalTransition do
               "(route to :#{route.to}): #{inspect(error)}"
           )
 
-        nil ->
+        :no_match ->
           Ash.Changeset.add_error(
             changeset,
             "No matching condition for transition :#{transition_name}. " <>
@@ -92,31 +98,4 @@ defmodule AshWorkflow.Changes.ConditionalTransition do
 
   defp matched_route({:ok, target}), do: target
   defp matched_route(_no_match), do: nil
-
-  # The record as loaded, plus the attributes this transition accepts. Applying
-  # every pending change instead would let a route read what the action's own
-  # changes just wrote, which collapses "the state before this call" into "the
-  # state after it" — and a two-signature sign-off, where one action records
-  # the current approver and the routes ask whether anyone approved earlier,
-  # stops working.
-  defp record_with_accepted_input(changeset, accept) do
-    accepted = Map.take(changeset.attributes, accept)
-
-    Map.merge(changeset.data, accepted)
-  end
-
-  defp find_matching_target(routes, record, resource) do
-    Enum.reduce_while(routes, nil, fn route, _acc ->
-      case Ash.Expr.eval(route.when, record: record, resource: resource) do
-        {:ok, true} ->
-          {:halt, {:ok, route.to}}
-
-        {:ok, _} ->
-          {:cont, nil}
-
-        {:error, error} ->
-          {:halt, {:error, route, error}}
-      end
-    end)
-  end
 end

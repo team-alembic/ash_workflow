@@ -157,6 +157,15 @@ defmodule AshWorkflow.StateAttributeTest do
       assert record.available_actions == [:approve, :triage]
     end
 
+    test "transition_targets reads the renamed attribute" do
+      record =
+        create!(%{priority: :high})
+        |> Ash.update!(action: :process_intake)
+        |> Ash.load!(:transition_targets)
+
+      assert record.transition_targets == %{approve: :published, triage: :published}
+    end
+
     test "pending_deadlines reads the renamed attribute" do
       record = create!() |> Ash.update!(action: :process_intake) |> Ash.load!(:pending_deadlines)
 
