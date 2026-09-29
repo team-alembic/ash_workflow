@@ -26,6 +26,10 @@ defmodule AshWorkflow.Transformers.AddActions do
     the interval and is logged the same way a timeout's firing is, without
     touching `state_entered_at`.
 
+  - **Stale-record refusal** — each transition action and the undo action
+    also get `AshWorkflow.Changes.RefuseStaleTransition`, which filters the
+    update on the values the transition decided from.
+
   - **Undo action** — when the workflow declares an `undo` block, a single
     `:undo` update action that rewinds the record to the state before its most
     recent undoable state change. Not atomic: the target is only known after
@@ -49,6 +53,7 @@ defmodule AshWorkflow.Transformers.AddActions do
   alias AshWorkflow.Changes.ConditionalOnSuccess
   alias AshWorkflow.Changes.ConditionalTransition
   alias AshWorkflow.Changes.RecordEvent
+  alias AshWorkflow.Changes.RefuseStaleTransition
   alias AshWorkflow.Changes.UndoTransition
   alias AshWorkflow.Entities.Every
   alias AshWorkflow.Entities.Step
@@ -182,7 +187,9 @@ defmodule AshWorkflow.Transformers.AddActions do
         change: {RecordEvent, triggered_by: :manual, transition_name: name}
       )
 
-    changes = transition_changes ++ [record_event_change]
+    changes =
+      [refuse_stale_change(transition_name: name, accept: accepted)] ++
+        transition_changes ++ [record_event_change]
 
     actions = Transformer.get_entities(dsl, [:actions])
 
@@ -225,6 +232,7 @@ defmodule AshWorkflow.Transformers.AddActions do
           accept: [],
           require_atomic?: false,
           changes: [
+            refuse_stale_change([]),
             Transformer.build_entity!(ResourceDsl, [:actions, :update], :change,
               change: {UndoTransition, []}
             ),
@@ -238,6 +246,14 @@ defmodule AshWorkflow.Transformers.AddActions do
     else
       dsl
     end
+  end
+
+  # Manual transitions and `undo` only. Automatic step actions, timeouts and
+  # error paths run on a record the scheduler has just read.
+  defp refuse_stale_change(opts) do
+    Transformer.build_entity!(ResourceDsl, [:actions, :update], :change,
+      change: {RefuseStaleTransition, opts}
+    )
   end
 
   @doc "Name of the generated undo action."

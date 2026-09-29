@@ -262,6 +262,42 @@ A preview has no action input. A route that reads an accepted attribute sees the
 
 `transition_target/3` loads nothing, and a route that reads an unloaded relationship sees `nil`. The generated action reads the record it is called on the same way. The calculation loads the fields its routes reference.
 
+## Stale transitions are refused
+
+A transition decides from the record it is called on. It checks the step the record is in and picks a route from the record's attributes, then writes by primary key. A page loaded before someone else moved the record hands the action an old copy. Without a check, the transition would run from a step the record has already left, or take a route from values that have since changed. Of two reviewers who click at once, the second would overwrite the first.
+
+AshWorkflow refuses such a transition. Take this step:
+
+```elixir
+workflow do
+  step :screening do
+    transition :advance do
+      route :interviewing, when: expr(is_nil(path_type) or path_type == :agency)
+      route :compliance, when: expr(path_type == :family)
+    end
+
+    transition :reject, to: :rejected
+  end
+end
+```
+
+Each transition writes only if the row still holds what the transition decided from: the state, and every attribute of the resource that a route of the loaded step reads. Here that is `state` and `path_type`. A `nil` value must still be `nil`. When the row has moved on, the call fails with `Ash.Error.Changes.StaleRecord` and the row stays as it was. Reload the record and try again.
+
+```elixir
+{:error, %Ash.Error.Invalid{errors: errors}} = Ash.update(stale_doc, action: :advance)
+Enum.any?(errors, &match?(%Ash.Error.Changes.StaleRecord{}, &1))
+#=> true
+```
+
+The struct a transition was called on is itself stale once the transition writes. Run the next transition on the struct it returned.
+
+A change to an attribute no route reads does not make the copy stale. An attribute the call supplies through `accept` is not checked, since the route reads the supplied value.
+
+- **Covered:** every manual transition, including one merged into an action you define, and `undo`. Undo from an old copy would otherwise reverse a transition the caller never saw.
+- **Not covered:** automatic step actions, timeouts and error paths. The scheduler reads the record just before it runs them. A refusal on an automatic step would also count as the step failing and send the record down `on_error`.
+- **Not checked:** a route reading a relationship, such as `sponsor.name`, or a calculation or aggregate. They are not values on the row. Copy the value onto the resource if a route must be protected against it changing.
+- **Data layers:** the check needs a data layer that can filter an update, such as `AshPostgres.DataLayer` or `Ash.DataLayer.Ets`. On one that cannot, such as `Ash.DataLayer.Simple`, nothing is checked. It works on both the atomic and the non-atomic update path, so `require_atomic?` does not change it.
+
 ## Next steps
 
 - See [Automatic vs Manual Steps](documentation/topics/automatic-vs-manual-steps.md) for a deeper dive

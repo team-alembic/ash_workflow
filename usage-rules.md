@@ -305,6 +305,18 @@ record.transition_targets
 - A route that reads accepted input sees it only when the transition runs. Pass the input as the third argument to preview a particular call.
 - `:transition_targets` has one key per transition of the current step, is not filtered by authorization, and maps a transition to `nil` when no route matches or a route fails to evaluate. It is an empty map at an automatic or terminal step. It loads the fields its routes reference.
 
+### Refusing Stale Transitions
+
+A transition decides from the record it is called on, then writes by primary key. AshWorkflow refuses a transition built from an old copy, so it cannot run from a step the record has left or route on values that have since changed. This is always on. Do not hand-write `Ash.Changeset.filter` changes on transition actions for this.
+
+- Every manual transition and `undo` filter their update on the state attribute and on each attribute of the resource that a route of the loaded step reads in its `when`. A `nil` value is matched with `is_nil/1`.
+- A stale update fails with `Ash.Error.Changes.StaleRecord`, inside `Ash.Error.Invalid`, and the row is left as it was. This holds on the atomic and non-atomic update paths. Reload the record and try again.
+- Do not run a second transition on the struct you ran the first on. Use the struct the first returned, or reload.
+- A change to an attribute no route reads does not make a copy stale. An attribute the call supplies through `accept` is not pinned.
+- Not pinned: references through a relationship (`sponsor.name`), calculations and aggregates. Copy the value onto the resource if a route must be protected against it changing.
+- Not covered: automatic step actions, timeouts and error paths. The scheduler reads the record just before it runs them.
+- On a data layer that cannot filter an update, such as `Ash.DataLayer.Simple`, nothing is pinned.
+
 ## Timeouts
 
 Timeouts fire when a workflow stays in a step longer than a specified duration. They are checked via Oban cron jobs.

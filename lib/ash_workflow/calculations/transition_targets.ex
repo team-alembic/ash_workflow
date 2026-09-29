@@ -21,6 +21,7 @@ defmodule AshWorkflow.Calculations.TransitionTargets do
   use Ash.Resource.Calculation
 
   alias AshWorkflow.Info
+  alias AshWorkflow.Routing
 
   @impl true
   @spec load(Ash.Query.t(), Keyword.t(), map()) :: list()
@@ -32,7 +33,8 @@ defmodule AshWorkflow.Calculations.TransitionTargets do
       |> List.flatten()
       |> Enum.uniq()
       |> Enum.flat_map(&Info.transition(query.resource, &1).routes)
-      |> Enum.flat_map(&referenced_fields(&1.when, query.resource))
+      |> Enum.flat_map(&Routing.references(&1.when, query.resource))
+      |> Enum.map(&load_path/1)
       |> Enum.uniq()
 
     [Keyword.fetch!(opts, :state_attribute) | references]
@@ -55,15 +57,6 @@ defmodule AshWorkflow.Calculations.TransitionTargets do
     case Info.transition_target(record, transition_name) do
       {:ok, step} -> step
       {:error, _error} -> nil
-    end
-  end
-
-  defp referenced_fields(nil, _resource), do: []
-
-  defp referenced_fields(condition, resource) do
-    case Ash.Filter.hydrate_refs(condition, %{resource: resource}) do
-      {:ok, hydrated} -> hydrated |> Ash.Filter.list_refs() |> Enum.map(&load_path/1)
-      {:error, _error} -> []
     end
   end
 

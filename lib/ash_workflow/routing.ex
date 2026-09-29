@@ -3,7 +3,8 @@ defmodule AshWorkflow.Routing do
   # Resolves the step a manual transition moves a record to. The generated
   # transition action (`AshWorkflow.Changes.ConditionalTransition`) and
   # `AshWorkflow.Info.transition_target/3` both go through here, so a preview
-  # and the real transition cannot disagree.
+  # and the real transition cannot disagree. `references/2` is shared by the
+  # `:transition_targets` loads and `AshWorkflow.Changes.RefuseStaleTransition`.
 
   alias AshWorkflow.Entities.Route
 
@@ -50,5 +51,21 @@ defmodule AshWorkflow.Routing do
         {:error, error} -> {:halt, {:error, route, error}}
       end
     end)
+  end
+
+  @doc """
+  The fields a route condition references, as hydrated `Ash.Query.Ref`s.
+
+  A reference through a relationship keeps its `relationship_path`. A
+  condition that does not hydrate references nothing.
+  """
+  @spec references(Ash.Expr.t() | nil, Ash.Resource.t()) :: [struct()]
+  def references(nil, _resource), do: []
+
+  def references(condition, resource) do
+    case Ash.Filter.hydrate_refs(condition, %{resource: resource}) do
+      {:ok, hydrated} -> Ash.Filter.list_refs(hydrated)
+      {:error, _error} -> []
+    end
   end
 end
