@@ -393,7 +393,11 @@ Configures actor capture on the transition log.
 |------|------|---------|------|
 | [`name`](#workflow-transition_log-belongs_to_actor-name){: #workflow-transition_log-belongs_to_actor-name .spark-required} | `atom` |  | The attribute on the transition log resource that stores the actor, e.g. :user. |
 | [`destination`](#workflow-transition_log-belongs_to_actor-destination){: #workflow-transition_log-belongs_to_actor-destination .spark-required} | `atom` |  | The actor resource module, e.g. MyApp.Accounts.User. |
+### Options
 
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`skip_other_actors?`](#workflow-transition_log-belongs_to_actor-skip_other_actors?){: #workflow-transition_log-belongs_to_actor-skip_other_actors? } | `boolean` | `false` | Whether an actor that is not a `destination` struct is recorded as `nil`. Set it when actions also run as another actor, such as a plain-struct system actor, which has no primary key to record. When `false`, such an actor raises when its log row is written, and an actor of another resource has its primary key written to the foreign key. With `same_actor?` undo, a skipped actor is refused with `:no_actor`. |
 
 
 

@@ -120,6 +120,7 @@ defmodule AshWorkflow.Undo do
   defp check_actor(%UndoConfig{same_actor?: true}, resource, row, actor) do
     log = TransitionLogHelpers.fetch_log!(resource)
     recorded = recorded_actor_id(log, row)
+    actor = TransitionLog.recorded_actor(log, actor)
 
     cond do
       is_nil(recorded) or is_nil(actor) ->

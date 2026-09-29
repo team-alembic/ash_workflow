@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`skip_other_actors?` on `belongs_to_actor`.** `belongs_to_actor :user, MyApp.Accounts.User, skip_other_actors?: true` records `nil` for an actor that is not a `MyApp.Accounts.User` struct, as it does for a `nil` actor. Without it, an action run as a plain-struct actor that is not an Ash resource, such as a system actor for an AshOban run or an internal side effect, raises `Ash.Error.Unknown` when `AshWorkflow.Changes.RecordEvent` writes its log row, and an actor of another resource has its primary key written to the actor foreign key. Both stay the default. With `undo same_actor? true`, `AshWorkflow.Undo` refuses a skipped caller with `:no_actor`. `AshWorkflow.Entities.TransitionLog.recorded_actor/2` returns the actor a log row records.
 - A workflow resource with a `transition_log` now gets a public `has_many :transitions` relationship to the log resource, added by `AshWorkflow.Transformers.AddRelationships`. Its `destination_attribute` is the log's `belongs_to` foreign key back to the workflow. A user-defined `:transitions` relationship takes precedence.
 
 ### Security

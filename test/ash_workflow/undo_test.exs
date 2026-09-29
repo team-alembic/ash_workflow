@@ -4,6 +4,8 @@ defmodule AshWorkflow.UndoTest do
   alias AshWorkflow.Errors.UndoNotPermitted
   alias AshWorkflowTest.Reviewer
   alias AshWorkflowTest.SameActorUndoWorkflow
+  alias AshWorkflowTest.SkipOtherActorsWorkflow
+  alias AshWorkflowTest.SystemActor
   alias AshWorkflowTest.UndoWorkflow
 
   defp rows(history) do
@@ -240,6 +242,27 @@ defmodule AshWorkflow.UndoTest do
 
       assert {:error, error} = Ash.update(record, action: :undo, actor: reviewer("ana"))
       assert %UndoNotPermitted{reason: :no_actor} = hd(error.errors)
+    end
+
+    test "with skip_other_actors?, refuses a caller that is not the destination" do
+      actor = reviewer("ana")
+      {:ok, record} = SkipOtherActorsWorkflow.create(%{title: "test"})
+      record = Ash.update!(record, action: :approve, actor: actor)
+
+      assert {:error, error} =
+               Ash.update(record, action: :undo, actor: %SystemActor{reason: "cleanup"})
+
+      assert %UndoNotPermitted{reason: :no_actor} = hd(error.errors)
+    end
+
+    test "with skip_other_actors?, permits the destination actor who made the transition" do
+      actor = reviewer("ana")
+      {:ok, record} = SkipOtherActorsWorkflow.create(%{title: "test"})
+      record = Ash.update!(record, action: :approve, actor: actor)
+
+      undone = Ash.update!(record, action: :undo, actor: actor)
+
+      assert undone.state == :review
     end
   end
 
