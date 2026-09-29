@@ -37,4 +37,25 @@ defmodule AshWorkflow.Entities.TransitionLog do
   @spec belongs_to_actor(t()) :: AshWorkflow.Entities.BelongsToActor.t() | nil
   def belongs_to_actor(%__MODULE__{belongs_to_actor: [actor | _]}), do: actor
   def belongs_to_actor(%__MODULE__{}), do: nil
+
+  @doc """
+  Returns the actor a log row records for `actor`, or `nil` if it records none.
+
+  It is `nil` when no actor capture is configured, when `actor` is `nil`, and
+  when `skip_other_actors?` is set and `actor` is not a `destination` struct.
+  """
+  @spec recorded_actor(t(), term()) :: term()
+  def recorded_actor(%__MODULE__{} = log, actor) do
+    case belongs_to_actor(log) do
+      nil ->
+        nil
+
+      %{skip_other_actors?: true, destination: destination}
+      when not is_struct(actor, destination) ->
+        nil
+
+      _belongs_to_actor ->
+        actor
+    end
+  end
 end

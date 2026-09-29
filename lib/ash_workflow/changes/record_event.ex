@@ -286,16 +286,16 @@ defmodule AshWorkflow.Changes.RecordEvent do
 
     attrs = put_undoes(attrs, log, undone_row)
 
-    case {TransitionLog.belongs_to_actor(log), context.actor} do
-      {nil, _actor} ->
+    case TransitionLog.recorded_actor(log, context.actor) do
+      nil ->
         attrs
 
-      {_belongs_to_actor, nil} ->
-        attrs
-
-      {belongs_to_actor, actor} ->
+      actor ->
         actor_foreign_key =
-          TransitionLogHelpers.foreign_key_for_relationship!(log.resource, belongs_to_actor.name)
+          TransitionLogHelpers.foreign_key_for_relationship!(
+            log.resource,
+            TransitionLog.belongs_to_actor(log).name
+          )
 
         Map.put(attrs, actor_foreign_key, TransitionLogHelpers.primary_key_value!(actor))
     end

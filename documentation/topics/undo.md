@@ -139,7 +139,7 @@ Everything else is refused, with a reason on
 | `:no_history` | The record has not transitioned yet. |
 | `:window_expired` | The transition is older than `within`. |
 | `:different_actor` | `same_actor?` is set and the actor differs. |
-| `:no_actor` | `same_actor?` is set and either side has no actor. |
+| `:no_actor` | `same_actor?` is set and either side has no actor. With `skip_other_actors?`, a caller that is not a `destination` struct has no actor. |
 | `:undo_not_enabled` | The workflow has no `undo` block. |
 
 ### Automatic steps close the window

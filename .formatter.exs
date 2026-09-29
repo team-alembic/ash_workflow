@@ -27,6 +27,7 @@ spark_locals_without_parens = [
   same_actor?: 1,
   scheduler: 1,
   self_scheduled?: 1,
+  skip_other_actors?: 1,
   state_attribute: 1,
   step: 1,
   step: 2,

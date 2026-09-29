@@ -3,6 +3,8 @@ defmodule AshWorkflow.TransitionLogTest do
 
   alias AshWorkflowTest.LoggedWorkflow
   alias AshWorkflowTest.Reviewer
+  alias AshWorkflowTest.SkipOtherActorsWorkflow
+  alias AshWorkflowTest.SystemActor
 
   defp names(history) do
     Enum.map(history, &{&1.from_state, &1.to_state, &1.transition_name, &1.triggered_by})
@@ -201,6 +203,69 @@ defmodule AshWorkflow.TransitionLogTest do
 
       assert [row] = LoggedWorkflow.history(record)
       assert row.user_id == nil
+    end
+
+    test "raises for an actor that is not a resource" do
+      {:ok, record} = LoggedWorkflow.create(%{title: "test"})
+      {:ok, record} = Ash.update(record, action: :process_intake)
+
+      error =
+        assert_raise Ash.Error.Unknown, fn ->
+          Ash.update(record, action: :approve, actor: %SystemActor{reason: "cleanup"})
+        end
+
+      assert Exception.message(error) =~ "`AshWorkflowTest.SystemActor` is not a Spark DSL module"
+    end
+
+    test "records the primary key of an actor of another resource" do
+      {:ok, other_resource_actor} = LoggedWorkflow.create(%{title: "not a reviewer"})
+      {:ok, record} = LoggedWorkflow.create(%{title: "test"})
+
+      {:ok, record} =
+        Ash.update(record, action: :process_intake, actor: other_resource_actor)
+
+      assert [_initial, row] = LoggedWorkflow.history(record)
+      assert row.user_id == other_resource_actor.id
+    end
+  end
+
+  describe "belongs_to_actor with skip_other_actors?" do
+    test "records nil for an actor that is not a resource" do
+      system_actor = %SystemActor{reason: "cleanup"}
+
+      record =
+        SkipOtherActorsWorkflow
+        |> Ash.Changeset.for_create(:create, %{title: "test"}, actor: system_actor)
+        |> Ash.create!()
+
+      {:ok, record} = Ash.update(record, action: :approve, actor: system_actor)
+
+      assert record.state == :done
+
+      assert [{nil, :review, nil}, {:review, :done, nil}] =
+               record
+               |> SkipOtherActorsWorkflow.history()
+               |> Enum.map(&{&1.from_state, &1.to_state, &1.user_id})
+    end
+
+    test "records nil for an actor of another resource" do
+      {:ok, other_resource_actor} = SkipOtherActorsWorkflow.create(%{title: "not a reviewer"})
+      {:ok, record} = SkipOtherActorsWorkflow.create(%{title: "test"})
+
+      {:ok, record} = Ash.update(record, action: :approve, actor: other_resource_actor)
+
+      assert [_initial, row] = SkipOtherActorsWorkflow.history(record)
+      assert row.user_id == nil
+    end
+
+    test "still records a destination actor" do
+      {:ok, reviewer} = Reviewer.create(%{name: "Alice"})
+      {:ok, record} = SkipOtherActorsWorkflow.create(%{title: "test"})
+
+      {:ok, record} = Ash.update(record, action: :approve, actor: reviewer)
+
+      assert [_initial, row] = SkipOtherActorsWorkflow.history(record)
+      assert row.user_id == reviewer.id
     end
   end
 end

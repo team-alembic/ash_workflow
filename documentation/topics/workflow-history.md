@@ -71,6 +71,20 @@ guessed, because the library has no way to know your actor type — your log
 resource needs a matching `belongs_to :user, MyApp.Accounts.User` relationship
 for this to validate.
 
+The actor must be a record with a single-attribute primary key. An action run
+as a plain-struct actor, such as a system actor for scheduled or internal work,
+fails when it writes its log row. An actor of another resource has its primary
+key written to the foreign key. Set `skip_other_actors?` to record `nil` for
+any actor that is not a `destination` struct:
+
+```elixir
+transition_log MyApp.TicketTransition do
+  belongs_to_actor :user, MyApp.Accounts.User, skip_other_actors?: true
+end
+```
+
+A row written by a skipped actor looks the same as a row written with no actor.
+
 ## Schema
 
 The generator creates a resource with these attributes:
