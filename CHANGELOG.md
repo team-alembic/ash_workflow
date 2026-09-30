@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-09-30
+
+### Upgrading from 0.7.x
+
+- **A stale transition now fails.** Code that transitions a struct it loaded before the record changed — a second transition on the struct the first was called on, or a record held in a LiveView assign since mount — gets `Ash.Error.Changes.StaleRecord` instead of a silent, wrong write. Reload the record first, or use the struct the previous transition returned, and handle `StaleRecord` wherever a user can act on a page that has gone stale (show "this changed, refresh"). There is no option to turn it off. On a data layer that cannot filter an update, such as `Ash.DataLayer.Simple`, nothing changes.
+- **`entered_current_state_at` is gone.** Read `state_entered_at` instead, or filter `history/1` for rows where `from_state != to_state`.
+- New: `skip_other_actors?` on `belongs_to_actor`, for anyone who hand-rolled actor capture around a non-Ash-resource actor.
+- New: `AshWorkflow.Info.transition_target/3` and the generated `:transition_targets` calculation, for anyone who copied route matching to preview where a transition goes.
+
 ### Breaking
 
 - **A transition built from a stale record now fails with `Ash.Error.Changes.StaleRecord` instead of writing.** A transition decides from the record it is called on whether it is legal and where it goes, then writes by primary key. Before this, a transition from a stale copy ran from a step the record had left, routed on values that had since changed, or overwrote a concurrent transition, all silently. Now every manual transition and `undo` filter their update on the state attribute and on each attribute of the resource that a route of the loaded step reads, with `is_nil/1` for a `nil` value. The row is left as it was, on the atomic and non-atomic update paths. There is no option to turn this off. Code that transitions a struct it loaded before the record changed, such as a second transition on the struct the first was called on, must reload it first. An attribute the call supplies through `accept` is not pinned, and neither are references through a relationship, calculations or aggregates. A change to an attribute no route reads does not make a copy stale. Automatic step actions, timeouts and error paths are not covered, since the scheduler reads the record just before it runs them. On a data layer that cannot filter an update, such as `Ash.DataLayer.Simple`, nothing is pinned and transitions behave as before. `AshWorkflow.Changes.RefuseStaleTransition` does the filtering. It shares the route reference collection of `:transition_targets` through `AshWorkflow.Routing.references/2`.
