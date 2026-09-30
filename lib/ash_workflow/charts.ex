@@ -45,18 +45,21 @@ defmodule AshWorkflow.Charts do
     end
   end
 
-  def backend!(other), do: custom_backend!(other)
+  def backend!(other), do: unknown_format!(other)
 
   defp custom_backend!(module) do
-    if is_atom(module) and Code.ensure_loaded?(module) and
-         function_exported?(module, :render, 2) and
+    if Code.ensure_loaded?(module) and function_exported?(module, :render, 2) and
          function_exported?(module, :file_extension, 0) do
       module
     else
-      raise ArgumentError,
-            "unknown chart format #{inspect(module)}. Use one of #{inspect(formats())}, " <>
-              "or a module that implements AshWorkflow.Charts.Backend"
+      unknown_format!(module)
     end
+  end
+
+  defp unknown_format!(format) do
+    raise ArgumentError,
+          "unknown chart format #{inspect(format)}. Use one of #{inspect(formats())}, " <>
+            "or a module that implements AshWorkflow.Charts.Backend"
   end
 
   @doc """
