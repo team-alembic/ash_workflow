@@ -18,6 +18,10 @@ defmodule AshWorkflowTest.Reviewer do
     create :create do
       accept [:name]
     end
+
+    update :rename do
+      accept [:name]
+    end
   end
 
   attributes do

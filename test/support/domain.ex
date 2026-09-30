@@ -47,6 +47,9 @@ defmodule AshWorkflowTest.Domain do
     resource AshWorkflowTest.Reviewer
     resource AshWorkflowTest.UndoWorkflow
     resource AshWorkflowTest.UndoLog
+    resource AshWorkflowTest.StaleTransitionWorkflow
+    resource AshWorkflowTest.StaleTransitionLog
+    resource AshWorkflowTest.SimpleDataLayerWorkflow
     resource AshWorkflowTest.SameActorUndoWorkflow
     resource AshWorkflowTest.SameActorUndoLog
     resource AshWorkflowTest.SkipOtherActorsWorkflow
