@@ -17,8 +17,10 @@ defmodule AshWorkflow.Charts.Mermaid do
     edge to `[*]`.
   * An edge label starts with a symbol for its kind: `⚙` for `on_success`,
     `✖` for `on_error`, `⏱` for a timeout and `↶` for undo. A transition has
-    no symbol. A conditional route adds `when` and its condition, and the
-    fallback route of a conditional `on_success` adds `otherwise`.
+    no symbol. A timeout edge gives the timeout's name and then its deadline,
+    as in `⏱ escalation after 7 days`. A conditional route adds `when` and its
+    condition, and the fallback route of a conditional `on_success` adds
+    `otherwise`.
   * A step's notes go in a `note right of` block: `policy:`, `retry:`, `⏱` for
     a timeout that runs an action, and `↻` for an `every`.
 
@@ -99,6 +101,9 @@ defmodule AshWorkflow.Charts.Mermaid do
       "\n"
     ]
   end
+
+  defp edge_text(%{kind: :timeout} = edge),
+    do: edge_symbol(:timeout) <> "#{edge.name} " <> edge.label
 
   defp edge_text(%{fallback?: true} = edge),
     do: edge_symbol(edge.kind) <> edge.label <> " otherwise"

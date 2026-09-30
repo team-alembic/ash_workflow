@@ -29,7 +29,7 @@ defmodule AshWorkflow.Charts.MermaidTest do
                step_review --> step_process: advance
                step_review --> step_rejected: reject_at_review
                step_review --> step_on_hold: hold
-               step_review --> step_escalated: ⏱ after 7 days
+               step_review --> step_escalated: ⏱ escalation after 7 days
                step_on_hold --> step_review: reactivate
                step_on_hold --> step_rejected: reject_on_hold
                step_process --> step_final_review: ⚙ run_processing
@@ -80,7 +80,7 @@ defmodule AshWorkflow.Charts.MermaidTest do
     fire_at = render(AshWorkflowTest.FireAtWorkflow)
 
     assert fire_at =~ "    step_calculated : ⏳ wait state\n"
-    assert fire_at =~ "    step_waiting --> step_reviewed: ⏱ at next_check_at\n"
+    assert fire_at =~ "    step_waiting --> step_reviewed: ⏱ review at next_check_at\n"
 
     assert render(AshWorkflowTest.EveryUntilWorkflow) =~
              "        ↻ every 1 hour for 3 hours: send_reminder\n"

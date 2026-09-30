@@ -94,7 +94,7 @@ stateDiagram-v2
 | Terminal step | An edge to the end marker |
 | `on_success` | `⚙` and the step's action |
 | `on_error` | `✖ on_error` |
-| Timeout with `transition_to` | `⏱` and its deadline: `after 7 days`, `3 days after last_session_date` or `at next_check_at` |
+| Timeout with `transition_to` | `⏱`, the timeout's name and its deadline: `auto_escalate after 4 hours`, `grace_expired 14 days after invoice_due_at` or `go_live at publish_at` |
 | Conditional route | The transition or action, `when`, and the route's condition. The last `on_success` route without a `when` reads `otherwise` |
 | Undo | `↶ undo`, from the step undo leaves to the step it restores, with the window when `within` is set: `↶ undo within 1 hour` |
 | Step policy | `policy:` in the step's note, from the check's own `describe/1` |
@@ -168,7 +168,7 @@ stateDiagram-v2
     step_triaging --> step_triage_failed: ✖ on_error
     step_investigating --> step_escalated: escalate
     step_investigating --> step_resolved: resolve
-    step_investigating --> step_escalated: ⏱ after 4 hours
+    step_investigating --> step_escalated: ⏱ auto_escalate after 4 hours
     step_escalated --> step_resolved: resolve
     step_escalated --> step_investigating: ↶ undo within 1 hour
     step_resolved --> step_investigating: ↶ undo within 1 hour
@@ -238,10 +238,10 @@ stateDiagram-v2
     step_active --> step_grace_period: payment_failed
     step_grace_period --> step_active: payment_received
     step_grace_period --> step_cancelled: cancel
-    step_grace_period --> step_suspended: ⏱ 14 days after invoice_due_at
+    step_grace_period --> step_suspended: ⏱ grace_expired 14 days after invoice_due_at
     step_suspended --> step_active: payment_received
     step_suspended --> step_cancelled: cancel
-    step_suspended --> step_cancelled: ⏱ after 30 days
+    step_suspended --> step_cancelled: ⏱ give_up after 30 days
     note right of step_grace_period
         ↻ every 3 days: send_dunning_email
     end note
@@ -286,7 +286,7 @@ stateDiagram-v2
     step_live : ✋ manual
     state "archived" as step_archived
     [*] --> step_scheduled
-    step_scheduled --> step_live: ⏱ at publish_at
+    step_scheduled --> step_live: ⏱ go_live at publish_at
     step_live --> step_archived: archive
     step_archived --> [*]
 ```
