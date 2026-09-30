@@ -96,7 +96,7 @@ stateDiagram-v2
 | `on_error` | `✖ on_error` |
 | Timeout with `transition_to` | `⏱` and its deadline: `after 7 days`, `3 days after last_session_date` or `at next_check_at` |
 | Conditional route | The transition or action, `when`, and the route's condition. The last `on_success` route without a `when` reads `otherwise` |
-| Undo | `↶ undo`, from the step undo leaves to the step it restores |
+| Undo | `↶ undo`, from the step undo leaves to the step it restores, with the window when `within` is set: `↶ undo within 1 hour` |
 | Step policy | `policy:` in the step's note, from the check's own `describe/1` |
 | `retry` with more than one attempt | `retry:` in the step's note, or after the action in a timeout's or `every`'s note |
 | Timeout that runs an action | `⏱`, its deadline and its action in the step's note |
@@ -170,9 +170,9 @@ stateDiagram-v2
     step_investigating --> step_resolved: resolve
     step_investigating --> step_escalated: ⏱ after 4 hours
     step_escalated --> step_resolved: resolve
-    step_escalated --> step_investigating: ↶ undo
-    step_resolved --> step_investigating: ↶ undo
-    step_resolved --> step_escalated: ↶ undo
+    step_escalated --> step_investigating: ↶ undo within 1 hour
+    step_resolved --> step_investigating: ↶ undo within 1 hour
+    step_resolved --> step_escalated: ↶ undo within 1 hour
     note right of step_investigating
         ↻ every 1 hour: send_status_update
     end note

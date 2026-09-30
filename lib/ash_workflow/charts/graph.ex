@@ -173,8 +173,14 @@ defmodule AshWorkflow.Charts.Graph do
   defp undo_edges(_resource, false), do: []
 
   defp undo_edges(resource, true) do
-    for {from, to} <- Info.undoable_edges(resource) do
-      %Edge{from: to, to: from, kind: :undo, name: :undo, label: "undo"}
+    case Info.undo(resource) do
+      nil ->
+        []
+
+      undo ->
+        for {from, to} <- Info.undoable_edges(resource) do
+          %Edge{from: to, to: from, kind: :undo, name: :undo, label: Format.undo(undo)}
+        end
     end
   end
 end

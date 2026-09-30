@@ -5,6 +5,7 @@ defmodule AshWorkflow.Charts.FormatTest do
 
   alias AshWorkflow.Charts.Format
   alias AshWorkflow.Entities.Retry
+  alias AshWorkflow.Entities.Undo
 
   describe "duration/1" do
     @units [seconds: "second", minutes: "minute", hours: "hour", days: "day"]
@@ -51,6 +52,16 @@ defmodule AshWorkflow.Charts.FormatTest do
     test "with until" do
       assert Format.every(%{interval: {1, :hours}, until: {3, :hours}}) ==
                "every 1 hour for 3 hours"
+    end
+  end
+
+  describe "undo/1" do
+    test "without a window" do
+      assert Format.undo(%Undo{within: nil}) == "undo"
+    end
+
+    test "with a window" do
+      assert Format.undo(%Undo{within: {1, :hours}}) == "undo within 1 hour"
     end
   end
 

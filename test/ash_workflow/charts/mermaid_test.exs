@@ -69,10 +69,10 @@ defmodule AshWorkflow.Charts.MermaidTest do
       |> Enum.filter(&String.contains?(&1, "↶ undo"))
 
     assert undo_lines == [
-             "    step_publish --> step_review: ↶ undo",
-             "    step_deferred --> step_review: ↶ undo",
-             "    step_review --> step_deferred: ↶ undo",
-             "    step_publish --> step_deferred: ↶ undo"
+             "    step_publish --> step_review: ↶ undo within 1 hour",
+             "    step_deferred --> step_review: ↶ undo within 1 hour",
+             "    step_review --> step_deferred: ↶ undo within 1 hour",
+             "    step_publish --> step_deferred: ↶ undo within 1 hour"
            ]
   end
 

@@ -8,6 +8,7 @@ defmodule AshWorkflow.Charts.Format do
   """
 
   alias AshWorkflow.Entities.Retry
+  alias AshWorkflow.Entities.Undo
 
   @doc """
   A duration tuple as text, in the singular for one unit: `{1, :days}` is
@@ -42,6 +43,14 @@ defmodule AshWorkflow.Charts.Format do
 
   def every(%{interval: interval, until: until}),
     do: "every #{duration(interval)} for #{duration(until)}"
+
+  @doc """
+  The label of an undo edge, with the window when the `undo` block sets
+  `within`: "undo" or "undo within 1 hour".
+  """
+  @spec undo(Undo.t()) :: String.t()
+  def undo(%Undo{within: nil}), do: "undo"
+  def undo(%Undo{within: within}), do: "undo within #{duration(within)}"
 
   @doc """
   The retry policy of a step, or `nil` when the step makes one attempt only.

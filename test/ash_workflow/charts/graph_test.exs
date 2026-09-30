@@ -159,6 +159,16 @@ defmodule AshWorkflow.Charts.GraphTest do
       assert List.last(graph.edges).kind == :undo
     end
 
+    test "name the window that the undo block sets" do
+      graph = Graph.build(AshWorkflowTest.UndoWorkflow)
+
+      assert graph.edges
+             |> Enum.filter(&(&1.kind == :undo))
+             |> Enum.map(& &1.label)
+             |> Enum.uniq() ==
+               ["undo within 1 hour"]
+    end
+
     test "undo: false leaves them out" do
       graph = Graph.build(AshWorkflowTest.UndoWorkflow, undo: false)
 
