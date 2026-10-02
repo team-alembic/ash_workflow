@@ -49,7 +49,8 @@ defmodule AshWorkflow.Charts.D2 do
   This rule reads the edges, not the step's name. A step named `rejected`
   that a person chooses is green, because the workflow reaches it the same
   way as `approved`. The backend cannot know that one outcome is good and the
-  other is bad. `terminal_class/2` gives the class of one step.
+  other is bad. `AshWorkflow.Charts.Palette.terminal_class/2` gives the class of
+  one step.
 
   ## Layout
 
@@ -123,9 +124,9 @@ defmodule AshWorkflow.Charts.D2 do
 
   | Pair | Light theme | Dark theme |
   |---|---|---|
-  | Step label text on its fill | above 16:1 | above 8.7:1 |
+  | Step label text on its fill | above 16:1 | above 8.6:1 |
   | Edge label text on the background | 5.2:1 | 9.3:1 |
-  | Any stroke on the background | above 3.6:1 | above 6.5:1 |
+  | Any stroke on the background | above 3.6:1 | above 6.4:1 |
   """
 
   @behaviour AshWorkflow.Charts.Backend
@@ -133,45 +134,25 @@ defmodule AshWorkflow.Charts.D2 do
   alias AshWorkflow.Charts.D2.Binary
   alias AshWorkflow.Charts.Format
   alias AshWorkflow.Charts.Graph
+  alias AshWorkflow.Charts.Palette
 
   # One class per step kind, per terminal outcome and per edge kind. A shape
   # names its class, so the colours live in the block and nowhere else in the
-  # file. `default_classes/1` gives these, and `:classes` merges over them.
-  @default_classes [
-    automatic: [fill: "#E8F0FE", stroke: "#1A56DB", "border-radius": 4],
-    manual: [fill: "#FFF4E5", stroke: "#B7791F", "border-radius": 4],
-    wait_state: [fill: "#F3E8FF", stroke: "#6B46C1", "stroke-dash": 3, "border-radius": 4],
-    done: [fill: "#E6F4EA", stroke: "#1E7B34", "double-border": true],
-    failed: [fill: "#FDE8E8", stroke: "#C81E1E", "double-border": true],
-    expired: [fill: "#FEF3C7", stroke: "#B45309", "double-border": true],
-    end: [fill: "#F3F4F6", stroke: "#4B5563", "double-border": true],
-    on_success: [stroke: "#1A56DB", "stroke-width": 3],
-    on_error: [stroke: "#C81E1E"],
-    timeout: [stroke: "#B45309", "stroke-dash": 5],
-    undo: [stroke: "#6B7280", "stroke-dash": 2]
-  ]
-
-  # The same classes for a dark page: deep fills, light strokes and light text.
-  # Text on every fill is above 8.7:1, and every stroke on D2's dark background
-  # (#1E1E2E) is above 6.5:1, by the WCAG 2 formula.
-  @dark_classes [
-    automatic: [fill: "#1E3A8A", stroke: "#93C5FD", "font-color": "#F8FAFC", "border-radius": 4],
-    manual: [fill: "#78350F", stroke: "#FCD34D", "font-color": "#F8FAFC", "border-radius": 4],
-    wait_state: [
-      fill: "#4C1D95",
-      stroke: "#C4B5FD",
-      "font-color": "#F8FAFC",
-      "stroke-dash": 3,
-      "border-radius": 4
-    ],
-    done: [fill: "#14532D", stroke: "#86EFAC", "font-color": "#F8FAFC", "double-border": true],
-    failed: [fill: "#7F1D1D", stroke: "#FCA5A5", "font-color": "#F8FAFC", "double-border": true],
-    expired: [fill: "#78350F", stroke: "#FCD34D", "font-color": "#F8FAFC", "double-border": true],
-    end: [fill: "#1F2937", stroke: "#D1D5DB", "font-color": "#F8FAFC", "double-border": true],
-    on_success: [stroke: "#93C5FD", "stroke-width": 3],
-    on_error: [stroke: "#FCA5A5"],
-    timeout: [stroke: "#FCD34D", "stroke-dash": 5],
-    undo: [stroke: "#9CA3AF", "stroke-dash": 2]
+  # file. The colours come from `AshWorkflow.Charts.Palette`, and these are
+  # the D2 `style` keys that follow them in each class. `default_classes/1`
+  # gives both, and `:classes` merges over them.
+  @styles [
+    automatic: ["border-radius": 4],
+    manual: ["border-radius": 4],
+    wait_state: ["stroke-dash": 3, "border-radius": 4],
+    done: ["double-border": true],
+    failed: ["double-border": true],
+    expired: ["double-border": true],
+    end: ["double-border": true],
+    on_success: ["stroke-width": 3],
+    on_error: [],
+    timeout: ["stroke-dash": 5],
+    undo: ["stroke-dash": 2]
   ]
 
   # D2's theme IDs: 0 is "Neutral default", 200 is "Dark Mauve".
@@ -189,9 +170,15 @@ defmodule AshWorkflow.Charts.D2 do
   and `:theme` options.
   """
   @spec default_classes(:light | :dark) :: keyword(keyword())
-  def default_classes(theme \\ :light)
-  def default_classes(:light), do: @default_classes
-  def default_classes(:dark), do: @dark_classes
+  def default_classes(theme \\ :light) do
+    for {class, colours} <- Palette.colours(theme) do
+      {class, Enum.map(colours, &colour_style/1) ++ @styles[class]}
+    end
+  end
+
+  # A palette colour as a D2 `style` key: D2 calls the text colour `font-color`.
+  defp colour_style({:text, colour}), do: {:"font-color", colour}
+  defp colour_style(colour), do: colour
 
   @impl true
   def file_extension, do: "d2"
@@ -277,7 +264,7 @@ defmodule AshWorkflow.Charts.D2 do
   defp merge_class({class, style}, classes) do
     if not Keyword.has_key?(classes, class) do
       raise ArgumentError,
-            "unknown D2 class #{inspect(class)}. The classes are #{inspect(Keyword.keys(@default_classes))}"
+            "unknown D2 class #{inspect(class)}. The classes are #{inspect(Keyword.keys(@styles))}"
     end
 
     Keyword.update!(classes, class, &merge_style(&1, style))
@@ -353,33 +340,10 @@ defmodule AshWorkflow.Charts.D2 do
     Enum.join(["#{node.id}\n#{Format.kind_text(node.kind)}" | notes_label(node.notes)], "\n—\n")
   end
 
-  defp node_class(%{kind: :terminal} = node, graph), do: terminal_class(node.id, graph)
+  defp node_class(%{kind: :terminal} = node, graph),
+    do: node.id |> Palette.terminal_class(graph) |> Atom.to_string()
+
   defp node_class(node, _graph), do: Atom.to_string(node.kind)
-
-  @doc """
-  The class of a terminal step, from the kinds of the edges that reach it:
-  `"failed"` for `on_error` only, `"expired"` for timeouts only, `"done"` for
-  transitions and `on_success` only, and `"end"` for a mix or for no edge.
-
-  Undo edges leave a step and do not count. The rule reads the edges, not the
-  step's name, so a step a person chooses is `"done"` whatever it is called.
-  """
-  @spec terminal_class(atom(), Graph.t()) :: String.t()
-  def terminal_class(step, %Graph{} = graph) do
-    kinds =
-      graph.edges
-      |> Enum.filter(&(&1.to == step and &1.kind != :undo))
-      |> Enum.map(& &1.kind)
-      |> Enum.uniq()
-
-    cond do
-      kinds == [] -> "end"
-      kinds == [:on_error] -> "failed"
-      kinds == [:timeout] -> "expired"
-      Enum.all?(kinds, &(&1 in [:transition, :on_success])) -> "done"
-      true -> "end"
-    end
-  end
 
   defp start_line(%{initial?: true} = node), do: ["start -> ", step_key(node.id), "\n"]
   defp start_line(_node), do: []

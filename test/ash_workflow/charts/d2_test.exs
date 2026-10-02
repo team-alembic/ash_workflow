@@ -102,37 +102,6 @@ defmodule AshWorkflow.Charts.D2Test do
              ~S(step_z: "z\n—\npolicy: actor.role == :admin" {class: done})
   end
 
-  describe "terminal_class/2" do
-    test "reads the kinds of the edges that reach the step, and ignores undo" do
-      graph = Graph.build(AshWorkflowTest.FullPipeline)
-
-      assert D2.terminal_class(:done, graph) == "done"
-      assert D2.terminal_class(:intake_failed, graph) == "failed"
-      assert D2.terminal_class(:escalated, graph) == "expired"
-    end
-
-    test "gives done to a step a person chooses, whatever its name" do
-      graph = Graph.build(AshWorkflowTest.FullPipeline)
-
-      assert D2.terminal_class(:rejected, graph) == "done"
-    end
-
-    test "gives end to a mix of kinds and to a step nothing reaches" do
-      mixed = %Graph{
-        resource: Example,
-        nodes: [%Node{id: :a, kind: :automatic, initial?: true}, %Node{id: :z, kind: :terminal}],
-        edges: [
-          %Edge{from: :a, to: :z, kind: :on_error, name: :run, label: "on_error"},
-          %Edge{from: :a, to: :z, kind: :timeout, name: :late, label: "after 1 day"},
-          %Edge{from: :z, to: :a, kind: :undo, name: :undo, label: "undo"}
-        ]
-      }
-
-      assert D2.terminal_class(:z, mixed) == "end"
-      assert D2.terminal_class(:nowhere, mixed) == "end"
-    end
-  end
-
   test "shows a timeout's own retry policy in its note" do
     assert render(AshWorkflowTest.RetryWorkflow) =~
              ~S(\n—\n⏱ after 2 days: send_nudge, retry: 2 attempts, 30 seconds apart")
