@@ -549,6 +549,7 @@ AshWorkflow.Charts.mermaid_state_diagram(MyApp.Candidate)
 AshWorkflow.Charts.render(MyApp.Candidate, :json)
 AshWorkflow.Charts.render(MyApp.Candidate, :d2)
 AshWorkflow.Charts.render(MyApp.Candidate, :d2, svg: true)
+AshWorkflow.Charts.render(MyApp.Candidate, :dot, svg: true)
 ```
 
 ```bash
@@ -560,6 +561,7 @@ mix ash_workflow.diagram --format json --output priv/diagrams
 - `undo: false` and `notes: false` (`--no-undo`, `--no-notes`) make a smaller chart.
 - For a chart with colour, use `:d2`. `svg: true` (`--svg`) runs `d2` and gives the SVG. The first call downloads the pinned `d2` release into `_build`. In CI, run `mix ash_workflow.d2.install` first. In a release, set `config :ash_workflow, :d2, path:` to an installed `d2`.
 - `theme: :dark` (`--theme dark`) gives a dark D2 chart, and `classes:` changes any of its colours.
+- For the same chart from Graphviz, use `:dot`. `svg: true` runs `dot` from the `PATH` and does not download it, so install Graphviz first, in CI and in a release too. Set `config :ash_workflow, :dot, path:` for a `dot` that is not on the `PATH`. `theme:` and `classes:` work as for `:d2`, but a `classes:` key is a Graphviz attribute name, such as `fillcolor`.
 - A new format is a module that implements `AshWorkflow.Charts.Backend`. Pass the module to `AshWorkflow.Charts.render/3` in place of a format name.
 
 ## Common Patterns

@@ -20,17 +20,19 @@ defmodule AshWorkflow.DocumentationChartsTest do
   end
 
   test "the diagrams guide keeps its generated examples" do
-    assert "documentation/topics/diagrams.md" |> File.read!() |> ChartExamples.count() == 10
+    assert "documentation/topics/diagrams.md" |> File.read!() |> ChartExamples.count() == 11
   end
 
-  for {file, resource, _opts} <- ChartExamples.svgs() do
+  for {file, resource, _format, _opts} <- ChartExamples.svgs() do
     test "#{file} is an SVG of #{inspect(resource)}" do
       svg = File.read!(unquote(file))
 
-      # The shape keys are base64 in the SVG, so check a label the chart shows.
-      # The root needs a width, or an <img> tag draws it in a tiny default box.
+      # D2 writes the shape keys in base64, so check a label the chart shows.
+      # The root needs a width and a height, or an <img> tag draws it in a tiny
+      # default box. D2 writes them in pixels, and Graphviz in points.
       [root] = Regex.run(~r/<svg [^>]*>/, svg)
-      assert root =~ ~r/ width="\d+"/
+      assert root =~ ~r/ width="\d+(pt)?"/
+      assert root =~ ~r/ height="\d+(pt)?"/
       assert svg =~ "undo within 1 hour"
     end
   end

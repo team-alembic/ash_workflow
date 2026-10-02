@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Colour follows the graph: blue automatic steps, amber manual steps and lavender wait states. A terminal step is green, red or amber by the kinds of edges that reach it, not by its name.
   - `classes:` changes any colour, and `theme: :dark` gives a dark chart. Both can also go under `config :ash_workflow, :d2`.
   - The chart uses D2's ELK layout engine and puts a step's notes inside the step. `layout: :dagre` and `direction: :right` change the layout.
+- **Graphviz DOT diagrams.** `AshWorkflow.Charts.render(resource, :dot)` and `mix ash_workflow.diagram --format dot` give a [Graphviz](https://graphviz.org) DOT chart of a workflow. It has the same colours, line styles and labels as the D2 chart, and both take their colours from `AshWorkflow.Charts.Palette`.
+  - `svg: true`, or `--svg`, runs the `dot` command of Graphviz and returns the SVG. You install Graphviz, and the chart runs `dot` from the `PATH`. `:path` under `config :ash_workflow, :dot` selects another `dot`, for example in a release. Without a `dot`, `svg: true` raises an `ArgumentError` that tells you to install Graphviz.
+  - `theme: :dark`, `direction: :right` and `classes:` work as for D2. A key in `classes:` is a Graphviz attribute name, such as `fillcolor` or `penwidth`. `:theme` and `:classes` can also go under `config :ash_workflow, :dot`.
 
 ## [0.8.0] - 2026-09-30
 
