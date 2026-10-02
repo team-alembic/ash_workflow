@@ -3,8 +3,8 @@ defmodule AshWorkflow.Charts.Format do
   Writes DSL values out as the short phrases a chart shows.
 
   Every backend reads its labels from `AshWorkflow.Charts.Graph`, which calls
-  these functions, so Mermaid, JSON and a custom `AshWorkflow.Charts.Backend`
-  all use the same words.
+  these functions, so Mermaid, JSON, D2 and a custom
+  `AshWorkflow.Charts.Backend` all use the same words.
   """
 
   alias AshWorkflow.Entities.Retry

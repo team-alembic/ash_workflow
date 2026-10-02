@@ -18,13 +18,19 @@ defmodule AshWorkflow.Charts do
   * `:mermaid` — `AshWorkflow.Charts.Mermaid`, a Mermaid `stateDiagram-v2`.
   * `:json` — `AshWorkflow.Charts.Json`, plain data for a client that draws
     the workflow itself.
+  * `:d2` — `AshWorkflow.Charts.D2`, a D2 chart with colour and line styles.
+    `svg: true` draws it as SVG.
 
   `mix ash_workflow.diagram` writes the same output from the command line.
   """
 
   alias AshWorkflow.Charts.Graph
 
-  @backends [mermaid: AshWorkflow.Charts.Mermaid, json: AshWorkflow.Charts.Json]
+  @backends [
+    mermaid: AshWorkflow.Charts.Mermaid,
+    json: AshWorkflow.Charts.Json,
+    d2: AshWorkflow.Charts.D2
+  ]
   @graph_options [:undo, :notes]
 
   @doc """
