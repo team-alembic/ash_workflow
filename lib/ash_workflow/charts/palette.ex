@@ -1,8 +1,8 @@
 defmodule AshWorkflow.Charts.Palette do
   @moduledoc """
-  The colours of the charts that `AshWorkflow.Charts.D2` draws, for each
-  theme. A backend that draws in colour reads them here, so every such chart
-  has the same look.
+  The colours of the charts that `AshWorkflow.Charts.D2` and
+  `AshWorkflow.Charts.Dot` draw, for each theme. A backend that draws in
+  colour reads them here, so every such chart has the same look.
 
   The palette has one class per step kind, per terminal outcome and per edge
   kind. `colours/1` gives the colours of each class. `background/1` and

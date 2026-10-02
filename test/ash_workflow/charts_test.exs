@@ -15,13 +15,14 @@ defmodule AshWorkflow.ChartsTest do
   end
 
   test "formats/0 lists the formats this library ships" do
-    assert Charts.formats() == [:mermaid, :json, :d2]
+    assert Charts.formats() == [:mermaid, :json, :d2, :dot]
   end
 
   test "backend!/1 accepts a format name or a backend module" do
     assert Charts.backend!(:mermaid) == AshWorkflow.Charts.Mermaid
     assert Charts.backend!(:json) == AshWorkflow.Charts.Json
     assert Charts.backend!(:d2) == AshWorkflow.Charts.D2
+    assert Charts.backend!(:dot) == AshWorkflow.Charts.Dot
     assert Charts.backend!(EdgeCountBackend) == EdgeCountBackend
   end
 

@@ -3,7 +3,7 @@ defmodule AshWorkflow.Charts.Format do
   Writes DSL values out as the short phrases a chart shows.
 
   Every backend reads its labels from `AshWorkflow.Charts.Graph`, which calls
-  these functions, so Mermaid, JSON, D2 and a custom
+  these functions, so Mermaid, JSON, D2, DOT and a custom
   `AshWorkflow.Charts.Backend` all use the same words.
   """
 
@@ -98,6 +98,23 @@ defmodule AshWorkflow.Charts.Format do
   def kind_text(:automatic), do: "⚙\u{FE0F} automatic"
   def kind_text(:manual), do: "✋ manual"
   def kind_text(:wait_state), do: "⏳ wait state"
+
+  @doc """
+  The text inside a step box, for a chart that puts the notes in the step:
+  the step's name, then `kind_text/1` on the next line, then the notes under
+  a `—` rule, one per line, as `note_text/1` writes them.
+
+  A terminal step has no kind line, but it keeps its notes.
+  """
+  @spec node_text(AshWorkflow.Charts.Graph.Node.t()) :: String.t()
+  def node_text(%{kind: :terminal} = node),
+    do: Enum.join([to_string(node.id) | notes_text(node.notes)], "\n—\n")
+
+  def node_text(node),
+    do: Enum.join(["#{node.id}\n#{kind_text(node.kind)}" | notes_text(node.notes)], "\n—\n")
+
+  defp notes_text([]), do: []
+  defp notes_text(notes), do: [Enum.map_join(notes, "\n", &note_text/1)]
 
   @doc """
   The label of an `AshWorkflow.Charts.Graph.Edge`: a symbol for its kind,

@@ -21,10 +21,12 @@ defmodule Mix.Tasks.AshWorkflow.Diagram do
   * `--format` — a name from `AshWorkflow.Charts.formats/0`. Defaults to
     `mermaid`.
   * `--output` — the directory to write the files to.
-  * `--svg` — with `--format d2`, run `d2` and print or write the SVG. The
-    files end in `.svg`. The first run downloads `d2`. See
-    `AshWorkflow.Charts.D2.Binary`.
-  * `--theme` — with `--format d2`, `light` (the default) or `dark`.
+  * `--svg` — with `--format d2` or `--format dot`, draw the chart and print
+    or write the SVG. The files end in `.svg`. With `d2`, the first run
+    downloads `d2`: see `AshWorkflow.Charts.D2.Binary`. With `dot`, Graphviz
+    must be installed: see `AshWorkflow.Charts.Dot`.
+  * `--theme` — with `--format d2` or `--format dot`, `light` (the default)
+    or `dark`.
   * `--no-undo` — leave out undo edges.
   * `--no-notes` — leave out step notes: policies, retry, timeouts that run
     an action, and `every` entries.
@@ -37,6 +39,7 @@ defmodule Mix.Tasks.AshWorkflow.Diagram do
   mix ash_workflow.diagram MyApp.Candidate
   mix ash_workflow.diagram --format json --output priv/diagrams
   mix ash_workflow.diagram --format d2 --svg --output priv/diagrams
+  mix ash_workflow.diagram --format dot --svg --theme dark MyApp.Candidate
   ```
   """
 
@@ -56,6 +59,9 @@ defmodule Mix.Tasks.AshWorkflow.Diagram do
     undo: :boolean,
     notes: :boolean
   ]
+
+  # The formats that draw an SVG and take a theme.
+  @svg_formats [:d2, :dot]
 
   @impl Mix.Task
   def run(argv) do
@@ -84,18 +90,25 @@ defmodule Mix.Tasks.AshWorkflow.Diagram do
 
   defp theme!(opts, format) do
     case {Keyword.fetch(opts, :theme), format} do
-      {:error, _format} -> []
-      {{:ok, theme}, :d2} when theme in ["light", "dark"] -> [theme: String.to_atom(theme)]
-      {{:ok, theme}, :d2} -> Mix.raise("--theme must be light or dark, not #{inspect(theme)}")
-      {{:ok, _theme}, format} -> Mix.raise("--theme needs --format d2, not #{format}")
+      {:error, _format} ->
+        []
+
+      {{:ok, _theme}, format} when format not in @svg_formats ->
+        Mix.raise("--theme needs --format d2 or dot, not #{format}")
+
+      {{:ok, theme}, _format} when theme in ["light", "dark"] ->
+        [theme: String.to_atom(theme)]
+
+      {{:ok, theme}, _format} ->
+        Mix.raise("--theme must be light or dark, not #{inspect(theme)}")
     end
   end
 
   defp svg!(opts, format) do
     case {Keyword.get(opts, :svg, false), format} do
       {false, _format} -> false
-      {true, :d2} -> true
-      {true, format} -> Mix.raise("--svg needs --format d2, not #{format}")
+      {true, format} when format in @svg_formats -> true
+      {true, format} -> Mix.raise("--svg needs --format d2 or dot, not #{format}")
     end
   end
 

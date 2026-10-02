@@ -324,20 +324,11 @@ defmodule AshWorkflow.Charts.D2 do
     [
       step_key(node.id),
       ": ",
-      quote_string(node_label(node)),
+      quote_string(Format.node_text(node)),
       " {class: ",
       node_class(node, graph),
       "}\n"
     ]
-  end
-
-  # A terminal step has no kind line, but it keeps its notes, as in the
-  # other formats.
-  defp node_label(%{kind: :terminal} = node),
-    do: Enum.join([to_string(node.id) | notes_label(node.notes)], "\n—\n")
-
-  defp node_label(node) do
-    Enum.join(["#{node.id}\n#{Format.kind_text(node.kind)}" | notes_label(node.notes)], "\n—\n")
   end
 
   defp node_class(%{kind: :terminal} = node, graph),
@@ -362,9 +353,6 @@ defmodule AshWorkflow.Charts.D2 do
 
   defp edge_class(:transition), do: ""
   defp edge_class(kind), do: " {class: #{kind}}"
-
-  defp notes_label([]), do: []
-  defp notes_label(notes), do: [Enum.map_join(notes, "\n", &Format.note_text/1)]
 
   defp step_key(step_name), do: key("step_", step_name)
 

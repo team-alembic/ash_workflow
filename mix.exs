@@ -177,7 +177,8 @@ defmodule AshWorkflow.MixProject do
           AshWorkflow.Charts.Mermaid,
           AshWorkflow.Charts.Json,
           AshWorkflow.Charts.D2,
-          AshWorkflow.Charts.D2.Binary
+          AshWorkflow.Charts.D2.Binary,
+          AshWorkflow.Charts.Dot
         ],
         Internals: ~r/.*/
       ]

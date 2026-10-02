@@ -20,6 +20,8 @@ defmodule AshWorkflow.Charts do
     the workflow itself.
   * `:d2` — `AshWorkflow.Charts.D2`, a D2 chart with colour and line styles.
     `svg: true` draws it as SVG.
+  * `:dot` — `AshWorkflow.Charts.Dot`, a Graphviz DOT chart with the same
+    look as the D2 chart. `svg: true` draws it as SVG with `dot`.
 
   `mix ash_workflow.diagram` writes the same output from the command line.
   """
@@ -29,7 +31,8 @@ defmodule AshWorkflow.Charts do
   @backends [
     mermaid: AshWorkflow.Charts.Mermaid,
     json: AshWorkflow.Charts.Json,
-    d2: AshWorkflow.Charts.D2
+    d2: AshWorkflow.Charts.D2,
+    dot: AshWorkflow.Charts.Dot
   ]
   @graph_options [:undo, :notes]
 

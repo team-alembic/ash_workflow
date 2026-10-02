@@ -16,6 +16,12 @@
 
 Ecto.Adapters.SQL.Sandbox.mode(AshWorkflowTest.Repo, :manual)
 
+# The tests tagged `:dot` run Graphviz's `dot`. This library does not download
+# it, so skip those tests on a machine that does not have it.
+if AshWorkflow.Charts.Dot.executable() == nil do
+  ExUnit.configure(exclude: [:dot | Keyword.get(ExUnit.configuration(), :exclude, [])])
+end
+
 ExUnit.start()
 
 # The tests tagged `:d2` run the downloaded `d2`. Fetch it once here, before

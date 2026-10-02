@@ -26,6 +26,13 @@ defmodule Mix.Tasks.AshWorkflow.DiagramTest do
     assert output == Charts.render(AshWorkflowTest.PolicyWorkflow, :d2) <> "\n"
   end
 
+  test "prints DOT with --format dot" do
+    output =
+      capture_io(fn -> Diagram.run(["--format", "dot", "AshWorkflowTest.PolicyWorkflow"]) end)
+
+    assert output == Charts.render(AshWorkflowTest.PolicyWorkflow, :dot) <> "\n"
+  end
+
   test "prints one JSON document per line for several resources" do
     output =
       capture_io(fn ->
@@ -87,7 +94,7 @@ defmodule Mix.Tasks.AshWorkflow.DiagramTest do
     assert_raise Mix.Error, ~r/Unknown options/, fn -> Diagram.run(["--bogus"]) end
   end
 
-  test "--theme dark reaches the D2 backend, and needs --format d2" do
+  test "--theme dark reaches the D2 and DOT backends, and needs --format d2 or dot" do
     output =
       capture_io(fn ->
         Diagram.run(["--format", "d2", "--theme", "dark", "AshWorkflowTest.PolicyWorkflow"])
@@ -95,17 +102,24 @@ defmodule Mix.Tasks.AshWorkflow.DiagramTest do
 
     assert output =~ "theme-id: 200"
 
+    output =
+      capture_io(fn ->
+        Diagram.run(["--format", "dot", "--theme", "dark", "AshWorkflowTest.PolicyWorkflow"])
+      end)
+
+    assert output =~ ~S(bgcolor="#1E1E2E")
+
     assert_raise Mix.Error, ~r/--theme must be light or dark/, fn ->
       Diagram.run(["--format", "d2", "--theme", "sepia", "AshWorkflowTest.PolicyWorkflow"])
     end
 
-    assert_raise Mix.Error, ~r/--theme needs --format d2/, fn ->
+    assert_raise Mix.Error, ~r/--theme needs --format d2 or dot, not mermaid/, fn ->
       Diagram.run(["--theme", "dark", "AshWorkflowTest.PolicyWorkflow"])
     end
   end
 
-  test "--svg needs --format d2" do
-    assert_raise Mix.Error, ~r/--svg needs --format d2, not mermaid/, fn ->
+  test "--svg needs --format d2 or dot" do
+    assert_raise Mix.Error, ~r/--svg needs --format d2 or dot, not mermaid/, fn ->
       Diagram.run(["--svg", "AshWorkflowTest.PolicyWorkflow"])
     end
   end
@@ -115,6 +129,17 @@ defmodule Mix.Tasks.AshWorkflow.DiagramTest do
   test "--format d2 --svg writes .svg files that d2 drew", %{tmp_dir: dir} do
     capture_io(fn ->
       Diagram.run(["--format", "d2", "--svg", "--output", dir, "AshWorkflowTest.PolicyWorkflow"])
+    end)
+
+    assert File.ls!(dir) == ["AshWorkflowTest.PolicyWorkflow.svg"]
+    assert File.read!(Path.join(dir, "AshWorkflowTest.PolicyWorkflow.svg")) =~ "<svg"
+  end
+
+  @tag :tmp_dir
+  @tag :dot
+  test "--format dot --svg writes .svg files that dot drew", %{tmp_dir: dir} do
+    capture_io(fn ->
+      Diagram.run(["--format", "dot", "--svg", "--output", dir, "AshWorkflowTest.PolicyWorkflow"])
     end)
 
     assert File.ls!(dir) == ["AshWorkflowTest.PolicyWorkflow.svg"]
