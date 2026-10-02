@@ -37,6 +37,7 @@ defmodule AshWorkflow.Charts.Mermaid do
 
   @behaviour AshWorkflow.Charts.Backend
 
+  alias AshWorkflow.Charts.Format
   alias AshWorkflow.Charts.Graph
 
   @escapes %{
@@ -80,12 +81,7 @@ defmodule AshWorkflow.Charts.Mermaid do
   end
 
   defp kind_line(%{kind: :terminal}), do: []
-  defp kind_line(node), do: [@indent, id(node.id), " : ", kind_text(node.kind), "\n"]
-
-  # U+FE0F asks for the colour emoji, which ✋ and ⏳ get by default.
-  defp kind_text(:automatic), do: "⚙\u{FE0F} automatic"
-  defp kind_text(:manual), do: "✋ manual"
-  defp kind_text(:wait_state), do: "⏳ wait state"
+  defp kind_line(node), do: [@indent, id(node.id), " : ", Format.kind_text(node.kind), "\n"]
 
   defp start_line(%{initial?: true} = node), do: [@indent, "[*] --> ", id(node.id), "\n"]
   defp start_line(_node), do: []
@@ -97,27 +93,10 @@ defmodule AshWorkflow.Charts.Mermaid do
       " --> ",
       id(edge.to),
       ": ",
-      escape(edge_text(edge)),
+      escape(Format.edge_text(edge)),
       "\n"
     ]
   end
-
-  defp edge_text(%{kind: :timeout} = edge),
-    do: edge_symbol(:timeout) <> "#{edge.name} " <> edge.label
-
-  defp edge_text(%{fallback?: true} = edge),
-    do: edge_symbol(edge.kind) <> edge.label <> " otherwise"
-
-  defp edge_text(%{condition: nil} = edge), do: edge_symbol(edge.kind) <> edge.label
-
-  defp edge_text(edge),
-    do: edge_symbol(edge.kind) <> edge.label <> " when " <> edge.condition
-
-  defp edge_symbol(:transition), do: ""
-  defp edge_symbol(:on_success), do: "⚙ "
-  defp edge_symbol(:on_error), do: "✖ "
-  defp edge_symbol(:timeout), do: "⏱ "
-  defp edge_symbol(:undo), do: "↶ "
 
   defp note_lines(%{notes: []}), do: []
 
@@ -127,19 +106,11 @@ defmodule AshWorkflow.Charts.Mermaid do
       "note right of ",
       id(node.id),
       "\n",
-      Enum.map(node.notes, &[@note_indent, escape(note_text(&1)), "\n"]),
+      Enum.map(node.notes, &[@note_indent, escape(Format.note_text(&1)), "\n"]),
       @indent,
       "end note\n"
     ]
   end
-
-  defp note_text(%{kind: :policy, label: label}), do: "policy: " <> label
-  defp note_text(%{kind: :retry, label: label}), do: "retry: " <> label
-  defp note_text(%{kind: :timeout} = note), do: "⏱ #{note.label}: #{note.action}" <> retry(note)
-  defp note_text(%{kind: :every} = note), do: "↻ #{note.label}: #{note.action}" <> retry(note)
-
-  defp retry(%{retry: nil}), do: ""
-  defp retry(%{retry: retry}), do: ", retry: " <> retry
 
   defp end_line(%{kind: :terminal} = node), do: [@indent, id(node.id), " --> [*]\n"]
   defp end_line(_node), do: []
