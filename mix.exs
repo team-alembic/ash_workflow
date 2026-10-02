@@ -134,6 +134,7 @@ defmodule AshWorkflow.MixProject do
       source_url: @source_url,
       extra_section: "GUIDES",
       before_closing_body_tag: &before_closing_body_tag/1,
+      assets: %{"documentation/topics/assets" => "assets"},
       extras: [
         {"README.md", title: "Home"},
         "documentation/tutorials/getting-started-with-ash-workflow.md",

@@ -378,7 +378,9 @@ Workflows are started through your own create action — AshWorkflow does not ge
 workflow, drawn from the DSL. It shows step kinds, timeouts with their
 deadlines, route conditions, policies and the moves undo can rewind.
 `--format json` gives the same graph as data, for a client that draws it
-itself. See [Diagrams](documentation/topics/diagrams.md).
+itself. `--format d2 --svg` gives a chart with colour and line styles, and
+downloads the `d2` tool the first time. See
+[Diagrams](documentation/topics/diagrams.md).
 
 ## Demos
 
