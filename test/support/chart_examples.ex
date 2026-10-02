@@ -18,10 +18,17 @@ defmodule AshWorkflowTest.ChartExamples do
     source file, so a guide shows the definition next to its chart.
   * `mermaid` — the chart, from `AshWorkflow.Charts.render/3`.
   * `json` — the chart as indented JSON.
+  * `d2` — the chart as D2 source.
 
   `test/documentation_charts_test.exs` fails when a block is out of date, and
   `bin/update-chart-examples` rewrites every block. The comments do not show
   in ExDoc or on GitHub.
+
+  Neither GitHub nor ExDoc draws D2, so the guide shows a D2 chart as an SVG
+  file under `documentation/topics/assets/`, which `svgs/0` lists and `update!/0`
+  writes with the pinned `d2`. The test checks that each file exists and is
+  an SVG, not its bytes: another `d2` version lays the same diagram out
+  differently.
 
   The examples come from `examples/`, which compiles only in the test
   environment, where this module also compiles. That is why the script runs a
@@ -33,7 +40,7 @@ defmodule AshWorkflowTest.ChartExamples do
 
   # The body may not hold another opening marker, so a block with a missing
   # closing marker is left alone, and `count/1` then reports one block fewer.
-  @marker ~r/(<!-- chart: ([A-Z][\w.]*) (mermaid|json|workflow) -->\n)((?:(?!<!-- chart:).)*?)(<!-- \/chart -->)/s
+  @marker ~r/(<!-- chart: ([A-Z][\w.]*) (mermaid|json|d2|workflow) -->\n)((?:(?!<!-- chart:).)*?)(<!-- \/chart -->)/s
 
   @doc """
   The guides that can hold generated blocks.
@@ -61,8 +68,10 @@ defmodule AshWorkflowTest.ChartExamples do
   One fenced block: a resource's workflow definition, or its chart in a
   format.
   """
-  @spec block(Ash.Resource.t(), :workflow | :mermaid | :json) :: String.t()
+  @spec block(Ash.Resource.t(), :workflow | :mermaid | :json | :d2) :: String.t()
   def block(resource, :workflow), do: "```elixir\n" <> workflow_source(resource) <> "```\n"
+
+  def block(resource, :d2), do: "```d2\n" <> Charts.render(resource, :d2) <> "```\n"
 
   def block(resource, :mermaid),
     do: "```mermaid\n" <> Charts.render(resource, :mermaid) <> "```\n"
@@ -117,17 +126,41 @@ defmodule AshWorkflowTest.ChartExamples do
   end
 
   @doc """
-  Rewrites every guide whose generated blocks are out of date, and returns the
-  paths it wrote.
+  The SVG files the guides show: the path, the resource each one draws, and
+  the D2 options it uses.
+  """
+  @spec svgs() :: [{Path.t(), Ash.Resource.t(), keyword()}]
+  def svgs do
+    [
+      {"documentation/topics/assets/incident-d2.svg", BasicWorkflow.Incident, []},
+      {"documentation/topics/assets/incident-d2-dark.svg", BasicWorkflow.Incident, [theme: :dark]}
+    ]
+  end
+
+  @doc """
+  Rewrites every guide whose generated blocks are out of date, and every SVG
+  whose content changed, and returns the paths it wrote.
   """
   @spec update!() :: [Path.t()]
   def update! do
-    for file <- files(),
-        contents = File.read!(file),
-        updated = render(contents),
-        updated != contents do
-      File.write!(file, updated)
-      file
-    end
+    guides =
+      for file <- files(),
+          contents = File.read!(file),
+          updated = render(contents),
+          updated != contents do
+        File.write!(file, updated)
+        file
+      end
+
+    svgs =
+      for {file, resource, opts} <- svgs(),
+          svg = Charts.render(resource, :d2, [svg: true] ++ opts),
+          not File.exists?(file) or File.read!(file) != svg do
+        File.mkdir_p!(Path.dirname(file))
+        File.write!(file, svg)
+        file
+      end
+
+    guides ++ svgs
   end
 end

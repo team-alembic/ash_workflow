@@ -81,7 +81,15 @@ defmodule AshWorkflow.MixProject do
   # Run "mix help compile.app" to learn about applications.
   def application do
     [
-      extra_applications: [:logger]
+      # The D2 SVG download needs these, and only it does, so they are
+      # optional: a release includes them when the host has them.
+      extra_applications: [
+        :logger,
+        crypto: :optional,
+        public_key: :optional,
+        inets: :optional,
+        ssl: :optional
+      ]
     ]
   end
 
@@ -126,6 +134,7 @@ defmodule AshWorkflow.MixProject do
       source_url: @source_url,
       extra_section: "GUIDES",
       before_closing_body_tag: &before_closing_body_tag/1,
+      assets: %{"documentation/topics/assets" => "assets"},
       extras: [
         {"README.md", title: "Home"},
         "documentation/tutorials/getting-started-with-ash-workflow.md",
@@ -165,7 +174,9 @@ defmodule AshWorkflow.MixProject do
           AshWorkflow.Charts.Graph.Note,
           AshWorkflow.Charts.Backend,
           AshWorkflow.Charts.Mermaid,
-          AshWorkflow.Charts.Json
+          AshWorkflow.Charts.Json,
+          AshWorkflow.Charts.D2,
+          AshWorkflow.Charts.D2.Binary
         ],
         Internals: ~r/.*/
       ]

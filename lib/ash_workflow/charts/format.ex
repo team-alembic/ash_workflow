@@ -3,8 +3,8 @@ defmodule AshWorkflow.Charts.Format do
   Writes DSL values out as the short phrases a chart shows.
 
   Every backend reads its labels from `AshWorkflow.Charts.Graph`, which calls
-  these functions, so Mermaid, JSON and a custom `AshWorkflow.Charts.Backend`
-  all use the same words.
+  these functions, so Mermaid, JSON, D2 and a custom
+  `AshWorkflow.Charts.Backend` all use the same words.
   """
 
   alias AshWorkflow.Entities.Retry
@@ -88,6 +88,69 @@ defmodule AshWorkflow.Charts.Format do
   @spec condition(term()) :: String.t() | nil
   def condition(nil), do: nil
   def condition(expression), do: templates(inspect(expression))
+
+  @doc """
+  The text of a step kind, as every chart labels a step: `"⚙\u{FE0F} automatic"`,
+  `"✋ manual"` or `"⏳ wait state"`. The gear carries U+FE0F, so it draws as a
+  colour emoji, the same as the other two.
+  """
+  @spec kind_text(:automatic | :manual | :wait_state) :: String.t()
+  def kind_text(:automatic), do: "⚙\u{FE0F} automatic"
+  def kind_text(:manual), do: "✋ manual"
+  def kind_text(:wait_state), do: "⏳ wait state"
+
+  @doc """
+  The label of an `AshWorkflow.Charts.Graph.Edge`: a symbol for its kind,
+  then its text.
+
+  * `⚙` for `on_success`, `✖` for `on_error`, `⏱` for a timeout and `↶` for
+    undo. A transition has no symbol.
+  * A timeout gives its name before its deadline: `⏱ auto_escalate after 4 hours`.
+  * A conditional route adds `when` and its condition. The fallback route of
+    a conditional `on_success` adds `otherwise`.
+
+  Each backend draws this text and only escapes it for its own syntax. So all
+  formats label an edge in the same words.
+  """
+  @spec edge_text(AshWorkflow.Charts.Graph.Edge.t()) :: String.t()
+  def edge_text(%{kind: :timeout} = edge),
+    do: edge_symbol(:timeout) <> "#{edge.name} " <> edge.label
+
+  def edge_text(%{fallback?: true} = edge),
+    do: edge_symbol(edge.kind) <> edge.label <> " otherwise"
+
+  def edge_text(%{condition: nil} = edge), do: edge_symbol(edge.kind) <> edge.label
+
+  def edge_text(edge),
+    do: edge_symbol(edge.kind) <> edge.label <> " when " <> edge.condition
+
+  defp edge_symbol(:transition), do: ""
+  defp edge_symbol(:on_success), do: "⚙ "
+  defp edge_symbol(:on_error), do: "✖ "
+  defp edge_symbol(:timeout), do: "⏱ "
+  defp edge_symbol(:undo), do: "↶ "
+
+  @doc """
+  The text of an `AshWorkflow.Charts.Graph.Note`.
+
+  * A policy note is `policy:` and the check, and a retry note is `retry:` and
+    the policy.
+  * A timeout that runs an action is `⏱`, its deadline and the action.
+  * An `every` is `↻`, its schedule and the action.
+
+  A timeout or an `every` with its own retry adds `, retry:` and the policy.
+  """
+  @spec note_text(AshWorkflow.Charts.Graph.Note.t()) :: String.t()
+  def note_text(%{kind: :policy, label: label}), do: "policy: " <> label
+  def note_text(%{kind: :retry, label: label}), do: "retry: " <> label
+
+  def note_text(%{kind: :timeout} = note),
+    do: "⏱ #{note.label}: #{note.action}" <> note_retry(note)
+
+  def note_text(%{kind: :every} = note), do: "↻ #{note.label}: #{note.action}" <> note_retry(note)
+
+  defp note_retry(%{retry: nil}), do: ""
+  defp note_retry(%{retry: retry}), do: ", retry: " <> retry
 
   # Ash stores `^actor(:role)` as the tuple `{:_actor, :role}` and `^tenant()`
   # as the atom `:_tenant`, and `inspect/1` writes those. Write them as the

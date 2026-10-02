@@ -306,6 +306,7 @@ stateDiagram-v2
 |---|---|---|---|
 | `:mermaid` | `AshWorkflow.Charts.Mermaid` | `.mmd` | GitHub, Livebook and ExDoc show it without other tools |
 | `:json` | `AshWorkflow.Charts.Json` | `.json` | A client that draws the workflow itself |
+| `:d2` | `AshWorkflow.Charts.D2` | `.d2` | A chart with colour and line styles, drawn by `d2` or by `svg: true` |
 
 Every format draws from the same `AshWorkflow.Charts.Graph`, which
 `AshWorkflow.Charts.Graph.build/2` makes from the DSL. So all formats show the
@@ -406,6 +407,137 @@ no layout for directed graphs, so pair it with a layout library such as dagre
 or ELK.js. `AshWorkflow.Charts.Json.to_map/1` returns the same data as Elixir
 maps, for a LiveView that pushes it to a JavaScript hook.
 
+### D2
+
+[D2](https://d2lang.com) is a text format for diagrams. Its `d2` command lays
+the diagram out and draws it as SVG. A D2 chart shows the same steps, edges
+and labels as the Mermaid chart, and it adds two things:
+
+* **Colour.** Automatic steps are blue, manual steps amber and wait states
+  lavender. A terminal step is green, red or amber by how the record gets
+  there.
+* **Line styles.** `on_success` is a thick line, a timeout is dashed and undo
+  is dotted.
+
+GitHub and ExDoc do not draw D2. So `render/3` can run `d2` for you and give
+you the SVG:
+
+```elixir
+AshWorkflow.Charts.render(BasicWorkflow.Incident, :d2, svg: true)
+```
+
+```bash
+mix ash_workflow.diagram --format d2 --svg --output priv/diagrams
+```
+
+The first call downloads the `d2` release that this library pins, checks its
+SHA-256, and keeps it in `_build`. To download it ahead of time, for example
+in CI, run `mix ash_workflow.d2.install`. To use a `d2` you installed
+yourself, set `config :ash_workflow, :d2, path: "d2"`. A release must set
+`:path`, because `mix release` does not copy `_build`. See
+`AshWorkflow.Charts.D2.Binary`.
+
+This is the incident workflow from above, as `d2` v0.9.0 drew it:
+
+![The incident workflow, drawn by d2](assets/incident-d2.svg)
+
+#### What the colours mean
+
+| In the chart | Means |
+|---|---|
+| Blue box | An automatic step |
+| Amber box | A manual step: a person must act |
+| Lavender box, dashed border | A wait state |
+| Green, double border | A terminal step that only transitions and `on_success` reach |
+| Red, double border | A terminal step that only `on_error` reaches |
+| Amber, double border | A terminal step that only timeouts reach |
+| Grey, double border | A terminal step with a mix of these |
+
+The colour of a terminal step comes from the edges, not from the step's
+name. A `rejected` step that a person chooses is green, the same as
+`approved`, because the workflow reaches both in the same way. Each edge kind
+also has a line style and a symbol, so a reader who cannot tell the colours
+apart loses nothing.
+
+#### Your own colours
+
+The colours are in one `classes` block at the top of the D2 file. Pass
+`classes:` to change a class. Each class merges over its default, so this
+changes the fill of manual steps and keeps their stroke:
+
+```elixir
+AshWorkflow.Charts.render(BasicWorkflow.Incident, :d2,
+  classes: [manual: [fill: "#FFE4E6"]]
+)
+```
+
+To change the colours of every chart, put the same list under
+`config :ash_workflow, :d2, classes: [...]`.
+`AshWorkflow.Charts.D2.default_classes/1` lists the classes and their
+defaults.
+
+#### Dark theme
+
+`theme: :dark`, or `--theme dark`, selects D2's dark theme and a second set
+of colours, with deep fills and light text. An SVG has one palette. A page
+that follows the reader's theme needs one chart for each theme.
+
+![The incident workflow, drawn by d2 with the dark theme](assets/incident-d2-dark.svg)
+
+#### Layout
+
+The D2 file selects the ELK layout engine, which draws straight edges in
+clear lanes. `layout: :dagre` selects D2's other engine, which draws curved
+edges. `direction: :right` turns the chart on its side. That gives a long,
+thin chart, because each edge label adds to its length, so keep it for a
+short chain of steps.
+
+#### The D2 source
+
+Without `svg: true`, `render/3` gives the D2 source. This is the source for
+the incident workflow:
+
+<!-- chart: BasicWorkflow.Incident d2 -->
+```d2
+vars: {
+  d2-config: {
+    layout-engine: elk
+    theme-id: 0
+  }
+}
+direction: down
+classes: {
+  automatic: {style: {fill: "#E8F0FE"; stroke: "#1A56DB"; border-radius: 4}}
+  manual: {style: {fill: "#FFF4E5"; stroke: "#B7791F"; border-radius: 4}}
+  wait_state: {style: {fill: "#F3E8FF"; stroke: "#6B46C1"; stroke-dash: 3; border-radius: 4}}
+  done: {style: {fill: "#E6F4EA"; stroke: "#1E7B34"; double-border: true}}
+  failed: {style: {fill: "#FDE8E8"; stroke: "#C81E1E"; double-border: true}}
+  expired: {style: {fill: "#FEF3C7"; stroke: "#B45309"; double-border: true}}
+  end: {style: {fill: "#F3F4F6"; stroke: "#4B5563"; double-border: true}}
+  on_success: {style: {stroke: "#1A56DB"; stroke-width: 3}}
+  on_error: {style: {stroke: "#C81E1E"}}
+  timeout: {style: {stroke: "#B45309"; stroke-dash: 5}}
+  undo: {style: {stroke: "#6B7280"; stroke-dash: 2}}
+}
+start: "" {shape: circle; width: 16; height: 16}
+step_triaging: "triaging\n⚙️ automatic" {class: automatic}
+step_investigating: "investigating\n✋ manual\n—\n↻ every 1 hour: send_status_update" {class: manual}
+step_escalated: "escalated\n✋ manual" {class: manual}
+step_resolved: "resolved" {class: done}
+step_triage_failed: "triage_failed" {class: failed}
+start -> step_triaging
+step_triaging -> step_investigating: "⚙ classify_severity" {class: on_success}
+step_triaging -> step_triage_failed: "✖ on_error" {class: on_error}
+step_investigating -> step_escalated: "escalate"
+step_investigating -> step_resolved: "resolve"
+step_investigating -> step_escalated: "⏱ auto_escalate after 4 hours" {class: timeout}
+step_escalated -> step_resolved: "resolve"
+step_escalated -> step_investigating: "↶ undo within 1 hour" {class: undo}
+step_resolved -> step_investigating: "↶ undo within 1 hour" {class: undo}
+step_resolved -> step_escalated: "↶ undo within 1 hour" {class: undo}
+```
+<!-- /chart -->
+
 ## Your own format
 
 A format is a module that implements `AshWorkflow.Charts.Backend`. It receives
@@ -434,5 +566,6 @@ AshWorkflow.Charts.render(MyApp.Candidate, MyApp.PlainTextChart)
 ## Limits
 
 - A Mermaid state diagram cannot draw a dashed edge, so the edge kind is a
-  symbol in the label.
+  symbol in the label. The D2 format also draws it as a line style and a
+  colour.
 - Steps are not grouped, so a chart of a large workflow can be wide.
