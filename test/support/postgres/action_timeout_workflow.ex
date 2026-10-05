@@ -8,7 +8,10 @@ defmodule AshWorkflowTest.Postgres.ActionTimeoutWorkflow do
   `:reminder` runs `send_reminder` an hour after the record enters `:waiting`.
   `:check` runs `run_check` once `next_check_at` has passed, and `run_check`
   moves `next_check_at` an hour later, which is the periodic check the
-  timeouts guide describes. Neither action changes state.
+  timeouts guide describes. `:ping` runs `ping` three hours after entry, and
+  `ping` is fully atomic, so it fires through
+  `AshWorkflow.Changes.RecordEvent.atomic/3`. None of the actions change
+  state.
   """
 
   use Ash.Resource,
@@ -26,6 +29,8 @@ defmodule AshWorkflowTest.Postgres.ActionTimeoutWorkflow do
       transition :leave, to: :away
 
       timeout :reminder, fire_after: {1, :hours}, action: :send_reminder
+
+      timeout :ping, fire_after: {3, :hours}, action: :ping
 
       timeout :check do
         fire_at :next_check_at
@@ -61,6 +66,10 @@ defmodule AshWorkflowTest.Postgres.ActionTimeoutWorkflow do
       end
     end
 
+    update :ping do
+      change atomic_update(:pings, expr(pings + 1))
+    end
+
     update :run_check do
       require_atomic? false
 
@@ -78,6 +87,7 @@ defmodule AshWorkflowTest.Postgres.ActionTimeoutWorkflow do
   attributes do
     uuid_v7_primary_key :id
     attribute :reminders, :integer, allow_nil?: false, default: 0, public?: true
+    attribute :pings, :integer, allow_nil?: false, default: 0, public?: true
     attribute :checks, :integer, allow_nil?: false, default: 0, public?: true
     attribute :next_check_at, :utc_datetime_usec, public?: true
   end

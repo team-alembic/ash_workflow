@@ -33,6 +33,18 @@
       "references": null,
       "scale": null,
       "size": null,
+      "source": "pings",
+      "type": "bigint"
+    },
+    {
+      "allow_nil?": false,
+      "default": "0",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
       "source": "checks",
       "type": "bigint"
     },
@@ -70,6 +82,18 @@
       "scale": null,
       "size": null,
       "source": "waiting_reminder_fired_at",
+      "type": "utc_datetime_usec"
+    },
+    {
+      "allow_nil?": true,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "waiting_ping_fired_at",
       "type": "utc_datetime_usec"
     },
     {
@@ -160,7 +184,7 @@
   ],
   "custom_statements": [],
   "has_create_action": true,
-  "hash": "E58CA0517451455C0759EC657FB455CD572C9C0A1D686FB3CD1C4D4BFEF539F2",
+  "hash": "3D99D8FD8EC6C2BAAA824DF9409590DE361AB9C6260E733F57A0D283D12F9231",
   "identities": [],
   "multitenancy": {
     "attribute": null,

@@ -12,6 +12,7 @@ defmodule AshWorkflowTest.Postgres.ActionTimeoutObanTest do
 
   import Ecto.Query
 
+  alias Ash.Resource.Info, as: ResourceInfo
   alias AshWorkflowTest.Postgres.ActionTimeoutWorkflow, as: Workflow
   alias AshWorkflowTest.Repo
 
@@ -104,5 +105,19 @@ defmodule AshWorkflowTest.Postgres.ActionTimeoutObanTest do
     run_triggers()
 
     assert reload(record).checks == 2
+  end
+
+  test "a fully atomic action timeout fires once and writes its fired column" do
+    assert ResourceInfo.action(Workflow, :ping).require_atomic?
+
+    record = create!()
+    age_by(record, 4, :hour)
+
+    run_triggers()
+    run_triggers()
+
+    record = reload(record)
+    assert record.pings == 1
+    assert %DateTime{} = record.waiting_ping_fired_at
   end
 end
