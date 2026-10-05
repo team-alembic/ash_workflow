@@ -117,7 +117,7 @@ every :follow_up do
 end
 ```
 
-An action timeout fires once after the deadline and then stops. `every` fires every interval (e.g., every 3 days) as long as the workflow remains in that step. `every` always requires `action` and has no `transition_to`, since firing never leaves the step — a repeating action that also left the step would never come round to repeat.
+An action timeout fires once for each deadline and then stops. It records the firing in its own `<step>_<timeout>_fired_at` column, so it fires again only when the deadline moves later: a new visit to the step for a `state_entered_at` deadline, or a later value in its `field` or `fire_at`. `every` fires every interval (e.g., every 3 days) as long as the workflow remains in that step. `every` always requires `action` and has no `transition_to`, since firing never leaves the step — a repeating action that also left the step would never come round to repeat.
 
 ### Bounding `every` with `until`
 

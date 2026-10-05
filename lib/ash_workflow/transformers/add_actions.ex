@@ -57,6 +57,7 @@ defmodule AshWorkflow.Transformers.AddActions do
   alias AshWorkflow.Changes.UndoTransition
   alias AshWorkflow.Entities.Every
   alias AshWorkflow.Entities.Step
+  alias AshWorkflow.Entities.Timeout
   alias AshWorkflow.Entities.Transition
   alias AshWorkflow.Info
   alias AshWorkflow.Routing
@@ -412,14 +413,19 @@ defmodule AshWorkflow.Transformers.AddActions do
   # timeout never touches `state_entered_at` — that would push every other
   # deadline on the step back — so `touch_state_entered_at` is always false
   # here. Two timeouts may name the same action, so the actions are
-  # deduplicated before the change is appended.
+  # deduplicated before the change is appended, and the one change carries the
+  # fired column of every timeout that runs the action, grouped by step.
   defp inject_action_timeout_changes(dsl, steps) do
-    steps
-    |> Enum.flat_map(fn step ->
-      step.timeouts
-      |> Enum.filter(&(&1.action != nil))
-      |> Enum.map(&{step, &1})
-    end)
+    action_timeouts =
+      Enum.flat_map(steps, fn step ->
+        step.timeouts
+        |> Enum.filter(&(&1.action != nil))
+        |> Enum.map(&{step, &1})
+      end)
+
+    fired_fields = fired_fields_by_action(action_timeouts)
+
+    action_timeouts
     |> Enum.uniq_by(fn {_step, timeout} -> timeout.action end)
     |> Enum.reduce(dsl, fn {step, timeout}, dsl ->
       actions = Transformer.get_entities(dsl, [:actions])
@@ -436,7 +442,9 @@ defmodule AshWorkflow.Transformers.AddActions do
             Transformer.build_entity!(ResourceDsl, [:actions, :update], :change,
               change: {
                 RecordEvent,
-                triggered_by: :timeout, touch_state_entered_at: false
+                triggered_by: :timeout,
+                touch_state_entered_at: false,
+                timeout_fields: Map.get(fired_fields, timeout.action, %{})
               }
             )
 
@@ -449,6 +457,20 @@ defmodule AshWorkflow.Transformers.AddActions do
           |> Transformer.remove_entity([:actions], &(&1.name == timeout.action))
           |> Transformer.add_entity([:actions], updated_action)
       end
+    end)
+  end
+
+  defp fired_fields_by_action(action_timeouts) do
+    action_timeouts
+    |> Enum.flat_map(fn {step, timeout} ->
+      case Timeout.fired_field(step.name, timeout) do
+        nil -> []
+        field -> [{timeout.action, step.name, field}]
+      end
+    end)
+    |> Enum.group_by(fn {action, _step, _field} -> action end)
+    |> Map.new(fn {action, entries} ->
+      {action, Enum.group_by(entries, &elem(&1, 1), &elem(&1, 2))}
     end)
   end
 

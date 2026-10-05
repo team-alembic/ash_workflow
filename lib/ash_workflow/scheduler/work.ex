@@ -57,7 +57,19 @@ defmodule AshWorkflow.Scheduler.Work do
   `until` is exposed on `Work` for one that wants to filter ahead of a full
   match evaluation, the way `AshWorkflow.Scheduler.Precise.Timeline`'s
   recovery sweep does.
+
+  ## `fired_field`
+
+  Only set for an action timeout. An action timeout does not change state, so
+  without a record of its firing it would match again on the next poll. The
+  column this names, `<step>_<timeout>_fired_at`, is that record:
+  `AshWorkflow.Changes.RecordEvent` writes it when the action runs, and `match`
+  folds in `not_fired/1`. Like `until`, it is exposed for an implementation
+  that filters ahead of a full match evaluation.
   """
+
+  import Ash.Expr, only: [ref: 1]
+  require Ash.Expr
 
   @type kind :: :step | :timeout
 
@@ -78,7 +90,7 @@ defmodule AshWorkflow.Scheduler.Work do
           deadline: deadline() | nil,
           repeat?: boolean(),
           until: AshWorkflow.Duration.t() | nil,
-          once?: boolean(),
+          fired_field: atom() | nil,
           self_scheduled?: boolean(),
           retry: AshWorkflow.Entities.Retry.t(),
           opts: keyword()
@@ -96,9 +108,44 @@ defmodule AshWorkflow.Scheduler.Work do
     on_error: nil,
     repeat?: false,
     until: nil,
-    once?: false,
+    fired_field: nil,
     self_scheduled?: false,
     retry: %AshWorkflow.Entities.Retry{},
     opts: []
   ]
+
+  @doc """
+  The expression that is true while this work has not fired for the deadline
+  the record holds now.
+
+  Compared against the deadline, not the moment the record entered the step.
+  A new visit moves a `state_entered_at` deadline later, and a timeout action
+  that advances its own `fire_at` field moves that deadline later, so either
+  makes the timeout due again. Two timeouts on one step that share an action
+  both have their column written when it runs, and the later deadline still
+  fires because its column holds an instant before it.
+
+  Always true for work with no `fired_field`.
+  """
+  @spec not_fired(t()) :: Ash.Expr.t()
+  def not_fired(%__MODULE__{fired_field: nil}), do: true
+
+  def not_fired(%__MODULE__{fired_field: fired_field, deadline: deadline}) do
+    Ash.Expr.expr(is_nil(^ref(fired_field)) or ^ref(fired_field) < ^deadline_expr(deadline))
+  end
+
+  defp deadline_expr(%{field: field, fire_after: nil}), do: ref(field)
+
+  # `datetime_add/3` returns `:utc_datetime`, which truncates to whole seconds
+  # when Ash evaluates it in memory. A firing in the same second as its
+  # deadline would then read as before it. Adding a `Duration` keeps the
+  # microseconds.
+  defp deadline_expr(%{field: field, fire_after: {value, unit}}) do
+    Ash.Expr.expr(^ref(field) + ^Duration.new!([{singular(unit), value}]))
+  end
+
+  defp singular(:days), do: :day
+  defp singular(:hours), do: :hour
+  defp singular(:minutes), do: :minute
+  defp singular(:seconds), do: :second
 end
