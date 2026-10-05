@@ -13,9 +13,10 @@ defmodule AshWorkflow.Scheduler.PreciseActionTimeoutTest do
   alias AshWorkflow.Scheduler.Precise
   alias AshWorkflow.Scheduler.Precise.Timeline
   alias AshWorkflowTest.PreciseActionTimeoutWorkflow
+  alias AshWorkflowTest.PreciseRevisitWorkflow
 
   @resource PreciseActionTimeoutWorkflow
-  @table_manager Module.concat(PreciseActionTimeoutWorkflow, Ash.DataLayer.Ets.TableManager)
+  @resources [PreciseActionTimeoutWorkflow, PreciseRevisitWorkflow]
 
   setup do
     on_exit(&reset_storage/0)
@@ -25,8 +26,10 @@ defmodule AshWorkflow.Scheduler.PreciseActionTimeoutTest do
   # See `AshWorkflow.Scheduler.PreciseTest` for why the table manager has to
   # be gone before the next test starts.
   defp reset_storage do
-    Ets.stop(@resource)
-    await_stopped(@table_manager)
+    for resource <- @resources do
+      Ets.stop(resource)
+      await_stopped(Module.concat(resource, Ash.DataLayer.Ets.TableManager))
+    end
   end
 
   defp await_stopped(name, tries \\ 200) do
@@ -106,6 +109,32 @@ defmodule AshWorkflow.Scheduler.PreciseActionTimeoutTest do
     Precise.run_due(@resource)
 
     assert [%{name: :final_reminder}] = record |> reload() |> pending_deadlines()
+  end
+
+  test "the Timeline fires a state_entered_at action timeout again on a second visit" do
+    start_supervised!({Timeline, resources: [PreciseRevisitWorkflow], look_ahead_ms: 60_000})
+
+    record =
+      PreciseRevisitWorkflow
+      |> Ash.Changeset.for_create(:create, %{})
+      |> Ash.create!()
+
+    Process.sleep(1_200)
+    record = Ash.get!(PreciseRevisitWorkflow, record.id)
+    assert record.reminders == 1
+
+    record =
+      record
+      |> Ash.Changeset.for_update(:leave, %{})
+      |> Ash.update!()
+      |> Ash.Changeset.for_update(:come_back, %{})
+      |> Ash.update!()
+
+    Process.sleep(1_200)
+    assert Ash.get!(PreciseRevisitWorkflow, record.id).reminders == 2
+
+    Process.sleep(300)
+    assert Ash.get!(PreciseRevisitWorkflow, record.id).reminders == 2
   end
 
   defp pending_deadlines(record) do

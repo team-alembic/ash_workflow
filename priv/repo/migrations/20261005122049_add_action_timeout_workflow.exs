@@ -11,6 +11,7 @@ defmodule AshWorkflowTest.Repo.Migrations.AddActionTimeoutWorkflow do
     create table(:action_timeout_workflows, primary_key: false) do
       add(:id, :uuid, null: false, default: fragment("uuid_generate_v7()"), primary_key: true)
       add(:reminders, :bigint, null: false, default: 0)
+      add(:pings, :bigint, null: false, default: 0)
       add(:checks, :bigint, null: false, default: 0)
       add(:next_check_at, :utc_datetime_usec)
 
@@ -20,6 +21,7 @@ defmodule AshWorkflowTest.Repo.Migrations.AddActionTimeoutWorkflow do
       )
 
       add(:waiting_reminder_fired_at, :utc_datetime_usec)
+      add(:waiting_ping_fired_at, :utc_datetime_usec)
       add(:waiting_check_fired_at, :utc_datetime_usec)
       add(:state, :text, null: false, default: "waiting")
     end
