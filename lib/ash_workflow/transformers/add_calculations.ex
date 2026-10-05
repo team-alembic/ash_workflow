@@ -18,6 +18,7 @@ defmodule AshWorkflow.Transformers.AddCalculations do
   alias AshWorkflow.Entities.Every
   alias AshWorkflow.Entities.Step
   alias AshWorkflow.Entities.Timeout
+  alias AshWorkflow.Scheduler.Work
   alias Spark.Dsl.Transformer
 
   def transform(dsl) do
@@ -94,10 +95,14 @@ defmodule AshWorkflow.Transformers.AddCalculations do
   end
 
   defp timeout_entry(step, timeout) do
+    field = Timeout.deadline_field(timeout)
+    fired_field = Timeout.fired_field(step.name, timeout)
+
     %{
       name: timeout.name,
-      field: Timeout.deadline_field(timeout),
-      fired_field: Timeout.fired_field(step.name, timeout),
+      field: field,
+      fired_field: fired_field,
+      not_fired: Work.not_fired(fired_field, %{field: field, fire_after: timeout.fire_after}),
       fire_after: timeout.fire_after,
       kind: if(timeout.transition_to, do: :transition, else: :action),
       target: timeout.transition_to

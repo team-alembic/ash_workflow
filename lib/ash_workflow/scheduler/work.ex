@@ -128,9 +128,21 @@ defmodule AshWorkflow.Scheduler.Work do
   Always true for work with no `fired_field`.
   """
   @spec not_fired(t()) :: Ash.Expr.t()
-  def not_fired(%__MODULE__{fired_field: nil}), do: true
+  def not_fired(%__MODULE__{fired_field: fired_field, deadline: deadline}),
+    do: not_fired(fired_field, deadline)
 
-  def not_fired(%__MODULE__{fired_field: fired_field, deadline: deadline}) do
+  @doc """
+  `not_fired/1` for a fired column and deadline that are not yet part of a
+  `Work`.
+
+  `AshWorkflow.Calculations.PendingDeadlines` evaluates this expression
+  against a loaded record with `Ash.Expr.eval/2`, so the calculation and the
+  schedulers decide "fired" with the same comparison.
+  """
+  @spec not_fired(atom() | nil, deadline() | nil) :: Ash.Expr.t()
+  def not_fired(nil, _deadline), do: true
+
+  def not_fired(fired_field, deadline) do
     Ash.Expr.expr(is_nil(^ref(fired_field)) or ^ref(fired_field) < ^deadline_expr(deadline))
   end
 
