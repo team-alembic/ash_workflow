@@ -74,29 +74,13 @@ defmodule AshWorkflow.Calculations.PendingDeadlines do
   end
 
   defp deadline(timeout, record) do
-    case as_datetime(Map.get(record, timeout.field)) do
-      nil ->
-        []
-
-      from ->
-        due_at = due_at(from, timeout.fire_after)
-
-        if fired?(timeout, record, due_at), do: [], else: [entry(timeout, due_at)]
-    end
-  end
-
-  # The same comparison `AshWorkflow.Scheduler.Work.not_fired/1` compiles into
-  # the scheduler's match.
-  defp fired?(timeout, record, due_at) do
-    case Map.get(timeout, :fired_field) do
-      nil ->
-        false
-
-      fired_field ->
-        case as_datetime(Map.get(record, fired_field)) do
-          nil -> false
-          fired_at -> DateTime.compare(fired_at, due_at) != :lt
-        end
+    with %DateTime{} = from <- as_datetime(Map.get(record, timeout.field)),
+         {:ok, true} <-
+           Ash.Expr.eval(timeout.not_fired, record: record, resource: record.__struct__) do
+      [entry(timeout, due_at(from, timeout.fire_after))]
+    else
+      nil -> []
+      {:ok, false} -> []
     end
   end
 
