@@ -250,8 +250,11 @@ defmodule AshWorkflow.Scheduler.Precise.Timeline do
   defp due_records(%Work{deadline: %{field: field, fire_after: fire_after}} = work, state, cutoff) do
     bound = bound(cutoff, fire_after)
 
+    # An action timeout that has fired keeps its deadline inside the bound, so
+    # without `Work.not_fired/1` every sweep would arm it again and `fire/4`
+    # would find nothing.
     filter =
-      Ash.Expr.expr(^in_step(work) and ^field_due(work, field, bound))
+      Ash.Expr.expr(^in_step(work) and ^field_due(work, field, bound) and ^Work.not_fired(work))
       |> until_filter(work)
 
     read(work.resource, filter, state, deadline_loads(work))

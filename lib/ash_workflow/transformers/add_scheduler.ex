@@ -105,7 +105,7 @@ defmodule AshWorkflow.Transformers.AddScheduler do
         timeout.action
       end
 
-    %Work{
+    work = %Work{
       # Scoped by step so two steps can declare a timeout with the same name.
       name: :"__timeout_trigger_#{step_name}_#{timeout.name}",
       kind: :timeout,
@@ -113,18 +113,23 @@ defmodule AshWorkflow.Transformers.AddScheduler do
       step: step_name,
       timeout: timeout.name,
       action: action,
-      match: Ash.Expr.expr(^in_step(state_attribute, step_name) and ^due(timeout, field)),
       deadline: %{field: field, fire_after: timeout.fire_after},
       repeat?: false,
-      # A timeout never repeats: an action timeout does not change state, so
-      # `once?` stops it matching again on the next poll. A transition timeout
-      # leaves the step it matched on, which is itself a durable record that
-      # it fired.
-      once?: timeout.action != nil,
+      # A transition timeout leaves the step it matched on, which is itself a
+      # durable record that it fired. An action timeout stays, so it writes
+      # this column instead.
+      fired_field: Timeout.fired_field(step_name, timeout),
       self_scheduled?: timeout.self_scheduled?,
       retry: timeout.retry || %Retry{},
       opts: [check_interval: timeout.check_interval]
     }
+
+    match =
+      Ash.Expr.expr(
+        ^in_step(state_attribute, step_name) and ^due(timeout, field) and ^Work.not_fired(work)
+      )
+
+    %{work | match: match}
   end
 
   defp every_works(steps, resource, state_attribute) do
@@ -165,7 +170,6 @@ defmodule AshWorkflow.Transformers.AddScheduler do
       deadline: %{field: field, fire_after: every.interval},
       repeat?: true,
       until: every.until,
-      once?: false,
       self_scheduled?: every.self_scheduled?,
       retry: every.retry || %Retry{},
       opts: [check_interval: every.check_interval]

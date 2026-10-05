@@ -69,5 +69,6 @@ defmodule AshWorkflowTest.Domain do
     resource AshWorkflowTest.StatusLog
     resource AshWorkflowTest.RetryWorkflow
     resource AshWorkflowTest.PreciseRetryWorkflow
+    resource AshWorkflowTest.PreciseActionTimeoutWorkflow
   end
 end

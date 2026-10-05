@@ -328,6 +328,7 @@ timeout :reminder, fire_after: {3, :days}, action: :send_reminder
 ```
 
 - `action`: References a user-defined update action. The workflow stays in the current state.
+- The extension adds a nilable `<step>_<timeout>_fired_at` attribute that records the firing. The timeout fires again only when its deadline moves later, such as on a new visit to the step. On AshPostgres, generate a migration after adding an action timeout.
 
 ### Recurring Action (`every`, fires on every interval)
 

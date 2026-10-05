@@ -11,17 +11,15 @@ defmodule AshWorkflow.Calculations.PendingDeadlines do
 
   This is the schedule *implied* by the DSL and the record's current field
   values — `field + fire_after`, or the `fire_at` field itself, computed on read.
-  It is not a record of what has already fired.
 
-  For a transition timeout that distinction does not arise: firing changes the
-  state, so the deadline leaves the list. But a non-repeating action timeout
-  does not change state, so its deadline keeps being derivable after it has
-  fired, and it will still appear here with a `due_at` in the past. Read a past
-  `due_at` as "was due", not "will fire".
+  A deadline leaves the list once it has fired. A transition timeout changes
+  the state when it fires. An action timeout does not, so its entry is omitted
+  while its `<step>_<timeout>_fired_at` column holds an instant at or after
+  its `due_at`. A timeout that is due but has not fired yet still appears with
+  a `due_at` in the past.
 
-  An `every` entry does not have the stale-past-`due_at` problem a
-  non-repeating action timeout has: firing an `every` writes its own
-  last-fired column, so its `due_at` is always the next instant it will run.
+  Firing an `every` writes its own last-fired column, so its `due_at` is
+  always the next instant it will run.
 
   A timeout whose `field` is `nil` on the record has no derivable deadline and
   is omitted. An `every` whose column is `nil` is different: it has never
@@ -42,7 +40,7 @@ defmodule AshWorkflow.Calculations.PendingDeadlines do
       opts[:timeouts]
       |> Map.values()
       |> List.flatten()
-      |> Enum.map(& &1.field)
+      |> Enum.flat_map(&[&1.field | List.wrap(Map.get(&1, :fired_field))])
       |> Enum.uniq()
 
     [Keyword.fetch!(opts, :state_attribute), :state_entered_at | fields]
@@ -77,8 +75,28 @@ defmodule AshWorkflow.Calculations.PendingDeadlines do
 
   defp deadline(timeout, record) do
     case as_datetime(Map.get(record, timeout.field)) do
-      nil -> []
-      from -> [entry(timeout, due_at(from, timeout.fire_after))]
+      nil ->
+        []
+
+      from ->
+        due_at = due_at(from, timeout.fire_after)
+
+        if fired?(timeout, record, due_at), do: [], else: [entry(timeout, due_at)]
+    end
+  end
+
+  # The same comparison `AshWorkflow.Scheduler.Work.not_fired/1` compiles into
+  # the scheduler's match.
+  defp fired?(timeout, record, due_at) do
+    case Map.get(timeout, :fired_field) do
+      nil ->
+        false
+
+      fired_field ->
+        case as_datetime(Map.get(record, fired_field)) do
+          nil -> false
+          fired_at -> DateTime.compare(fired_at, due_at) != :lt
+        end
     end
   end
 
