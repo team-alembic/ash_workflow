@@ -19,6 +19,26 @@ defmodule AshWorkflowDemoWeb.CoreComponents do
   alias Phoenix.LiveView.JS
 
   @doc """
+  Renders the OnlySands wordmark: "Only" followed by "Sands" in an ink pill
+  with amber text, matching `.brandmark` in the talk deck's
+  `onlysands.css`.
+
+  ## Examples
+
+      <.brandmark />
+      <.brandmark class="text-3xl" />
+  """
+  attr :class, :string, default: "text-2xl"
+
+  def brandmark(assigns) do
+    ~H"""
+    <div class={["shrink-0 font-serif font-black leading-none tracking-tight text-ink", @class]}>
+      Only<span class="ml-[0.05em] inline-block rounded-full bg-ink px-[0.35em] py-[0.1em] text-amber">Sands</span>
+    </div>
+    """
+  end
+
+  @doc """
   Renders a modal.
 
   ## Examples
@@ -114,9 +134,9 @@ defmodule AshWorkflowDemoWeb.CoreComponents do
       phx-click={JS.push("lv:clear-flash", value: %{key: @kind}) |> hide("##{@id}")}
       role="alert"
       class={[
-        "fixed top-2 right-2 mr-2 w-80 sm:w-96 z-50 rounded-lg p-3 ring-1",
-        @kind == :info && "bg-emerald-50 text-emerald-800 ring-emerald-500 fill-cyan-900",
-        @kind == :error && "bg-rose-50 text-rose-900 shadow-md ring-rose-500 fill-rose-900"
+        "fixed top-2 right-2 mr-2 w-80 sm:w-96 z-50 rounded-lg p-3 ring-1 font-sans",
+        @kind == :info && "bg-paper text-green ring-green",
+        @kind == :error && "bg-paper text-orange shadow-md ring-orange"
       ]}
       {@rest}
     >
@@ -355,7 +375,7 @@ defmodule AshWorkflowDemoWeb.CoreComponents do
         class={[
           "mt-2 block w-full rounded-lg text-zinc-900 focus:ring-0 sm:text-sm sm:leading-6 min-h-[6rem]",
           @errors == [] && "border-zinc-300 focus:border-zinc-400",
-          @errors != [] && "border-rose-400 focus:border-rose-400"
+          @errors != [] && "border-orange focus:border-orange"
         ]}
         {@rest}
       ><%= Phoenix.HTML.Form.normalize_value("textarea", @value) %></textarea>
@@ -377,7 +397,7 @@ defmodule AshWorkflowDemoWeb.CoreComponents do
         class={[
           "mt-2 block w-full rounded-lg text-zinc-900 focus:ring-0 sm:text-sm sm:leading-6",
           @errors == [] && "border-zinc-300 focus:border-zinc-400",
-          @errors != [] && "border-rose-400 focus:border-rose-400"
+          @errors != [] && "border-orange focus:border-orange"
         ]}
         {@rest}
       />
@@ -407,7 +427,7 @@ defmodule AshWorkflowDemoWeb.CoreComponents do
 
   def error(assigns) do
     ~H"""
-    <p class="mt-3 flex gap-3 text-sm leading-6 text-rose-600">
+    <p class="mt-3 flex gap-3 text-sm leading-6 text-orange">
       <.icon name="hero-exclamation-circle-mini" class="mt-0.5 h-5 w-5 flex-none" />
       {render_slot(@inner_block)}
     </p>

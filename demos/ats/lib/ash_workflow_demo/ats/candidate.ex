@@ -5,14 +5,17 @@ defmodule AshWorkflowDemo.ATS.Candidate do
 
   Three parties move a candidate along and only one of them is in the room.
   Janine in HR and Steve the engineering lead are both played by the workflow
-  itself, each answering after a delay of their own. The bureau answers over
-  HTTP from a different screen. El Jefe is the only human with a button.
+  itself: Janine answers within seven seconds, Steve's delay is drawn per
+  candidate and fans out. The bureau answers over HTTP from a different
+  screen, on its own short random clock when nobody works the portal, and
+  sometimes fails its first attempt and gets retried. El Jefe is the only
+  human with a button.
   """
 
   use Ash.Resource,
     domain: AshWorkflowDemo.ATS,
     data_layer: AshPostgres.DataLayer,
-    extensions: [AshWorkflow],
+    extensions: [AshWorkflow, AshOban],
     notifiers: [AshWorkflowDemo.ATS.Candidate.Notifier]
 
   postgres do
@@ -34,9 +37,9 @@ defmodule AshWorkflowDemo.ATS.Candidate do
     attribute :pitch, :string, allow_nil?: false, public?: true
     attribute :avatar_url, :string, allow_nil?: false, public?: true
 
-    # How long each reviewer takes to come back, drawn per candidate on :start.
-    # A whole room applying at once fans out across the column instead of
-    # answering in lockstep.
+    # Both are drawn per candidate on :start, which is what lets a whole room
+    # applying at once fan out across the column instead of answering in
+    # lockstep.
     attribute :hr_delay_seconds, :integer, public?: true
     attribute :lead_delay_seconds, :integer, public?: true
 
@@ -47,6 +50,7 @@ defmodule AshWorkflowDemo.ATS.Candidate do
     # its timer off an unloaded value and crashes, so they are real columns.
     attribute :hr_respond_after, :utc_datetime_usec, public?: true
     attribute :lead_respond_after, :utc_datetime_usec, public?: true
+    attribute :dbs_respond_after, :utc_datetime_usec, public?: true
 
     attribute :score, :integer, public?: true
     attribute :score_reason, :string, public?: true
@@ -60,6 +64,12 @@ defmodule AshWorkflowDemo.ATS.Candidate do
 
     # nil means the check came back clear. Anything else is what they found.
     attribute :dbs_offence, :string, public?: true
+
+    # Whether this candidate's bureau call fails on its first attempt, drawn
+    # on submission so the failure is scripted rather than a coin flip at
+    # stage time. See AshWorkflowDemo.ATS.Candidate.BureauReturnsResult.
+    attribute :bureau_flaky?, :boolean, default: false, public?: true
+    attribute :bureau_attempts, :integer, default: 0, public?: true
 
     create_timestamp :inserted_at
     update_timestamp :updated_at
@@ -87,6 +97,14 @@ defmodule AshWorkflowDemo.ATS.Candidate do
       accept []
       require_atomic? false
       change AshWorkflowDemo.ATS.Candidate.JanineScreens
+      change AshWorkflowDemo.ATS.Candidate.StartBureauClock
+    end
+
+    # The retry counter's own action, separate from :record_bureau_result so
+    # it can be bumped from inside that action's change before a raise there
+    # aborts everything else on the changeset. See BureauReturnsResult.
+    update :bump_bureau_attempts do
+      accept [:bureau_attempts]
     end
 
     # Every way into :lead_interview runs one of these three, which is the only
@@ -117,7 +135,7 @@ defmodule AshWorkflowDemo.ATS.Candidate do
     # Every deadline here is shorter than a minute, which is more than cron can
     # poll for. Precise arms a timer per deadline instead of polling, so they
     # need no self_scheduled? flag and no hand-rolled ticker.
-    scheduler AshWorkflow.Scheduler.Precise
+    # scheduler AshWorkflow.Scheduler.Precise
 
     transition_log AshWorkflowDemo.ATS.CandidateTransition
 
@@ -133,8 +151,7 @@ defmodule AshWorkflowDemo.ATS.Candidate do
       transition :slot_taken, to: :rejected
 
       timeout :janine_responds do
-        fire_after {1, :seconds}
-        field :hr_respond_after
+        fire_at :hr_respond_after
         transition_to :hr_decision
       end
     end
@@ -159,15 +176,29 @@ defmodule AshWorkflowDemo.ATS.Candidate do
       transition :dbs_flag, to: :lead_interview, accept: [:dbs_offence], undoable?: true
       transition :slot_taken, to: :rejected
 
-      # Long enough that a person can pick up the other screen and answer on
-      # it. Nobody has to: when it fires, the bureau answers for itself.
-      timeout :bureau_responds, fire_after: {90, :seconds}, transition_to: :bureau_result
+      # Short and random, drawn per candidate on `:record_hr_screen`. Long
+      # enough that a person can pick up the other screen and answer on it.
+      # Nobody has to: when it fires, the bureau answers for itself.
+      timeout :bureau_responds do
+        fire_after {1, :seconds}
+        field :dbs_respond_after
+        transition_to :bureau_result
+      end
     end
 
     step :bureau_result do
       action :record_bureau_result
       on_success :lead_interview
       on_error :lead_interview
+
+      # The bureau is the one call in this demo that stands in for a flaky
+      # third-party API: BureauReturnsResult fails a flaky candidate's first
+      # attempt on purpose, and this is what retries it rather than routing
+      # straight to on_error.
+      retry do
+        max_attempts 3
+        backoff {2, :seconds}
+      end
     end
 
     step :lead_interview do
@@ -202,7 +233,7 @@ defmodule AshWorkflowDemo.ATS.Candidate do
       transition :veto, to: :rejected, undoable?: true
       transition :slot_taken, to: :rejected
 
-      timeout :jefe_rubber_stamp, fire_after: {45, :seconds}, transition_to: :hired
+      timeout :jefe_no_answer, fire_after: {45, :seconds}, transition_to: :rejected
     end
 
     step :hired, terminal: true

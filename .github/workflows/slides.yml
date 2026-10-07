@@ -1,0 +1,44 @@
+name: Slides
+
+on:
+  push:
+    branches: [main]
+    paths: ["slides/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: extractions/setup-just@v2
+      - run: just html
+        working-directory: slides
+      - name: Collect the site
+        run: |
+          deck=slides/2026-ashconf-when-time-meets-state
+          mkdir -p _site/when-time-meets-state
+          cp -r "$deck/index.html" "$deck/assets" _site/when-time-meets-state/
+      - uses: actions/upload-pages-artifact@v3
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

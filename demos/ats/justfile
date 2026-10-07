@@ -1,0 +1,13 @@
+host := "ashconf26.sinclair.software"
+
+# List all available commands (default)
+@list:
+    just --list
+
+# Start Phoenix with the QR code pointing at the tunnel
+demo:
+    TUNNEL_URL=https://{{host}} mix phx.server
+
+# Expose localhost:4000 at the demo hostname
+tunnel:
+    cloudflared tunnel --config cloudflared/config.yml run ash-workflow-demo

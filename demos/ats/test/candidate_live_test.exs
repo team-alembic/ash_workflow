@@ -98,8 +98,8 @@ defmodule AshWorkflowDemoWeb.CandidateLiveTest do
 
       assert html =~ "Never reached his desk."
       assert html =~ "opacity-25 grayscale"
-      # #4b5563 is the dim tone; neither the good nor the bad hue is used.
-      assert html =~ "color: #4b5563"
+      # #a39c8c is the dim tone; neither the good nor the bad hue is used.
+      assert html =~ "color: #a39c8c"
     end
 
     test "lights up green when he makes the offer", %{conn: conn} do
@@ -110,10 +110,10 @@ defmodule AshWorkflowDemoWeb.CandidateLiveTest do
 
       assert html =~ "Offer"
       assert html =~ "He picked you."
-      assert html =~ "color: #10b981"
+      assert html =~ "color: #3ba181"
     end
 
-    test "lights up red when he vetoes", %{conn: conn} do
+    test "lights up orange when he vetoes", %{conn: conn} do
       candidate = seed_final_approval("Vetoed")
       {:ok, vetoed} = ATS.veto(candidate, %{}, authorize?: false)
 
@@ -121,7 +121,7 @@ defmodule AshWorkflowDemoWeb.CandidateLiveTest do
 
       assert html =~ "Veto"
       assert html =~ "He turned you down himself."
-      assert html =~ "color: #f43f5e"
+      assert html =~ "color: #c95b05"
     end
 
     # :slot_taken shares the :final_approval -> :rejected edge with :veto, but
@@ -138,7 +138,7 @@ defmodule AshWorkflowDemoWeb.CandidateLiveTest do
       assert reload(bystander).state == :rejected
       assert html =~ "Too late"
       assert html =~ "Somebody else took the slot."
-      assert html =~ "color: #4b5563"
+      assert html =~ "color: #a39c8c"
       refute html =~ "He turned you down himself."
     end
 
@@ -148,7 +148,7 @@ defmodule AshWorkflowDemoWeb.CandidateLiveTest do
       {:ok, _view, html} = live(conn, ~p"/c/#{candidate.id}")
 
       assert html =~ "Deciding"
-      assert html =~ "color: #9aa4b2"
+      assert html =~ "color: #9c9484"
       refute html =~ "opacity-25 grayscale"
     end
   end

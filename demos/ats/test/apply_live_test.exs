@@ -9,10 +9,10 @@ defmodule AshWorkflowDemoWeb.ApplyLiveTest do
     :ok
   end
 
-  test "apply page renders with El Jefe branding", %{conn: conn} do
+  test "apply page renders the job advert from the slides", %{conn: conn} do
     {:ok, _view, html} = live(conn, "/apply")
-    assert html =~ "¿Y usted quién es?"
-    assert html =~ "El Jefe is hiring"
+    assert html =~ "Chief Sediment Architect"
+    assert html =~ "Get your hands dirty"
     assert html =~ "Apply"
   end
 

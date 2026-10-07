@@ -74,7 +74,7 @@ defmodule AshWorkflowDemoWeb.DashboardLiveTest do
 
     {:ok, _view, html} = live(conn, "/")
     assert html =~ "El Jefe"
-    assert html =~ "Kanban"
+    assert html =~ "OnlySands"
     assert html =~ "Insert Random Candidate"
     assert html =~ "Reset the board"
     assert html =~ "Alice"
@@ -122,19 +122,15 @@ defmodule AshWorkflowDemoWeb.DashboardLiveTest do
     assert c.state == :hr_screen
   end
 
-  test "reset sweeps every in-flight candidate to :rejected", %{conn: conn} do
-    on_hr_screen = start_candidate("OnHrScreen")
-    on_background_check = seed_background_check("OnBackgroundCheck")
-    on_lead_interview = seed_lead_interview("OnLeadInterview")
-    on_final_approval = seed_final_approval("OnFinalApproval")
+  test "reset deletes every candidate", %{conn: conn} do
+    start_candidate("OnHrScreen")
+    seed_background_check("OnBackgroundCheck")
+    seed_final_approval("OnFinalApproval")
 
     {:ok, view, _html} = live(conn, "/")
     _html = render_click(view, "reset")
 
-    assert reload(on_hr_screen).state == :rejected
-    assert reload(on_background_check).state == :rejected
-    assert reload(on_lead_interview).state == :rejected
-    assert reload(on_final_approval).state == :rejected
+    assert %{results: []} = ATS.list_candidates!(authorize?: false)
   end
 
   test "dashboard renders QR code block when tunnel_url is set", %{conn: conn} do
@@ -196,7 +192,7 @@ defmodule AshWorkflowDemoWeb.DashboardLiveTest do
       end)
 
     {:ok, view, html} = live(conn, "/")
-    assert html =~ "bg-bubble-alarm"
+    assert html =~ "bg-dark"
     assert html =~ html_escape(winner.dbs_offence)
 
     html = render_click(view, "offer", %{"id" => winner.id})
@@ -249,17 +245,23 @@ defmodule AshWorkflowDemoWeb.DashboardLiveTest do
     alias AshWorkflowDemo.ATS.Candidate
     alias AshWorkflowDemo.ATS.Candidate.Deadlines
 
-    test "counts down HR screen from the duration the DSL declares", %{conn: conn} do
+    test "counts down HR screen to the stored deadline", %{conn: conn} do
       start_candidate("Counting")
 
       {:ok, _view, html} = live(conn, "/")
 
-      assert html =~ "#{Deadlines.seconds(:janine_responds)}s left"
+      assert html =~ "0s left"
     end
 
     test "the bureau countdown reaches zero exactly when the deadline is due", %{conn: conn} do
       candidate = seed_background_check("Zero")
-      aged = age_by(candidate, Deadlines.seconds(:bureau_responds), :second)
+
+      aged =
+        set_datetime(
+          candidate,
+          :dbs_respond_after,
+          DateTime.add(DateTime.utc_now(), -Deadlines.seconds(:bureau_responds), :second)
+        )
 
       {:ok, _view, html} = live(conn, "/")
       assert html =~ "0s left"
@@ -272,7 +274,13 @@ defmodule AshWorkflowDemoWeb.DashboardLiveTest do
       conn: conn
     } do
       candidate = seed_background_check("OneLeft")
-      aged = age_by(candidate, Deadlines.seconds(:bureau_responds) - 1, :second)
+
+      aged =
+        set_datetime(
+          candidate,
+          :dbs_respond_after,
+          DateTime.add(DateTime.utc_now(), -(Deadlines.seconds(:bureau_responds) - 1), :second)
+        )
 
       {:ok, _view, html} = live(conn, "/")
       assert html =~ "1s left"

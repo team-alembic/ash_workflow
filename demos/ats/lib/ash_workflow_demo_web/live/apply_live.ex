@@ -1,7 +1,7 @@
 defmodule AshWorkflowDemoWeb.ApplyLive do
   use AshWorkflowDemoWeb, :live_view
 
-  alias AshWorkflowDemo.ATS.Candidate.Deadlines
+  alias AshWorkflowDemo.ATS.Candidate.SetResponseDelays
 
   @avatar_styles ~w(avataaars adventurer big-smile bottts fun-emoji micah)
 
@@ -61,57 +61,67 @@ defmodule AshWorkflowDemoWeb.ApplyLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="min-h-screen bg-ink flex items-center justify-center p-6">
-      <div class="w-full max-w-md bg-ink-raised border border-ink-line rounded-2xl shadow-2xl p-8 space-y-6">
+    <div class="min-h-screen bg-cream flex items-center justify-center p-6">
+      <div class="w-full max-w-md bg-paper border border-line rounded-2xl shadow-[8px_8px_0_theme(colors.ink)] p-8 space-y-6">
         <div class="text-center">
-          <div class="text-5xl mb-2">🤠</div>
-          <h1 class="text-3xl font-extrabold text-paper">¿Y usted quién es?</h1>
-          <p class="text-paper-muted mt-2">El Jefe is hiring. One slot. Make it count.</p>
+          <.brandmark class="justify-center text-3xl flex" />
+          <p class="mt-4 text-xs font-semibold uppercase tracking-widest text-muted">
+            Now hiring · one slot
+          </p>
+          <h1 class="mt-1 text-3xl font-serif font-extrabold text-ink">Chief Sediment Architect</h1>
+          <p class="text-muted mt-2">Competitive base · equity · annual sand allowance</p>
+          <ul class="mt-4 text-sm text-ink space-y-1">
+            <li>Production Ash experience</li>
+            <li>Distributed systems</li>
+            <li>Granular data</li>
+            <li>Eventual consistency</li>
+            <li class="font-bold">Get your hands dirty</li>
+          </ul>
         </div>
 
         <form phx-submit="submit" class="space-y-4">
           <div>
-            <label class="block text-sm font-semibold text-paper">Your name</label>
+            <label class="block text-sm font-semibold text-ink">Your name</label>
             <input
               type="text"
               name="candidate[name]"
               value={@form["name"]}
               maxlength={@name_max_chars}
               autocomplete="off"
-              class="mt-1 w-full rounded-lg bg-ink border-ink-line text-paper placeholder:text-paper-muted/60 shadow-sm focus:border-accent focus:ring-accent"
+              class="mt-1 w-full rounded-lg bg-cream border-line text-ink placeholder:text-muted/60 shadow-sm focus:border-amber focus:ring-amber"
               placeholder="e.g. Lola"
               required
             />
           </div>
 
           <div>
-            <label class="block text-sm font-semibold text-paper">
+            <label class="block text-sm font-semibold text-ink">
               Your pitch (max {@pitch_max_chars} chars)
             </label>
             <textarea
               name="candidate[pitch]"
               rows="4"
               maxlength={@pitch_max_chars}
-              class="mt-1 w-full rounded-lg bg-ink border-ink-line text-paper placeholder:text-paper-muted/60 shadow-sm focus:border-accent focus:ring-accent"
+              class="mt-1 w-full rounded-lg bg-cream border-line text-ink placeholder:text-muted/60 shadow-sm focus:border-amber focus:ring-amber"
               placeholder="Why should El Jefe hire you?"
               required
             ><%= @form["pitch"] %></textarea>
           </div>
 
           <%= if @error do %>
-            <div class="text-bubble-alarm text-sm">{@error}</div>
+            <div class="text-orange text-sm">{@error}</div>
           <% end %>
 
           <button
             type="submit"
-            class="w-full bg-accent text-ink font-black py-3 rounded-lg hover:bg-accent/85 transition"
+            class="w-full bg-amber text-ink font-black py-3 rounded-lg hover:bg-amber/85 transition"
           >
             Apply
           </button>
         </form>
 
-        <p class="text-xs text-paper-muted text-center">
-          Warning: Janine has {Deadlines.seconds(:janine_responds)} seconds to get to your pitch.
+        <p class="text-xs text-muted text-center">
+          Warning: Janine has {SetResponseDelays.hr_max_seconds()} seconds to get to your pitch.
         </p>
       </div>
     </div>

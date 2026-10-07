@@ -30,14 +30,13 @@ mix setup
 Terminal 1 — expose to the internet:
 
 ```bash
-cloudflared tunnel --url http://localhost:4000
-# copy the generated https://<xxx>.trycloudflare.com URL
+cloudflared tunnel --config cloudflared/config.yml run ash-workflow-demo
 ```
 
 Terminal 2 — start Phoenix with the tunnel URL:
 
 ```bash
-TUNNEL_URL=https://<xxx>.trycloudflare.com mix phx.server
+TUNNEL_URL=https://<hostname> mix phx.server
 ```
 
 Open http://localhost:4000/ — that's El Jefe's kanban. Project it. The QR in the corner points at `<tunnel>/apply`.
@@ -104,17 +103,36 @@ A few things worth clicking:
 - **A freshly screened candidate says "nothing to undo".** Its most recent state change came from Janine's automatic `:record_hr_screen`, which is not an undoable transition.
 - **A bystander swept by `:offer`'s cascade from `:final_approval` still shows an undo button.** Undo resolves by `(from_state, to_state)` edge, not by which named transition wrote the row, and `:veto` shares that exact edge (`:final_approval -> :rejected`) with the `:slot_taken` cascade. A bystander swept from any *other* step stays correctly non-undoable, since no undoable transition shares that edge. See the comment on the `:final_approval` step in `candidate.ex`.
 
+## The fixed address
+
+The QR is printed in the slide deck, so the hostname cannot change between now and the talk. That rules out `cloudflared tunnel --url`, which mints a fresh `*.trycloudflare.com` name on every run. A named tunnel keeps one hostname of your own across restarts, network changes, and the move from the hotel to the venue.
+
+Once, on the machine that will run the demo:
+
+```bash
+cloudflared tunnel login
+cloudflared tunnel create ash-workflow-demo
+cloudflared tunnel route dns ash-workflow-demo <hostname>
+cp cloudflared/config.example.yml cloudflared/config.yml
+```
+
+Fill in the tunnel UUID and the hostname that `tunnel create` and `tunnel route dns` printed. `config.yml` is gitignored because it hardcodes one machine's home directory and one event's hostname, not because it holds a secret. The secrets are the credentials JSON it points at, whose `TunnelSecret` lets its bearer serve your hostname, and `~/.cloudflared/cert.pem`, which can write DNS across the whole zone.
+
+The domain's nameservers have to be on Cloudflare for `tunnel route dns` to write the CNAME. One hostname covers the whole demo — `/apply`, `/dbs` and `/c/:id` are all paths on it.
+
+Check it before the talk on a phone off the venue wifi, not on the laptop. A tunnel that resolves locally and not over cellular is the failure you find out about in front of the room.
+
 ## Demo flow
 
 1. Open the dashboard. QR code is top-right.
 2. Audience scans QR, lands on `/apply`. Submitting puts them on `:hr_screen`, waiting on Janine.
-3. Janine comes back after a delay drawn for that candidate. She scores the pitch out of ten and writes a line about it. Four or better goes to the background check; anything less is rejected there and then. Nobody clicked anything.
-4. On the DBS portal, the candidate is listed by their `dbs_reference`. Return a disclosure and they carry an absurd offence for the rest of the pipeline. Ignore the portal and the bureau answers for itself after 90 seconds, disclosing something about three times in five.
+3. Janine comes back within seven seconds. She scores the pitch out of ten and writes a line about it. Four or better goes to the background check; anything less is rejected there and then. Nobody clicked anything.
+4. On the DBS portal, the candidate is listed by their `dbs_reference`. Return a disclosure and they carry an absurd offence for the rest of the pipeline. Ignore the portal and the bureau answers for itself after a short random wait, disclosing something about three times in five. About half of candidates draw a flaky bureau: its first attempt fails and `retry` on `:bureau_result` tries again two seconds later.
 5. Steve, the engineering lead, comes back after his own delay and writes up the interview. He has read the disclosure and is unbothered by it. Four or better reaches El Jefe.
 6. El Jefe's column is the only one with buttons. **Make the offer** hires that candidate and sweeps every other candidate still moving — at any step — to `:rejected` in the same instant. **Veto** rejects just that one.
 7. Candidates watch all of it on `/c/:id`, including their own disclosure.
 8. **Insert Random Candidate** injects a fake one if the audience is shy.
-9. **Reset the board** sweeps everyone still in flight to `:rejected` so you can run it again.
+9. **Reset the board** truncates every table, including Oban jobs, so you can run it again from empty.
 
 Every waiting step has a deadline that advances the candidate rather than stalling them, so the board keeps moving whether or not you touch it, and El Jefe's own 45-second timer makes the offer for him if he dithers.
 
@@ -124,16 +142,16 @@ Three parties, and only one of them is in the room.
 
 | Party | Steps | Played by |
 |---|---|---|
-| Janine, HR | `:hr_screen` → `:hr_decision` | the workflow, after a per-candidate delay |
+| Janine, HR | `:hr_screen` → `:hr_decision` | the workflow, within a random seven seconds |
 | The bureau | `:background_check` → `:bureau_result` | the `/dbs` portal or the webhook, from outside, or itself on a timeout |
 | Steve, engineering lead | `:lead_interview` → `:lead_decision` | the workflow, after a per-candidate delay |
 | El Jefe | `:final_approval` | you, with the only two buttons on the board |
 
 Each reviewer is a wait step whose only exit is their own deadline, followed by an instantaneous decision step that runs their action and branches on the score with conditional `on_success` routes. The decision steps never visibly hold a card, so the board files each pair under one column.
 
-The bureau is the same shape with the roles reversed. `:background_check` waits for an answer from outside, and its `:bureau_responds` deadline is the fallback rather than the mechanism: when it fires, `:bureau_result` rolls a result itself, disclosing something 60% of the time. Nobody has to work the portal for the demo to stay funny, and working it overrides the roll.
+The bureau is the same shape with the roles reversed. `:background_check` waits for an answer from outside, and its `:bureau_responds` deadline is the fallback rather than the mechanism: when it fires, `:bureau_result` rolls a result itself, disclosing something 60% of the time. Nobody has to work the portal for the demo to stay funny, and working it overrides the roll. About half of candidates are drawn flaky: the bureau's own reply fails once and `retry` on `:bureau_result` tries again two seconds later, which is the demo's stand-in for a third-party API that works on the second call.
 
-Both delays are drawn once on submission and stored on the record. That is what lets a whole room apply in the same second and still come back staggered — the delay is data, not a sleep holding a database connection.
+Steve's delay is drawn once on submission and stored on the record, which is what lets a whole room apply in the same second and still come back staggered — the delay is data, not a sleep holding a database connection. Janine's is drawn the same way, up to seven seconds, and the bureau's own timeout is drawn on `:record_hr_screen`, short enough to lapse without anyone touching the portal.
 
 ## Tests
 
@@ -156,7 +174,8 @@ Covering: initial state, verify→review transition, hire cascade, cascade leave
 - `lib/ash_workflow_demo/ats/candidate.ex` — the star. One Ash resource whose `workflow do` block generates the state machine, transitions, and Oban triggers.
 - `lib/ash_workflow_demo/ats/candidate/cascade.ex` — `after_action` hook on `:offer` that sweeps every other in-flight candidate to `:rejected` through the `slot_taken` transition. A distinct transition name from El Jefe's `veto`, so the log says whether a candidate was turned down or simply beaten to the slot.
 - `lib/ash_workflow_demo/ats/candidate/janine_screens.ex` and `steve_interviews.ex` — the two reviewers. Neither sleeps; the delay belongs to the step's deadline.
-- `lib/ash_workflow_demo/ats/candidate/set_response_delays.ex` and `start_lead_clock.ex` — where each reviewer's deadline is stamped.
+- `lib/ash_workflow_demo/ats/candidate/set_response_delays.ex`, `start_lead_clock.ex` and `start_bureau_clock.ex` — where each deadline is stamped.
+- `lib/ash_workflow_demo/ats/candidate/bureau_returns_result.ex` — the bureau's own reply. Also where a flaky candidate's first attempt fails on purpose, which is what the `retry` on `step :bureau_result` retries.
 - `lib/ash_workflow_demo/ats/dbs_bureau.ex` — the caller-side half of an external event, correlating on `dbs_reference`.
 - `lib/ash_workflow_demo/ats/candidate/dbs_offences.ex` — the disclosures. Crimes against a codebase, never real offences: the candidate on the projector is a real person in the room.
 - `lib/ash_workflow_demo_web/live/dbs_bureau_live.ex` — the portal, deliberately styled as a different application. It is the one page that does not take the dark theme: it stays a paper form, on the same stock as the deck's speech bubbles.
@@ -179,7 +198,7 @@ Covering: initial state, verify→review transition, hire cascade, cascade leave
 
 ## Theme
 
-The demo and the talk deck share a palette. The base tokens live in `assets/tailwind.config.js` as `ink`, `paper`, `accent` and `bubble`, taken from `slides/theme/alembic.css` on the slides branch, and Inter is loaded in `root.html.heex`. Change a value in one place and change it in the other.
+The demo and the talk deck share a palette. The base tokens live in `assets/tailwind.config.js` as `cream`, `ink`, `green`, `orange` and `peri`, taken from `slides/2026-ashconf-when-time-meets-state/onlysands.css`. The fonts follow the deck too: Georgia for headings and Courier New for everything else. Change a value in one place and change it in the other.
 
 The per-step hues are `AshWorkflowDemoWeb.Palette`. Every page reads them from there rather than keeping its own copy.
 

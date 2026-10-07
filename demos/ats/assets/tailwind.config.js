@@ -13,33 +13,31 @@ module.exports = {
   ],
   theme: {
     extend: {
-      // The talk deck's palette, kept in step with slides/theme/alembic.css so
-      // the demo on the projector and the slides around it read as one thing.
+      // The talk deck's palette, kept in step with
+      // slides/2026-ashconf-when-time-meets-state/onlysands.css so the demo on the
+      // projector and the slides around it read as one company.
       colors: {
-        brand: "#FD4F00",
-        ink: {
-          DEFAULT: "#0e1116", // --bg
-          raised: "#161b22",  // --code-bg, used for cards
-          line: "#232a33",    // the deck's pre border
-        },
-        paper: {
-          DEFAULT: "#e8eaed", // --fg
-          muted: "#9aa4b2",   // --muted
-        },
-        accent: {
-          DEFAULT: "#f97316", // --accent
-          alt: "#38bdf8",     // --accent-2
-        },
-        // The deck's speech bubble, which the disclosure notice borrows.
-        bubble: {
-          DEFAULT: "#fdf6e8",
-          ink: "#12100a",
-          who: "#b4520a",
-          alarm: "#c1121f",
-        },
+        cream: "#fff6df",   // --c, the page background
+        ink: "#090909",     // --i, body text and hard borders/shadows
+        dark: "#100d18",    // the deck's `.dark` section background; reserved
+                             // for the rejected state, since the deck carries
+                             // no red for a rejection to borrow
+        paper: "#ffffff",   // a card raised off the cream page
+        well: "#f6ecc9",    // a panel recessed into a card, one shade below cream
+        muted: "#6b6558",   // secondary text, dark enough to read from the
+                             // back of a projected room
+        line: "#e5d8ab",    // hairline dividers
+        green: "#3ba181",
+        orange: "#c95b05",
+        peri: "#8fa1ff",
+        amber: "#f2b540",   // the brandmark pill's colour; the app's one accent
       },
       fontFamily: {
-        sans: ["Inter", "Helvetica Neue", "system-ui", "sans-serif"],
+        // The deck sets its headings in Georgia and everything else in
+        // Courier New. `font-sans` (the body default) carries the Courier
+        // stack; headings opt into `font-serif` for the Georgia one.
+        sans: ["Courier New", "Courier", "monospace"],
+        serif: ["Georgia", "Times New Roman", "serif"],
       },
     },
   },

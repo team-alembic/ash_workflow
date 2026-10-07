@@ -108,10 +108,10 @@ defmodule AshWorkflowDemoWeb.CandidateLive do
     Enum.any?(Candidate.history(candidate), &(&1.to_state == state))
   end
 
-  defp tone_color(:good), do: "#10b981"
-  defp tone_color(:bad), do: "#f43f5e"
-  defp tone_color(:pending), do: "#9aa4b2"
-  defp tone_color(:never), do: "#4b5563"
+  defp tone_color(:good), do: "#3ba181"
+  defp tone_color(:bad), do: "#c95b05"
+  defp tone_color(:pending), do: "#9c9484"
+  defp tone_color(:never), do: "#a39c8c"
 
   # A card only comes up to full strength once its reviewer has answered.
   # Everything else is a column holding its place.
@@ -119,8 +119,8 @@ defmodule AshWorkflowDemoWeb.CandidateLive do
 
   defp panel_class(tone) do
     if answered?(tone),
-      do: "border-ink-line bg-ink-raised",
-      else: "border-ink-line/50 bg-ink-raised/40"
+      do: "border-line bg-paper",
+      else: "border-line/50 bg-paper/40"
   end
 
   defp portrait_class(:never), do: "opacity-25 grayscale"
@@ -133,7 +133,7 @@ defmodule AshWorkflowDemoWeb.CandidateLive do
   defp verdict_card(assigns) do
     ~H"""
     <div class={
-      "flex min-h-0 flex-col items-center rounded-2xl border px-[1vw] py-[1.6vh] text-center " <>
+      "flex min-h-0 flex-col items-center rounded-2xl border px-4 py-3 text-center sm:px-[1vw] sm:py-[1.6vh] " <>
         panel_class(@column.tone)
     }>
       <div class="flex shrink-0 items-center gap-[0.5vw]">
@@ -141,11 +141,11 @@ defmodule AshWorkflowDemoWeb.CandidateLive do
           src={@portrait}
           alt={@who}
           class={
-            "h-[4.4vh] w-[4.4vh] rounded-full object-cover object-top bg-paper/10 " <>
+            "h-[4.4vh] w-[4.4vh] rounded-full object-cover object-top bg-cream " <>
               portrait_class(@column.tone)
           }
         />
-        <span class="text-[clamp(0.6rem,1.5vh,0.95rem)] font-bold uppercase tracking-[0.12em] text-paper-muted">
+        <span class="text-[clamp(0.6rem,1.5vh,0.95rem)] font-bold uppercase tracking-[0.12em] text-muted">
           {@who}
         </span>
       </div>
@@ -157,7 +157,7 @@ defmodule AshWorkflowDemoWeb.CandidateLive do
         {@column.value}
       </div>
 
-      <p class="mt-[0.8vh] min-h-0 overflow-hidden text-[clamp(0.7rem,1.7vh,1.05rem)] italic leading-snug text-paper-muted">
+      <p class="mt-[0.8vh] min-h-0 overflow-hidden text-[clamp(0.7rem,1.7vh,1.05rem)] italic leading-snug text-muted">
         {@column.note}
       </p>
     </div>
@@ -180,23 +180,24 @@ defmodule AshWorkflowDemoWeb.CandidateLive do
       )
 
     ~H"""
-    <div class="flex h-screen w-screen flex-col overflow-hidden bg-ink px-[3.5vw] py-[3vh] text-paper">
-      <header class="flex shrink-0 items-center gap-[1.4vw]">
+    <div class="flex min-h-screen w-full flex-col bg-cream px-4 py-4 text-ink sm:h-screen sm:w-screen sm:overflow-hidden sm:px-[3.5vw] sm:py-[3vh]">
+      <header class="flex shrink-0 items-center gap-3 sm:gap-[1.4vw]">
+        <.brandmark class="hidden sm:flex text-[clamp(1rem,2.6vh,1.6rem)]" />
         <img
           src={@candidate.avatar_url}
           alt={@candidate.name}
           class="h-[9vh] w-[9vh] shrink-0 rounded-full bg-paper p-[0.5vh] shadow-2xl"
         />
         <div class="min-w-0 flex-1">
-          <h1 class="truncate text-[clamp(1.4rem,3.6vh,3rem)] font-black leading-tight">
+          <h1 class="truncate font-serif text-[clamp(1.4rem,3.6vh,3rem)] font-black leading-tight">
             {@candidate.name}
           </h1>
-          <p class="truncate text-[clamp(0.65rem,1.6vh,1rem)] italic text-paper-muted">
+          <p class="truncate text-[clamp(0.65rem,1.6vh,1rem)] italic text-muted">
             "{@candidate.pitch}"
           </p>
         </div>
         <span
-          class="shrink-0 rounded-full px-[1.1vw] py-[0.7vh] text-[clamp(0.6rem,1.5vh,0.95rem)] font-bold uppercase tracking-[0.12em] text-ink"
+          class="shrink-0 whitespace-nowrap rounded-full px-3 py-1 sm:px-[1.1vw] sm:py-[0.7vh] text-[clamp(0.6rem,1.5vh,0.95rem)] font-bold uppercase tracking-[0.12em] text-ink"
           style={"background: #{@accent}"}
         >
           {@stage}
@@ -205,14 +206,14 @@ defmodule AshWorkflowDemoWeb.CandidateLive do
 
       <div class="mt-[1.6vh] h-[0.5vh] shrink-0 rounded-full" style={"background: #{@accent}"}></div>
 
-      <section class="mt-[1.8vh] flex shrink-0 items-baseline gap-[1.4vw]">
+      <section class="mt-[1.8vh] flex shrink-0 flex-col gap-2 sm:flex-row sm:items-baseline sm:gap-[1.4vw]">
         <h2
-          class="font-black uppercase leading-none tracking-tight text-[clamp(2rem,8vh,6rem)]"
+          class="font-serif font-black uppercase leading-none tracking-tight text-[clamp(1.75rem,11vw,6rem)] sm:text-[clamp(2rem,8vh,6rem)]"
           style={"color: #{@accent}"}
         >
           {@heading}
         </h2>
-        <p class="min-w-0 flex-1 text-[clamp(0.8rem,2vh,1.3rem)] leading-snug text-paper-muted">
+        <p class="min-w-0 sm:flex-1 text-[clamp(0.8rem,2vh,1.3rem)] leading-snug text-muted">
           {@sub}
         </p>
         <div :if={@candidate.state == :hired} class="shrink-0 animate-bounce text-[6vh]">🎉</div>
@@ -220,23 +221,23 @@ defmodule AshWorkflowDemoWeb.CandidateLive do
 
       <div
         :if={@candidate.dbs_offence}
-        class="mt-[1.8vh] flex shrink-0 items-center gap-[1.2vw] rounded-2xl border-4 border-black bg-bubble px-[1.4vw] py-[1.4vh] text-bubble-ink"
+        class="mt-[1.8vh] flex shrink-0 flex-col gap-2 rounded-2xl border-4 border-ink bg-well px-4 py-3 text-ink sm:flex-row sm:items-center sm:gap-[1.2vw] sm:px-[1.4vw] sm:py-[1.4vh]"
       >
-        <span class="shrink-0 text-[clamp(0.6rem,1.5vh,0.95rem)] font-bold uppercase tracking-[0.1em] text-bubble-who">
+        <span class="shrink-0 text-[clamp(0.6rem,1.5vh,0.95rem)] font-bold uppercase tracking-[0.1em] text-orange">
           ⚠️ Disclosure on file
         </span>
-        <span class="min-w-0 flex-1 text-[clamp(0.8rem,2.1vh,1.35rem)] font-bold leading-snug">
+        <span class="min-w-0 sm:flex-1 text-[clamp(0.8rem,2.1vh,1.35rem)] font-bold leading-snug">
           {@candidate.dbs_offence}
         </span>
-        <span class="shrink-0 text-[clamp(0.6rem,1.4vh,0.9rem)] opacity-70">
+        <span class="text-[clamp(0.6rem,1.4vh,0.9rem)] opacity-70 sm:shrink-0">
           Nobody's judging you for this one.
         </span>
       </div>
 
-      <div class="mt-[2vh] grid min-h-0 flex-1 grid-cols-3 gap-[1.4vw]">
+      <div class="mt-[2vh] grid min-h-0 flex-1 grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-[1.4vw]">
         <.verdict_card portrait="/images/janine-hr.png" who="Janine" column={@janine} />
         <.verdict_card portrait="/images/steve-tech.png" who="Steve" column={@steve} />
-        <.verdict_card portrait="/images/conor.png" who="El Jefe" column={@jefe} />
+        <.verdict_card portrait="/images/conor-transparent.png" who="El Jefe" column={@jefe} />
       </div>
     </div>
     """

@@ -8,6 +8,19 @@ defmodule AshWorkflowDemoWeb.Router do
     plug :put_root_layout, html: {AshWorkflowDemoWeb.Layouts, :root}
     plug :protect_from_forgery
     plug :put_secure_browser_headers
+    plug :allow_deck_framing
+  end
+
+  # The talk deck can embed the board in an iframe rather than the speaker
+  # alt-tabbing to a browser. `put_secure_browser_headers` sets
+  # x-frame-options: SAMEORIGIN, and the deck is served on a different port,
+  # so it is a different origin and the frame comes up blank. Set
+  # ALLOW_FRAMING=1 to drop the header for that one purpose. Leave it unset
+  # anywhere the board is reachable by anyone but the speaker.
+  defp allow_deck_framing(conn, _opts) do
+    if System.get_env("ALLOW_FRAMING") in ~w(1 true),
+      do: Plug.Conn.delete_resp_header(conn, "x-frame-options"),
+      else: conn
   end
 
   pipeline :api do
@@ -29,6 +42,9 @@ defmodule AshWorkflowDemoWeb.Router do
     live "/apply", ApplyLive
     live "/c/:id", CandidateLive
     live "/dbs", DbsBureauLive
+
+    # The sources cited on the slides, as short links the QR codes encode.
+    get "/resources/:slug", ResourceRedirectController, :show
   end
 
   scope "/", AshWorkflowDemoWeb do

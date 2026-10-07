@@ -26,7 +26,21 @@ defmodule AshWorkflowDemo.ATS.Candidate.JanineScreens do
     "Strong yes. I want this one moved through before Finance notices the band.",
     "Ticks every box on the scorecard, including the ones I added afterwards.",
     "Best pitch in the batch. I have screenshotted it for the all-hands.",
-    "They used the word \"stakeholder\" correctly. Unprompted."
+    "They used the word \"stakeholder\" correctly. Unprompted.",
+    "I have already ordered their lanyard.",
+    "Read it aloud to the team. Someone clapped. It was me.",
+    "This pitch has more structure than our org chart.",
+    "Would hire twice if headcount allowed. I have asked.",
+    "Their cover letter had a narrative arc. I cried at the second act.",
+    "Cancelled my other screens. We have found them.",
+    "Mentioned documentation without being asked. Fast-tracking.",
+    "I would follow this person into a reorg.",
+    "Strong communicator. Used paragraphs. Plural.",
+    "Pitch was under 200 words. A gift. A genuine gift.",
+    "Spelled the company name right. Top five percent already.",
+    "Already drafting the welcome Slack message with three emojis.",
+    "Exceeds expectations, and I set them after a very good coffee.",
+    "Culture fit so strong they may have written our values page."
   ]
 
   @passable [
@@ -35,7 +49,21 @@ defmodule AshWorkflowDemo.ATS.Candidate.JanineScreens do
     "Meets the bar. The bar has been lowered twice, but it meets it.",
     "No concerns. No excitement either. Moving to checks.",
     "Would be a great fit for a role we do not currently have open.",
-    "Scoring this a seven so it does not get flagged in the pipeline review."
+    "Scoring this in the middle so it does not get flagged in the pipeline review.",
+    "Perfectly adequate. I would trust them with a stapler.",
+    "They will be fine. Most people are fine. It is fine.",
+    "Good energy. Unclear what the energy is for.",
+    "Pitch read like a LinkedIn post, but one of the better ones.",
+    "Hit every keyword. Possibly by pasting the job ad back to us.",
+    "Passes. Mostly because it is Friday and I am tired.",
+    "Lukewarm. Like the office coffee, but with potential.",
+    "Answered the question. A different question would have been more fun.",
+    "Would not stop a meeting for them. Would not leave one either.",
+    "Fine. Some notes on font choice, but fine.",
+    "Moving forward. The vibes are not bad, they are just vibes.",
+    "Credible. Unremarkable. Exactly what the template asked for.",
+    "Meets requirements. Exceeds none. Respects all of them.",
+    "I have seen better. I have also seen Gary's, so this is fine."
   ]
 
   @weak [
@@ -44,7 +72,21 @@ defmodule AshWorkflowDemo.ATS.Candidate.JanineScreens do
     "Pitch is one sentence and two of the words are \"synergy\".",
     "Not a fit. I would rather reopen the req than explain this one.",
     "Asked about the salary band in the pitch. Bold. No.",
-    "I have read this four times and I still could not tell you what they do."
+    "I have read this four times and I still could not tell you what they do.",
+    "Opened with \"To whom it may concern\". It does not concern me.",
+    "Listed Microsoft Word as a core competency. In 2026.",
+    "Pitch was a link to a Notion page. The Notion page was private.",
+    "Described themselves as a \"10x engineer\". Ten times what, they did not say.",
+    "Addressed it to a different company. Twice.",
+    "Used Comic Sans. In plain text. I do not know how.",
+    "Pitched in the third person. Called themselves \"the talent\".",
+    "Mentioned their crypto portfolio. Unsolicited. At length.",
+    "I asked for a pitch and received a manifesto.",
+    "Said they thrive in chaos. We are trying to have less of it.",
+    "Included a headshot. Of their dog. The dog is overqualified.",
+    "Wrote \"passionate\" eleven times. I counted. I had time.",
+    "Ended with \"Thoughts?\" I have several. None for HR records.",
+    "Pitch was generated. The prompt was left in."
   ]
 
   @impl true

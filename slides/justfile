@@ -1,0 +1,59 @@
+# Marp CLI commands for the When Time Meets State deck
+# Override the deck per run, e.g. `just deck=other/deck.md theme=other/theme.css out=other/talk pdf`
+
+deck := "2026-ashconf-when-time-meets-state/deck.md"
+theme := "2026-ashconf-when-time-meets-state/onlysands.css"
+out := "2026-ashconf-when-time-meets-state/when-time-meets-state"
+marp := "npx @marp-team/marp-cli --theme-set " + theme + " --allow-local-files --html"
+
+# List all available commands (default)
+@list:
+    just --list
+
+# === DEV ===
+
+# Watch the deck and open Marp's preview window (closing the window stops it)
+dev:
+    {{marp}} {{deck}} --watch --preview -o {{parent_directory(deck)}}/index.html
+
+# Serve the deck's directory in the browser, re-rendered on every reload
+serve PORT="8080":
+    PORT={{PORT}} {{marp}} --server {{parent_directory(deck)}} --watch
+
+# Serve with polling, for WSL2/Docker file systems
+serve-wsl PORT="8080":
+    CHOKIDAR_USEPOLLING=1 PORT={{PORT}} {{marp}} --server {{parent_directory(deck)}} --watch
+
+# Preview once, without watching
+preview:
+    {{marp}} {{deck}} --preview -o {{parent_directory(deck)}}/index.html
+
+# === EXPORT ===
+
+# Export to HTML
+html:
+    {{marp}} {{deck}} -o {{parent_directory(deck)}}/index.html
+    @echo "Exported to {{parent_directory(deck)}}/index.html"
+
+# Export to PDF
+pdf:
+    {{marp}} {{deck}} -o {{out}}.pdf
+    @echo "Exported to {{out}}.pdf"
+
+# Export to PPTX
+pptx:
+    {{marp}} {{deck}} -o {{out}}.pptx
+    @echo "Exported to {{out}}.pptx"
+
+# Export HTML, PDF and PPTX
+export-all: html pdf pptx
+
+# === UTILITY ===
+
+# Check Marp CLI version
+version:
+    npx @marp-team/marp-cli --version
+
+# Delete exported HTML, PDF and PPTX files
+clean:
+    rm -f {{parent_directory(deck)}}/index.html {{out}}.pdf {{out}}.pptx
