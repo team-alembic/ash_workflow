@@ -7,9 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Upgrading from 0.8.x
+
+- **Generate a migration.** Each action timeout (a `timeout` with `action` and no `transition_to`) adds a nilable `<step>_<timeout>_fired_at` column. On AshPostgres, run `mix ash.codegen` after upgrading.
+- A record whose action timeout already fired before the upgrade has a `nil` column, so that timeout fires once more for it after the upgrade.
+
 ### Added
 
 - **Workflow diagrams.** `AshWorkflow.Charts` draws a workflow from its DSL. `AshWorkflow.Charts.mermaid_state_diagram/2` returns a Mermaid `stateDiagram-v2` that marks each step as automatic, manual, wait state or terminal. It labels a timeout with its name and its deadline (`⏱ auto_escalate after 4 hours`, `⏱ go_live at publish_at`) and gives each conditional route its `when` expression. It notes a step's policy through the check's own `describe/1`, its `retry`, the timeouts that run an action and its `every` entries. It draws each undo move that `AshWorkflow.Info.undoable_edges/1` allows, with the undo window when `within` is set (`↶ undo within 1 hour`). `AshWorkflow.Charts.render/3` takes `:mermaid`, `:json` or any module that implements `AshWorkflow.Charts.Backend`. Every format draws from one `AshWorkflow.Charts.Graph`, so all formats show the same workflow. `:json` gives that graph as plain data, for a client that draws the workflow itself. `mix ash_workflow.diagram` prints a diagram, or with `--output` writes one file for each workflow resource in the project's domains. The Diagrams guide shows four small workflows from `examples/basic` with their charts, and both the definitions and the charts are generated from the code: `bin/update-chart-examples` rewrites them, and `test/documentation_charts_test.exs` fails when one is stale. (#16)
+
+### Fixed
+
+- An action timeout fires once for each deadline under both schedulers. `AshWorkflow.Scheduler.Precise` fired a due action timeout in a loop: firing left the record matching, `AshWorkflow.Changes.RecordEvent` rearmed it, and `run_due/2` never returned 0. `AshWorkflow.Scheduler.Oban` relied on `trigger_once?`, so the completed job row was the only record of a firing. Pruning the row fired the timeout again, keeping it stopped a second visit to the step from firing, and a `fire_at` timeout whose action moved its own field later never fired a second time. Each action timeout now writes its own `<step>_<timeout>_fired_at` column (`AshWorkflow.Entities.Timeout.fired_field/2`) when it fires, and `AshWorkflow.Scheduler.Work.not_fired/1` adds `is_nil(fired_at) or fired_at < deadline` to the timeout's `match`. The timeout fires again once its deadline moves past the column. A new visit to the step and a later `fire_at` value both do that. `AshWorkflow.Scheduler.Work` replaces `once?` with `fired_field`, the generated Oban trigger no longer sets `trigger_once?`, and `pending_deadlines` omits an action timeout that has fired for its current deadline. `AshWorkflow.Verifiers.ValidateTimeoutFiredFields` rejects a fired column that names an existing non-datetime attribute, and two timeouts, or a timeout and an `every`, that resolve to the same column. (#106)
 
 ## [0.8.0] - 2026-09-30
 

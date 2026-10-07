@@ -55,9 +55,14 @@ defmodule AshWorkflow.Transformers.AddObanTriggersTest do
   end
 
   describe "timeout and every trigger behavior" do
-    test "non-repeating action timeout generates trigger_once? true" do
+    test "a non-repeating action timeout does not rely on trigger_once?" do
       trigger = trigger(AshWorkflowTest.TimeoutWorkflow, :__timeout_trigger_waiting_reminder)
-      assert trigger.trigger_once? == true
+      assert trigger.trigger_once? == false
+    end
+
+    test "a non-repeating action timeout's where excludes a record it has fired for" do
+      trigger = trigger(AshWorkflowTest.TimeoutWorkflow, :__timeout_trigger_waiting_reminder)
+      assert inspect(trigger.where) =~ "waiting_reminder_fired_at"
     end
 
     test "an every does not set trigger_once?" do

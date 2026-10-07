@@ -18,6 +18,7 @@ defmodule AshWorkflow.Transformers.AddCalculations do
   alias AshWorkflow.Entities.Every
   alias AshWorkflow.Entities.Step
   alias AshWorkflow.Entities.Timeout
+  alias AshWorkflow.Scheduler.Work
   alias Spark.Dsl.Transformer
 
   def transform(dsl) do
@@ -88,24 +89,28 @@ defmodule AshWorkflow.Transformers.AddCalculations do
     |> Enum.reject(&(Step.terminal?(&1) or (&1.timeouts == [] and &1.everys == [])))
     |> Map.new(fn step ->
       {step.name,
-       Enum.map(step.timeouts, &timeout_entry/1) ++
+       Enum.map(step.timeouts, &timeout_entry(step, &1)) ++
          Enum.map(step.everys, &every_entry(step, &1))}
     end)
   end
 
-  defp timeout_entry(timeout) do
+  defp timeout_entry(step, timeout) do
+    field = Timeout.deadline_field(timeout)
+    fired_field = Timeout.fired_field(step.name, timeout)
+
     %{
       name: timeout.name,
-      field: Timeout.deadline_field(timeout),
+      field: field,
+      fired_field: fired_field,
+      not_fired: Work.not_fired(fired_field, %{field: field, fire_after: timeout.fire_after}),
       fire_after: timeout.fire_after,
       kind: if(timeout.transition_to, do: :transition, else: :action),
       target: timeout.transition_to
     }
   end
 
-  # An `every` writes its own last-fired column on every fire, so unlike a
-  # non-repeating action timeout its `due_at` never goes stale: it is always
-  # the next instant the action will run. A record that has never fired has a
+  # An `every` writes its own last-fired column on every fire, so its `due_at`
+  # is always the next instant the action will run. A record that has never fired has a
   # nil column, and `AshWorkflow.Calculations.PendingDeadlines` measures from
   # `state_entered_at` for it, rather than omitting it the way it omits any
   # other nil `field`.

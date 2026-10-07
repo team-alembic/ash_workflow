@@ -41,6 +41,19 @@ defmodule AshWorkflow.Transformers.AddAttributes do
   existed. A `nil` column means the interval is measured from
   `state_entered_at` instead, so a record entering the step fires one whole
   interval later and needs no backfill.
+
+  ## Action timeout fired columns
+
+  Also adds one nilable `:utc_datetime_usec` attribute per action timeout,
+  named by `AshWorkflow.Entities.Timeout.fired_field/2`. An action timeout does
+  not change state, so `AshWorkflow.Changes.RecordEvent` writes this column
+  when it fires, and `AshWorkflow.Scheduler.Work.not_fired/1` stops the
+  timeout matching again until its deadline moves past it. A transition
+  timeout gets no column, since leaving the step records that it fired.
+
+  Nilable because a timeout that has not fired yet has no fired instant. A
+  record written before the column existed reads `nil` too, so a timeout that
+  already fired for it fires once more after the upgrade.
   """
   use Spark.Dsl.Transformer
 
@@ -48,11 +61,12 @@ defmodule AshWorkflow.Transformers.AddAttributes do
   alias Ash.Resource.Info, as: ResourceInfo
   alias AshWorkflow.Entities.Every
   alias AshWorkflow.Entities.Step
+  alias AshWorkflow.Entities.Timeout
   alias Spark.Dsl.Transformer, as: DslTransformer
 
   def transform(dsl) do
     with {:ok, dsl} <- add_state_entered_at(dsl) do
-      add_every_last_fired_fields(dsl)
+      add_fired_fields(dsl)
     end
   end
 
@@ -71,10 +85,9 @@ defmodule AshWorkflow.Transformers.AddAttributes do
     end
   end
 
-  defp add_every_last_fired_fields(dsl) do
-    dsl
-    |> every_fields()
-    |> Enum.reduce({:ok, dsl}, fn field, {:ok, dsl} -> add_every_last_fired_field(dsl, field) end)
+  defp add_fired_fields(dsl) do
+    (every_fields(dsl) ++ timeout_fired_fields(dsl))
+    |> Enum.reduce({:ok, dsl}, fn field, {:ok, dsl} -> add_fired_field(dsl, field) end)
   end
 
   # A `last_fired_field` naming the workflow's own state attribute is invalid
@@ -83,7 +96,7 @@ defmodule AshWorkflow.Transformers.AddAttributes do
   # so without this guard it would add a bogus datetime column under that name
   # first, and `AddState` would crash on the conflict instead of the verifier
   # reporting a clear error.
-  defp add_every_last_fired_field(dsl, field) do
+  defp add_fired_field(dsl, field) do
     if field == AshWorkflow.Info.state_attribute(dsl) do
       {:ok, dsl}
     else
@@ -103,9 +116,21 @@ defmodule AshWorkflow.Transformers.AddAttributes do
 
   defp every_fields(dsl) do
     dsl
+    |> steps()
+    |> Enum.flat_map(fn step -> Enum.map(step.everys, &Every.last_fired_field(step.name, &1)) end)
+  end
+
+  defp timeout_fired_fields(dsl) do
+    dsl
+    |> steps()
+    |> Enum.flat_map(fn step -> Enum.map(step.timeouts, &Timeout.fired_field(step.name, &1)) end)
+    |> Enum.reject(&is_nil/1)
+  end
+
+  defp steps(dsl) do
+    dsl
     |> DslTransformer.get_entities([:workflow])
     |> Enum.filter(&match?(%Step{}, &1))
-    |> Enum.flat_map(fn step -> Enum.map(step.everys, &Every.last_fired_field(step.name, &1)) end)
   end
 
   def before?(AshStateMachine.Transformers.AddState), do: true

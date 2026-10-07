@@ -29,6 +29,14 @@ defmodule AshWorkflow.Changes.RecordEvent do
       this is how that firing re-arms its own trigger for the next interval
       without touching `state_entered_at`, which every other deadline on the
       step measures from.
+    * `:timeout_fields` (optional, defaults to `%{}`) — the columns an action
+      timeout's firing writes, as a map from step name to the
+      `AshWorkflow.Entities.Timeout.fired_field/2` columns of that step's
+      timeouts that run this action. Only the current step's columns are
+      written. Set only on the change `AshWorkflow.Transformers.AddActions`
+      injects into an action timeout's action. An action timeout does not
+      change state, so this write is what stops it matching again. See
+      `AshWorkflow.Scheduler.Work.not_fired/1` for the guard that reads it.
     * `:transition_name` (optional) — the name recorded on the log row.
       Defaults to `changeset.action.name`, which is enough for most sites, but
       several of the actions `AddActions` generates use an internal hidden
@@ -103,7 +111,7 @@ defmodule AshWorkflow.Changes.RecordEvent do
   def change(changeset, opts, context) do
     changeset
     |> touch_state_entered_at(opts)
-    |> touch_every_field(opts)
+    |> touch_fired_fields(opts)
     |> emit_start(opts)
     |> Ash.Changeset.after_action(fn changeset, record ->
       {:ok, finish(changeset, record, opts, context)}
@@ -119,17 +127,16 @@ defmodule AshWorkflow.Changes.RecordEvent do
         {:ok, finish(changeset, record, opts, context)}
       end)
 
-    {:atomic, changeset, atomic_touched_attrs(opts)}
+    {:atomic, changeset, atomic_touched_attrs(changeset, opts)}
   end
 
-  defp atomic_touched_attrs(opts) do
+  defp atomic_touched_attrs(changeset, opts) do
     attrs =
       if touch_state_entered_at?(opts), do: %{state_entered_at: expr(now())}, else: %{}
 
-    case every_field(opts) do
-      nil -> attrs
-      field -> Map.put(attrs, field, expr(now()))
-    end
+    changeset
+    |> fired_fields(opts)
+    |> Enum.reduce(attrs, &Map.put(&2, &1, expr(now())))
   end
 
   defp touch_state_entered_at(changeset, opts) do
@@ -140,10 +147,35 @@ defmodule AshWorkflow.Changes.RecordEvent do
     end
   end
 
-  defp touch_every_field(changeset, opts) do
-    case every_field(opts) do
-      nil -> changeset
-      field -> Ash.Changeset.force_change_attribute(changeset, field, DateTime.utc_now())
+  defp touch_fired_fields(changeset, opts) do
+    now = DateTime.utc_now()
+
+    changeset
+    |> fired_fields(opts)
+    |> Enum.reduce(changeset, &Ash.Changeset.force_change_attribute(&2, &1, now))
+  end
+
+  defp fired_fields(changeset, opts) do
+    List.wrap(every_field(opts)) ++ timeout_fields(changeset, opts)
+  end
+
+  # Two timeouts on different steps may share an action, and only the step the
+  # record is in has fired. When the changeset's data does not hold the state,
+  # every step's columns are written. A column written for a step the record is
+  # not in skips that timeout on a later visit only if its deadline has already
+  # passed on entry. A column left unwritten fires the timeout on every poll.
+  defp timeout_fields(changeset, opts) do
+    fields_by_step = Keyword.get(opts, :timeout_fields, %{})
+
+    if fields_by_step == %{} do
+      []
+    else
+      state_attribute = AshStateMachine.Info.state_machine_state_attribute!(changeset.resource)
+
+      case data_attribute(changeset, state_attribute) do
+        nil -> fields_by_step |> Map.values() |> List.flatten() |> Enum.uniq()
+        state -> Map.get(fields_by_step, state, [])
+      end
     end
   end
 
