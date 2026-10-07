@@ -43,7 +43,7 @@ defmodule AshWorkflowDemoWeb.ExposureTest do
 
   describe "the operator pages" do
     test "the kanban serves locally", %{conn: conn} do
-      assert html_response(get(conn, "/"), 200) =~ "Kanban"
+      assert html_response(get(conn, "/"), 200) =~ "OnlySands"
     end
 
     test "the kanban 404s through the tunnel", %{conn: conn} do

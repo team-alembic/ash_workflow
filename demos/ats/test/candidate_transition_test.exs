@@ -34,7 +34,7 @@ defmodule AshWorkflowDemo.CandidateTransitionTest do
 
   defp drive_bureau_timeout(candidate) do
     candidate
-    |> age_by(91, :second)
+    |> set_datetime(:dbs_respond_after, DateTime.add(DateTime.utc_now(), -91, :second))
     |> then(fn c ->
       run_workflow_triggers(Candidate)
       reload(c)

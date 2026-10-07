@@ -394,6 +394,10 @@ that CI runs:
 | [`support_ticket_sla`](https://github.com/team-alembic/ash_workflow/tree/main/demos/support_ticket_sla) | Priority routing, one transition name meaning different things per step, per-queue SLAs |
 | [`workflow_timeline`](https://github.com/team-alembic/ash_workflow/tree/main/demos/workflow_timeline) | The transition log rendered as a timeline, and undo as an append-only operation |
 
+## Talks
+
+- When Time Meets State, AshConf 2026. [Slides](https://team-alembic.github.io/ash_workflow/when-time-meets-state/) and [source](https://github.com/team-alembic/ash_workflow/tree/main/slides/2026-ashconf-when-time-meets-state). The talk walks through the [`ats`](https://github.com/team-alembic/ash_workflow/tree/main/demos/ats) demo.
+
 ## Contributing
 
 Bug reports and pull requests are welcome — see

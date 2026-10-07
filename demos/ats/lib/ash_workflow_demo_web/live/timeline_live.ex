@@ -36,6 +36,7 @@ defmodule AshWorkflowDemoWeb.TimelineLive do
 
   @slider_steps 1000
   @window_padding_seconds 60
+  @axis_ticks 5
 
   @impl true
   def mount(_params, _session, socket) do
@@ -240,6 +241,21 @@ defmodule AshWorkflowDemoWeb.TimelineLive do
   defp format_time(nil), do: "—"
   defp format_time(%DateTime{} = dt), do: Calendar.strftime(dt, "%H:%M:%S")
 
+  # The axis reads in time elapsed from the left edge of the window rather
+  # than in wall-clock times. On stage the interesting number is how long a
+  # candidate sat in a state, and the two ends already carry the clock.
+  defp axis_labels(window_start, window_end) do
+    total = DateTime.diff(window_end, window_start)
+    steps = @axis_ticks - 1
+
+    for i <- 0..steps, do: "+" <> format_elapsed(round(total * i / steps))
+  end
+
+  # A board left running overnight would otherwise label the axis "+20712s".
+  defp format_elapsed(seconds) when seconds < 90, do: "#{seconds}s"
+  defp format_elapsed(seconds) when seconds < 5400, do: "#{div(seconds, 60)}m"
+  defp format_elapsed(seconds), do: "#{div(seconds, 3600)}h"
+
   defp row_index(history, id) do
     case Enum.find(history, fn {row, _index} -> row.id == id end) do
       nil -> nil
@@ -250,44 +266,64 @@ defmodule AshWorkflowDemoWeb.TimelineLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="min-h-screen bg-ink text-paper p-6">
+    <div class="min-h-screen bg-cream text-ink p-6">
       <header class="mb-6">
         <div class="flex items-center gap-4">
-          <h1 class="text-3xl font-black">Timeline</h1>
-          <.link navigate={~p"/"} class="text-accent-alt hover:text-accent underline">
+          <.brandmark class="text-2xl" />
+          <h1 class="font-serif text-3xl font-black">Timeline</h1>
+          <.link navigate={~p"/"} class="text-peri hover:text-orange underline">
             ← the kanban
           </.link>
         </div>
-        <p class="text-paper-muted mt-1">
+        <p class="text-muted mt-1">
           Drag the playhead to see what every candidate's step was at that instant, read from the
-          transition log rather than the current <code class="text-paper">state</code>
-          column. Click a candidate to unfold the rows behind its band. <code class="text-paper">:offer</code>, <code class="text-paper">:veto</code>,
-          and the bureau's <code class="text-paper">:dbs_clear</code>
-          / <code class="text-paper">:dbs_flag</code>
+          transition log rather than the current <code class="text-ink">state</code>
+          column. Click a candidate to unfold the rows behind its band. <code class="text-ink">:offer</code>, <code class="text-ink">:veto</code>,
+          and the bureau's <code class="text-ink">:dbs_clear</code>
+          / <code class="text-ink">:dbs_flag</code>
           can be undone within 30 minutes — undo appends a row pointing at the one it reverses,
           it never edits or deletes it.
         </p>
       </header>
 
-      <div :if={@flash[:error]} class="mb-4 bg-red-900/60 border border-red-600 rounded p-3 text-sm">
+      <div
+        :if={@flash[:error]}
+        class="mb-4 bg-well border border-dark rounded p-3 text-sm text-orange"
+      >
         {@flash[:error]}
       </div>
 
-      <div class="bg-ink-raised rounded-xl p-4 mb-6 sticky top-0 z-10">
-        <div class="flex items-center justify-between text-sm text-paper-muted mb-2">
+      <div class="bg-paper border border-line rounded-xl p-4 mb-6 sticky top-0 z-10">
+        <div class="flex items-center justify-between text-sm text-muted mb-2">
           <span>{format_time(@window_start)}</span>
-          <span class="font-bold text-paper">Playhead: {format_time(@playhead)}</span>
+          <span class="font-bold text-ink">Playhead: {format_time(@playhead)}</span>
           <span>{format_time(@window_end)}</span>
         </div>
         <form phx-change="slide" id="playhead-form">
-          <input type="range" name="at" min="0" max="1000" value={@slider_position} class="w-full" />
+          <input
+            type="range"
+            name="at"
+            min="0"
+            max="1000"
+            value={@slider_position}
+            class="w-full accent-amber"
+          />
         </form>
+        <div class="flex justify-between">
+          <span
+            :for={label <- axis_labels(@window_start, @window_end)}
+            class="flex flex-col items-center gap-0.5 text-[0.6rem] text-muted"
+          >
+            <i class="block h-1 w-px bg-line"></i>
+            {label}
+          </span>
+        </div>
       </div>
 
       <div class="space-y-4">
         <div
           :for={band <- @bands}
-          class="bg-ink-raised rounded-xl p-4"
+          class="bg-paper border border-line rounded-xl p-4"
           id={"band-#{band.candidate.id}"}
         >
           <div class="flex items-center justify-between mb-2">
@@ -295,21 +331,21 @@ defmodule AshWorkflowDemoWeb.TimelineLive do
               <button
                 phx-click="toggle_expand"
                 phx-value-id={band.candidate.id}
-                class="text-paper-muted hover:text-paper w-4 text-left"
+                class="text-muted hover:text-ink w-4 text-left"
                 aria-label="unfold the transition log"
               >
                 {if MapSet.member?(@expanded, band.candidate.id), do: "▾", else: "▸"}
               </button>
-              <img src={band.candidate.avatar_url} class="w-8 h-8 rounded-full bg-paper" />
+              <img src={band.candidate.avatar_url} class="w-8 h-8 rounded-full bg-cream" />
               <.link
                 navigate={~p"/c/#{band.candidate.id}"}
-                class="font-bold hover:text-accent underline decoration-ink-line"
+                class="font-bold hover:text-orange underline decoration-line"
               >
                 {band.candidate.name}
               </.link>
             </div>
             <div class="flex items-center gap-2 text-sm">
-              <span class="text-paper-muted">state at playhead:</span>
+              <span class="text-muted">state at playhead:</span>
               <span
                 class="px-2 py-0.5 rounded text-xs font-bold text-ink"
                 style={state_style(state_at_playhead(band.segments, @playhead))}
@@ -320,13 +356,13 @@ defmodule AshWorkflowDemoWeb.TimelineLive do
                 :if={band.undo_target}
                 phx-click="undo"
                 phx-value-id={band.candidate.id}
-                class="bg-accent hover:bg-accent/80 text-ink px-3 py-1 rounded text-xs font-bold"
+                class="bg-amber hover:bg-amber/80 text-ink px-3 py-1 rounded text-xs font-bold"
               >
                 undo → {Palette.label(band.undo_target)}
               </button>
               <span
                 :if={is_nil(band.undo_target)}
-                class="px-3 py-1 rounded text-xs font-bold bg-ink text-paper-muted"
+                class="px-3 py-1 rounded text-xs font-bold bg-well text-muted"
                 title="The last state change was not an undoable transition"
               >
                 nothing to undo
@@ -335,7 +371,7 @@ defmodule AshWorkflowDemoWeb.TimelineLive do
           </div>
 
           <div
-            class="relative h-8 bg-ink rounded overflow-hidden cursor-pointer"
+            class="relative h-8 bg-well rounded overflow-hidden cursor-pointer"
             phx-click="toggle_expand"
             phx-value-id={band.candidate.id}
           >
@@ -351,7 +387,7 @@ defmodule AshWorkflowDemoWeb.TimelineLive do
               </div>
               <%= for tick <- segment.ticks do %>
                 <div
-                  class="absolute inset-y-0 w-0.5 bg-paper/80"
+                  class="absolute inset-y-0 w-0.5 bg-ink/60"
                   style={tick_style(tick, @window_start, @window_end)}
                   title="repeat timeout fired"
                 >
@@ -359,59 +395,24 @@ defmodule AshWorkflowDemoWeb.TimelineLive do
               <% end %>
             <% end %>
             <div
-              class="absolute inset-y-0 w-0.5 bg-yellow-300"
+              class="absolute inset-y-0 w-0.5 bg-amber"
               style={playhead_style(@window_start, @window_end, @playhead)}
             >
             </div>
           </div>
 
-          <div :if={MapSet.member?(@expanded, band.candidate.id)}>
-            <table class="w-full mt-3 text-xs">
-              <thead class="text-paper-muted">
-                <tr class="text-left">
-                  <th class="py-1 w-8">#</th>
-                  <th class="py-1">when</th>
-                  <th class="py-1">from → to</th>
-                  <th class="py-1">transition</th>
-                  <th class="py-1">triggered by</th>
-                  <th class="py-1">undoes</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr
-                  :for={{row, index} <- rows_through_playhead(band.history, @playhead)}
-                  class={
-                    if MapSet.member?(band.reversed_ids, row.id),
-                      do: "text-paper-muted line-through",
-                      else: "text-paper"
-                  }
-                >
-                  <td class="py-1">{index}</td>
-                  <td class="py-1">{format_time(row.occurred_at)}</td>
-                  <td class="py-1">
-                    {Palette.label(row.from_state)} → {Palette.label(row.to_state)}
-                  </td>
-                  <td class="py-1">{row.transition_name}</td>
-                  <td class="py-1">
-                    <span class={
-                      "px-1.5 py-0.5 rounded " <>
-                        if(row.triggered_by == :undo, do: "bg-amber-700", else: "bg-ink-line")
-                    }>
-                      {trigger_label(row.triggered_by)}
-                    </span>
-                  </td>
-                  <td class="py-1">
-                    <span :if={row.undoes_id} class="text-amber-400 no-underline">
-                      ↩ row {row_index(band.history, row.undoes_id)}
-                    </span>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+          <div :if={MapSet.member?(@expanded, band.candidate.id)} class="mt-3 space-y-1">
+            <.log_row
+              :for={{row, index} <- rows_through_playhead(band.history, @playhead)}
+              row={row}
+              index={index}
+              reversed={MapSet.member?(band.reversed_ids, row.id)}
+              undoes_index={row.undoes_id && row_index(band.history, row.undoes_id)}
+            />
 
             <p
               :if={length(band.history) > length(rows_through_playhead(band.history, @playhead))}
-              class="mt-2 text-xs text-paper-muted italic"
+              class="mt-2 text-xs text-muted italic"
             >
               {length(band.history) - length(rows_through_playhead(band.history, @playhead))} later
               event(s) hidden — drag the playhead right to bring them back.
@@ -420,6 +421,60 @@ defmodule AshWorkflowDemoWeb.TimelineLive do
         </div>
       </div>
     </div>
+    """
+  end
+
+  attr :row, :map, required: true
+  attr :index, :integer, required: true
+  attr :reversed, :boolean, required: true
+  attr :undoes_index, :integer, default: nil
+
+  defp log_row(assigns) do
+    ~H"""
+    <div class="grid grid-cols-[5rem_1fr] items-start gap-3">
+      <div class="flex items-center gap-2 pt-2 text-[0.65rem] text-muted">
+        <span class="w-5 rounded border border-line bg-paper text-center text-ink">{@index}</span>
+        <span>{format_time(@row.occurred_at)}</span>
+      </div>
+      <%!-- An undo sits one level in from the row it reverses, so the pair
+            reads as a correction rather than as two unrelated events. --%>
+      <div class={@undoes_index && "pl-8"}>
+        <div
+          class={[
+            "inline-block rounded-lg border border-line bg-cream px-3 py-2",
+            @reversed && "opacity-60"
+          ]}
+          style={"border-left: 4px solid #{Palette.hex(@row.to_state)}"}
+        >
+          <strong class={["block text-xs font-bold text-ink", @reversed && "line-through"]}>
+            :{@row.transition_name}
+          </strong>
+          <small class="text-[0.65rem] text-muted">
+            {Palette.label(@row.from_state)} → {Palette.label(@row.to_state)}
+          </small>
+          <.log_tag class={@row.triggered_by == :undo && "bg-amber text-ink"}>
+            {trigger_label(@row.triggered_by)}
+          </.log_tag>
+          <.log_tag :if={@undoes_index} class="bg-amber text-ink">
+            ↩ row {@undoes_index}
+          </.log_tag>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  attr :class, :any, default: nil
+  slot :inner_block, required: true
+
+  defp log_tag(assigns) do
+    ~H"""
+    <span class={[
+      "ml-2 inline-block rounded px-1.5 py-0.5 text-[0.6rem] uppercase tracking-[0.12em]",
+      @class || "bg-well text-muted"
+    ]}>
+      {render_slot(@inner_block)}
+    </span>
     """
   end
 end

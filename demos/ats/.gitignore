@@ -35,3 +35,4 @@ ash_workflow_demo-*.tar
 npm-debug.log
 /assets/node_modules/
 
+cloudflared/config.yml

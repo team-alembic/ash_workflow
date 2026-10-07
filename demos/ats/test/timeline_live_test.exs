@@ -161,11 +161,10 @@ defmodule AshWorkflowDemoWeb.TimelineLiveTest do
       candidate = seed_background_check("Foldy")
 
       {:ok, view, html} = live(conn, "/timeline")
-      refute html =~ "triggered by"
+      refute html =~ "record_hr_screen"
 
       html = expand(view, candidate)
 
-      assert html =~ "triggered by"
       assert html =~ "record_hr_screen"
       assert html =~ "submitted"
     end
@@ -178,7 +177,7 @@ defmodule AshWorkflowDemoWeb.TimelineLiveTest do
       expand(view, candidate)
       html = expand(view, candidate)
 
-      refute html =~ "triggered by"
+      refute html =~ "record_hr_screen"
     end
 
     test "each candidate's name links to its own page", %{conn: conn} do

@@ -1,0 +1,28 @@
+# Named tunnel for the conference demo. Copy to config.yml and fill in the two
+# placeholders.
+#
+# Nothing in here is secret. A tunnel UUID is an identifier rather than a
+# credential, and the hostname becomes public DNS the moment it is routed.
+# config.yml stays gitignored because it hardcodes one machine's home directory
+# and one event's hostname. The secrets live elsewhere: the credentials JSON
+# this file points at holds a TunnelSecret that lets its bearer serve your
+# hostname, and ~/.cloudflared/cert.pem can write DNS across the whole zone.
+# Neither belongs in a repository.
+#
+#   cloudflared tunnel login
+#   cloudflared tunnel create ash-workflow-demo
+#   cloudflared tunnel route dns ash-workflow-demo <HOSTNAME>
+#   cloudflared tunnel --config cloudflared/config.yml run ash-workflow-demo
+#
+# `tunnel create` prints the UUID and writes the credentials JSON under
+# ~/.cloudflared. Both go below.
+
+tunnel: <TUNNEL-UUID>
+credentials-file: /Users/<you>/.cloudflared/<TUNNEL-UUID>.json
+
+ingress:
+  # One hostname serves the whole demo: /apply for the audience, /dbs for the
+  # bureau portal, /c/:id for a candidate watching their own row.
+  - hostname: <HOSTNAME>
+    service: http://localhost:4000
+  - service: http_status:404
