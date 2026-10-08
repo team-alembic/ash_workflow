@@ -376,9 +376,10 @@ workflow do
 end
 ```
 
-- `state_attribute` (optional): the attribute the current step is stored in. Defaults to `:state`. AshWorkflow passes it down to `ash_state_machine`, so set it here rather than in a `state_machine` block. Everything generated follows it: the `match` expression on each unit of scheduled work, the `current_step`, `available_actions`, `transition_targets` and `pending_deadlines` calculations, and the recommended indexes. `state_entered_at` keeps its name either way.
+- `state_attribute` (optional): the attribute the current step is stored in. Defaults to `:state`. AshWorkflow passes it down to `ash_state_machine`, so set it here rather than in a `state_machine` block. Everything generated follows it: the `match` expression on each unit of scheduled work, the `current_step`, `available_actions`, `transition_targets`, `pending_deadlines` and `workflow_terminated_at` calculations, and the recommended indexes. `state_entered_at` keeps its name either way.
 - `queue` (optional): the Oban queue for all generated triggers. Defaults to `:workflow`. The queue MUST exist in your Oban config or Oban raises at boot.
 - `check_interval` (optional): Oban cron expression controlling how often every trigger on the resource polls — automatic steps and timeouts alike. Defaults to `"* * * * *"` (every minute). Individual timeouts can override it.
+- `terminated_at_calculation` (optional): the name of the generated calculation that returns when the record entered a terminal step, or `nil` while it is still running. Defaults to `:workflow_terminated_at`. Rename it when the resource already has a field by that name.
 
 Prefer raising `check_interval` over leaving the default when deadlines are measured in days. Every automatic step and every timeout gets its own scheduler, and each runs a query on every tick regardless of whether any record is waiting, so the cost scales with the number of triggers on the resource.
 
@@ -387,6 +388,7 @@ Prefer raising `check_interval` over leaving the default when deadlines are meas
 - Each timeout must have EITHER `action` OR `transition_to` — not both, not neither.
 - Supported duration units: `:seconds`, `:minutes`, `:hours`, `:days`.
 - `check_interval` (optional): Oban cron expression for how often to poll. Defaults to the workflow-level `check_interval`, which itself defaults to `"* * * * *"` (every minute).
+- `terminated_at_calculation` (optional): the name of the generated calculation that returns when the record entered a terminal step, or `nil` while it is still running. Defaults to `:workflow_terminated_at`. Rename it when the resource already has a field by that name.
 - A timeout can also declare a `retry` block, with the same `max_attempts` and `backoff` options as a step's — see [Retry](#retry) under Automatic Steps.
 
 ## Transition Log (Workflow History)
@@ -524,6 +526,7 @@ AshWorkflow generates these automatically — do NOT define them yourself:
 |---|---|
 | `:state` attribute | Added by `ash_state_machine`. Rename it with `state_attribute` |
 | `:state_entered_at` attribute | `utc_datetime_usec`, tracks when current state was entered |
+| `:workflow_terminated_at` calculation | `state_entered_at` while in a terminal step, `nil` otherwise. Rename it with `terminated_at_calculation` |
 | Primary `:read` action | Added if automatic steps exist (needed for Oban triggers) |
 | Transition update actions | One per manual transition |
 | Timeout transition actions | Hidden `__timeout_<step>_<name>` actions |
