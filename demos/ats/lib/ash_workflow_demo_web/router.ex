@@ -59,14 +59,13 @@ defmodule AshWorkflowDemoWeb.Router do
     get "/rewind", TimelineRedirectController, :show
   end
 
-  # Clarity is a dev-only dependency, so the route exists only in dev.
-  if Code.ensure_loaded?(Clarity.Router) do
-    scope "/" do
-      import Clarity.Router
+  # Clarity browses the workflow's steps, moves and timing. It is an operator
+  # page, so it stays off the tunnel.
+  scope "/" do
+    import Clarity.Router
 
-      pipe_through [:browser, :local_only]
-      clarity "/clarity"
-    end
+    pipe_through [:browser, :local_only]
+    clarity "/clarity"
   end
 
   scope "/webhooks", AshWorkflowDemoWeb do

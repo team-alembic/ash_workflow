@@ -40,6 +40,7 @@ defmodule AshWorkflowDemo.MixProject do
       {:phoenix_live_reload, "~> 1.2", only: :dev},
       {:phoenix_live_view, "~> 1.0"},
       {:floki, ">= 0.30.0", only: :test},
+      {:lazy_html, ">= 0.1.0", only: :test},
       {:esbuild, "~> 0.8", runtime: Mix.env() == :dev},
       {:tailwind, "~> 0.2", runtime: Mix.env() == :dev},
       {:heroicons,
@@ -73,8 +74,8 @@ defmodule AshWorkflowDemo.MixProject do
   # checkout to try Clarity changes before they are pushed.
   defp clarity_dep do
     case System.get_env("CLARITY_PATH") do
-      nil -> {:clarity, github: "team-alembic/clarity", only: :dev, override: true}
-      path -> {:clarity, path: path, only: :dev, override: true}
+      nil -> {:clarity, github: "team-alembic/clarity", override: true}
+      path -> {:clarity, path: path, override: true}
     end
   end
 
