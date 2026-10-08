@@ -219,6 +219,14 @@ doc.current_step
 
 These are useful for rendering progress bars, step lists, or workflow visualisations.
 
+The `:workflow_terminated_at` calculation returns the time the record entered a terminal step. It is `nil` while the workflow is still running. Set `terminated_at_calculation` in the `workflow` section to give it another name. It is an expression, so it can be used in filters and sorts:
+
+```elixir
+Document
+|> Ash.Query.filter(workflow_terminated_at > ago(7, :day))
+|> Ash.read!()
+```
+
 ### Runtime calculation
 
 Every workflow resource gets a generated `:available_actions` calculation. Load it on a record to get the transitions for its current state:

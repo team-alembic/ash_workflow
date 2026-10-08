@@ -31,7 +31,7 @@ defmodule AshWorkflowTest.EveryUntilWorkflow do
         interval {1, :hours}
         action :send_reminder
         until {3, :hours}
-        last_fired_field(:reminder_fired_at)
+        last_fired_field :reminder_fired_at
       end
     end
 
