@@ -206,6 +206,17 @@ defmodule AshWorkflow do
         individual timeouts with `check_interval` on the timeout itself.
         """
       ],
+      terminated_at_calculation: [
+        type: :atom,
+        default: :workflow_terminated_at,
+        doc: """
+        The name of the generated calculation that returns when the record
+        entered a terminal step, or `nil` while the workflow is still running.
+        Defaults to `workflow_terminated_at`.
+
+        Rename it when the resource already has a field by that name.
+        """
+      ],
       generate_indexes?: [
         type: :boolean,
         default: true,
