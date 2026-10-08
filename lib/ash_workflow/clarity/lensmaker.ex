@@ -19,8 +19,10 @@ with {:module, _} <- Code.ensure_loaded(Clarity.Perspective.Lensmaker),
     @contents [
       Content.WorkflowOverview,
       Content.WorkflowDiagram,
+      Content.WorkflowTiming,
       Content.StepOverview,
       Content.StepDiagram,
+      Content.StepTimeline,
       Clarity.Content.Ash.ApplicationOverview,
       Clarity.Content.Ash.DomainOverview
     ]

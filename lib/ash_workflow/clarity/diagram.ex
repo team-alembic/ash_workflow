@@ -3,6 +3,7 @@ defmodule AshWorkflow.Clarity.Diagram do
 
   alias AshWorkflow.Charts.Graph
   alias AshWorkflow.Charts.Mermaid
+  alias AshWorkflow.Clarity.Timeline
 
   @kinds [:automatic, :manual, :wait_state, :terminal]
 
@@ -47,6 +48,58 @@ defmodule AshWorkflow.Clarity.Diagram do
       " focus\n"
     ]
   end
+
+  @doc """
+  What happens to a record in one step, as a Mermaid timeline from the moment
+  it enters. Deadlines read from a field on the record follow in their own
+  section, since they have no fixed place on the axis.
+  """
+  @spec step_timeline(Ash.Resource.t(), atom()) :: iodata()
+  def step_timeline(resource, step_name) do
+    timeline = Timeline.step(resource, step_name)
+    {fixed, anchored} = Enum.split_with(timeline.moments, &match?({:offset, _}, &1.at))
+
+    sections =
+      if anchored == [],
+        do: [moment_lines(fixed)],
+        else: [
+          "    section From entering the step\n",
+          moment_lines(fixed),
+          "    section Deadlines set on the record\n",
+          moment_lines(anchored)
+        ]
+
+    ["timeline\n", "    title ", timeline_text(timeline_title(timeline)), "\n", sections]
+  end
+
+  defp timeline_title(%{step: step, lag: nil}), do: "#{step}, timed from entering the step"
+
+  defp timeline_title(%{step: step, lag: lag}),
+    do: "#{step}, timed from entering the step. The scheduler may run each up to #{lag} late."
+
+  defp moment_lines(moments) do
+    for moment <- moments do
+      [
+        "    ",
+        timeline_text(moment.label),
+        Enum.map(moment.events, &[" : ", symbol(&1.kind), timeline_text(&1.text)]),
+        "\n"
+      ]
+    end
+  end
+
+  defp symbol(:opens), do: "✋ "
+  defp symbol(:runs), do: "⚙ "
+  defp symbol(:moves), do: "→ "
+  defp symbol(:retries), do: "⟳ "
+  defp symbol(:repeats), do: "↻ "
+  defp symbol(:undo), do: "↶ "
+  defp symbol(:closes), do: "■ "
+  defp symbol(:waits), do: "⏳ "
+  defp symbol(:terminal), do: "■ "
+
+  # A timeline line splits its events on `:`, and `#` starts an entity code.
+  defp timeline_text(text), do: String.replace(text, [":", "#", ";"], " ")
 
   defp styles(nodes, theme) do
     groups = Enum.group_by(nodes, & &1.kind, &Mermaid.state_id(&1.id))

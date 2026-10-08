@@ -437,13 +437,24 @@ With [Clarity](https://hex.pm/packages/clarity) installed alongside
 AshWorkflow, Clarity gains a Workflows lens with no configuration. The lens
 lists each workflow resource with its steps underneath it.
 
-- A workflow resource has a Workflow Overview tab and a Workflow Diagram tab.
-  The overview tabulates the steps, the moves between them, the timers, the
-  scheduled work and the recommended indexes. The diagram is the Mermaid chart,
-  with each step coloured by its kind.
-- A step has a Step Overview tab and a Step Diagram tab. The overview lists
-  what the step runs, the transitions a caller can run and the ways in and
-  out. The diagram draws the step with every step one move away.
+- A workflow resource has a Workflow Overview tab, a Workflow Diagram tab and
+  a Workflow Timing tab. The overview tabulates the steps, the moves between
+  them, the timers, the scheduled work and the recommended indexes. The
+  diagram is the Mermaid chart, with each step coloured by its kind. The timing
+  tab says how long a record can stay in each step, and lists what happens at
+  each moment while it is there.
+- A step has a Step Overview tab, a Step Diagram tab and a Step Timeline tab.
+  The overview lists what the step runs, its timing, the transitions a caller
+  can run and the ways in and out. The diagram draws the step with every step
+  one move away. The timeline is a Mermaid `timeline` measured from the moment
+  a record enters the step.
+
+A timing entry is measured from `state_entered_at`, or from the field a
+timeout names. It covers an automatic step's action and each retry attempt at
+its backoff, the transitions a caller can run until a timeout moves the record
+on, each `every` firing up to its `until`, and the undo window. A scheduler
+that polls, such as `AshWorkflow.Scheduler.Oban`, may run a deadline up to its
+polling interval late, and the timing says so.
 
 The overview and diagram tabs also show in Clarity's other lenses.
 

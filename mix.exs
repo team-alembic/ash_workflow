@@ -87,8 +87,10 @@ defmodule AshWorkflow.MixProject do
         clarity_content_providers: [
           AshWorkflow.Clarity.Content.WorkflowOverview,
           AshWorkflow.Clarity.Content.WorkflowDiagram,
+          AshWorkflow.Clarity.Content.WorkflowTiming,
           AshWorkflow.Clarity.Content.StepOverview,
-          AshWorkflow.Clarity.Content.StepDiagram
+          AshWorkflow.Clarity.Content.StepDiagram,
+          AshWorkflow.Clarity.Content.StepTimeline
         ],
         clarity_perspective_lensmakers: [AshWorkflow.Clarity.Lensmaker]
       ]

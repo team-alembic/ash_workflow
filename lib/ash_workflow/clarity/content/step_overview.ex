@@ -12,6 +12,7 @@ with {:module, _} <- Code.ensure_loaded(Clarity.Content) do
 
     alias AshWorkflow.Charts.Format
     alias AshWorkflow.Charts.Graph
+    alias AshWorkflow.Clarity.Timeline
     alias AshWorkflow.Clarity.Vertex.Step
     alias AshWorkflow.Entities.Transition
 
@@ -45,6 +46,7 @@ with {:module, _} <- Code.ensure_loaded(Clarity.Content) do
         if(vertex.initial?, do: " · **initial step**", else: ""),
         "\n\n",
         properties(vertex),
+        timing_section(vertex),
         transitions_section(vertex),
         edges_section(
           "Ways out",
@@ -73,6 +75,30 @@ with {:module, _} <- Code.ensure_loaded(Clarity.Content) do
           ["Policy", cell(Format.policy(step.policy))]
         ]
       )
+    end
+
+    defp timing_section(%Step{resource: resource, step: step}) do
+      timeline = Timeline.step(resource, step.name)
+
+      rows =
+        for moment <- timeline.moments, event <- moment.events do
+          [moment.label, cell(event.text)]
+        end
+
+      lag =
+        if timeline.lag,
+          do: " The scheduler runs each deadline up to #{timeline.lag} after it falls due.",
+          else: ""
+
+      [
+        "## Timing\n\n",
+        "A record leaves this step ",
+        Timeline.leaves_by_text(timeline, step),
+        ".",
+        lag,
+        "\n\n",
+        table(["When", "What happens"], rows)
+      ]
     end
 
     defp transitions_section(%Step{step: %{transitions: []}}), do: []
