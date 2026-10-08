@@ -64,8 +64,18 @@ defmodule AshWorkflowDemo.MixProject do
       # application it can see but cannot find a .app file for.
       {:igniter, "~> 0.6", only: [:dev, :test]},
       {:oban, "~> 2.18"},
-      {:eqrcode, "~> 0.2"}
+      {:eqrcode, "~> 0.2"},
+      clarity_dep()
     ]
+  end
+
+  # Clarity browses this app's workflows at /clarity. Set CLARITY_PATH to a local
+  # checkout to try Clarity changes before they are pushed.
+  defp clarity_dep do
+    case System.get_env("CLARITY_PATH") do
+      nil -> {:clarity, github: "team-alembic/clarity", only: :dev, override: true}
+      path -> {:clarity, path: path, only: :dev, override: true}
+    end
   end
 
   # Aliases are shortcuts or tasks specific to the current project.

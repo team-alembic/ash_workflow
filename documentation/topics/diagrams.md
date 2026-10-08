@@ -431,6 +431,22 @@ AshWorkflow.Charts.render(MyApp.Candidate, MyApp.PlainTextChart)
 `mix ash_workflow.diagram --format` accepts only the names that
 `AshWorkflow.Charts.formats/0` returns.
 
+## Browsing workflows in Clarity
+
+With [Clarity](https://hex.pm/packages/clarity) installed alongside
+AshWorkflow, Clarity gains a Workflows lens with no configuration. The lens
+lists each workflow resource with its steps underneath it.
+
+- A workflow resource has a Workflow Overview tab and a Workflow Diagram tab.
+  The overview tabulates the steps, the moves between them, the timers, the
+  scheduled work and the recommended indexes. The diagram is the Mermaid chart,
+  with each step coloured by its kind.
+- A step has a Step Overview tab and a Step Diagram tab. The overview lists
+  what the step runs, the transitions a caller can run and the ways in and
+  out. The diagram draws the step with every step one move away.
+
+The overview and diagram tabs also show in Clarity's other lenses.
+
 ## Limits
 
 - A Mermaid state diagram cannot draw a dashed edge, so the edge kind is a
