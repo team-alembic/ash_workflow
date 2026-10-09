@@ -379,7 +379,8 @@ workflow, drawn from the DSL. It shows step kinds, timeouts with their
 deadlines, route conditions, policies and the moves undo can rewind.
 `--format json` gives the same graph as data, for a client that draws it
 itself. `--format dot --svg` gives a chart with colour and line styles, from
-the `dot` command of an installed Graphviz. See
+the `dot` command of an installed Graphviz. `--format d2 --svg` gives the
+same chart, and downloads the `d2` tool the first time. See
 [Diagrams](documentation/topics/diagrams.md).
 
 ## Demos

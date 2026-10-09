@@ -548,6 +548,8 @@ the code:
 AshWorkflow.Charts.mermaid_state_diagram(MyApp.Candidate)
 AshWorkflow.Charts.render(MyApp.Candidate, :json)
 AshWorkflow.Charts.render(MyApp.Candidate, :dot, svg: true)
+AshWorkflow.Charts.render(MyApp.Candidate, :d2)
+AshWorkflow.Charts.render(MyApp.Candidate, :d2, svg: true)
 ```
 
 ```bash
@@ -559,6 +561,7 @@ mix ash_workflow.diagram --format json --output priv/diagrams
 - `undo: false` and `notes: false` (`--no-undo`, `--no-notes`) make a smaller chart.
 - For a chart with colour, use `:dot`. `svg: true` (`--svg`) runs `dot` from the `PATH` and gives the SVG. It does not download Graphviz, so install Graphviz first, in CI and in a release too. Set `config :ash_workflow, :dot, path:` for a `dot` that is not on the `PATH`.
 - `theme: :dark` (`--theme dark`) gives a dark DOT chart. `classes:` changes the colours and line styles of the step kinds, the terminal steps, and the `on_success`, `on_error`, timeout and undo edges. Transitions, the start circle and the background have no class. A `classes:` key is a Graphviz attribute name, such as `fillcolor`. A plain `classes:` list applies to both themes. Use `classes: [light: [...], dark: [...]]` for colours that apply to one theme only. With `--output`, `--theme dark` writes `MyApp.Candidate-dark.dot`, or `MyApp.Candidate-dark.svg` with `--svg`.
+- For the same chart without Graphviz, use `:d2`. `svg: true` runs `d2` and gives the SVG. The first call downloads the pinned `d2` release into `_build`. In CI, run `mix ash_workflow.d2.install` first. In a release, set `config :ash_workflow, :d2, path:` to an installed `d2`. `theme:` and `classes:` work as for `:dot`, but a `classes:` key is a D2 `style` keyword, such as `fill`.
 - A new format is a module that implements `AshWorkflow.Charts.Backend`. Pass the module to `AshWorkflow.Charts.render/3` in place of a format name.
 
 ## Common Patterns
