@@ -6,9 +6,10 @@ defmodule AshWorkflow.Charts.Format do
   backend gets the same text for a deadline, a retry, a policy or a
   condition.
 
-  `kind_text/1`, `edge_text/1` and `note_text/1` turn a node or an edge of
-  the graph into a label. The Mermaid backend calls them. A custom
-  `AshWorkflow.Charts.Backend` can call them too, to use the same words.
+  `kind_text/1`, `node_text/1`, `edge_text/1` and `note_text/1` turn a node
+  or an edge of the graph into a label. The Mermaid and DOT backends call
+  them, so both charts use the same words. A custom
+  `AshWorkflow.Charts.Backend` can call them too.
   """
 
   alias AshWorkflow.Entities.Retry
@@ -102,6 +103,23 @@ defmodule AshWorkflow.Charts.Format do
   def kind_text(:automatic), do: "⚙\u{FE0F} automatic"
   def kind_text(:manual), do: "✋ manual"
   def kind_text(:wait_state), do: "⏳ wait state"
+
+  @doc """
+  The text inside a step box, for a chart that puts the notes in the step:
+  the step's name, then `kind_text/1` on the next line, then the notes under
+  a `—` rule, one per line, as `note_text/1` writes them.
+
+  A terminal step has no kind line, but it keeps its notes.
+  """
+  @spec node_text(AshWorkflow.Charts.Graph.Node.t()) :: String.t()
+  def node_text(%{kind: :terminal} = node),
+    do: Enum.join([to_string(node.id) | notes_text(node.notes)], "\n—\n")
+
+  def node_text(node),
+    do: Enum.join(["#{node.id}\n#{kind_text(node.kind)}" | notes_text(node.notes)], "\n—\n")
+
+  defp notes_text([]), do: []
+  defp notes_text(notes), do: [Enum.map_join(notes, "\n", &note_text/1)]
 
   @doc """
   The label of an `AshWorkflow.Charts.Graph.Edge`: a symbol for its kind,
