@@ -20,7 +20,21 @@ defmodule AshWorkflow.DocumentationChartsTest do
   end
 
   test "the diagrams guide keeps its generated examples" do
-    assert "documentation/topics/diagrams.md" |> File.read!() |> ChartExamples.count() == 9
+    assert "documentation/topics/diagrams.md" |> File.read!() |> ChartExamples.count() == 10
+  end
+
+  for {file, resource, _format, _opts} <- ChartExamples.svgs() do
+    test "#{file} is an SVG of #{inspect(resource)}" do
+      svg = File.read!(unquote(file))
+
+      # Check a label the chart shows. The root needs a width and a height, or
+      # an <img> tag draws it in a tiny default box. Graphviz writes them in
+      # points.
+      [root] = Regex.run(~r/<svg [^>]*>/, svg)
+      assert root =~ ~r/ width="\d+(pt)?"/
+      assert root =~ ~r/ height="\d+(pt)?"/
+      assert svg =~ "undo within 1 hour"
+    end
   end
 
   test "the workflow format copies the real block, not a moduledoc sample" do
