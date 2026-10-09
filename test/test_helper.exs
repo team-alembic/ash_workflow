@@ -18,6 +18,18 @@ Ecto.Adapters.SQL.Sandbox.mode(AshWorkflowTest.Repo, :manual)
 
 ExUnit.start()
 
+# The tests tagged `:d2` run `d2`. This helper never downloads it, so the
+# suite runs with no network access. When `d2` is not installed, the helper
+# excludes those tests. CI installs `d2` first, so CI runs them.
+if not AshWorkflow.Charts.D2.Binary.installed?() do
+  ExUnit.configure(exclude: [:d2 | Keyword.get(ExUnit.configuration(), :exclude, [])])
+
+  IO.puts(
+    "d2 is not installed, so the tests tagged :d2 do not run. " <>
+      "Run `mix ash_workflow.d2.install` to run them."
+  )
+end
+
 # The tests tagged `:dot` run Graphviz's `dot`. This library does not download
 # it, so when `dot` is not on the PATH, the helper excludes those tests. CI
 # installs Graphviz first, so CI runs them.

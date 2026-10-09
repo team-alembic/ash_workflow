@@ -22,14 +22,15 @@ defmodule Mix.Tasks.AshWorkflow.Diagram do
   * `--format` — a name from `AshWorkflow.Charts.formats/0`. Defaults to
     `mermaid`.
   * `--output` — the directory to write the files to.
-  * `--svg` — with `--format dot`, draw the chart and print or write the
-    SVG. The files end in `.svg`. Graphviz must be installed: see
-    `AshWorkflow.Charts.Dot`.
-  * `--theme` — with `--format dot`, `light` or `dark`. Defaults to the
-    `:theme` under `config :ash_workflow, :dot`, else `light`. For a dark
-    chart, a file name gets `-dark` before its extension, such as
-    `MyApp.Candidate-dark.svg`. So a light run and a dark run can write to
-    the same directory.
+  * `--svg` — with `--format d2` or `--format dot`, draw the chart and print
+    or write the SVG. The files end in `.svg`. With `d2`, the first run
+    downloads `d2`: see `AshWorkflow.Charts.D2.Binary`. With `dot`, Graphviz
+    must be installed: see `AshWorkflow.Charts.Dot`.
+  * `--theme` — with `--format d2` or `--format dot`, `light` or `dark`.
+    Defaults to the `:theme` under `config :ash_workflow, :d2` or
+    `config :ash_workflow, :dot`, else `light`. For a dark chart, a file name
+    gets `-dark` before its extension, such as `MyApp.Candidate-dark.svg`. So
+    a light run and a dark run can write to the same directory.
   * `--no-undo` — leave out undo edges.
   * `--no-notes` — leave out step notes: policies, retry, timeouts that run
     an action, and `every` entries.
@@ -41,6 +42,8 @@ defmodule Mix.Tasks.AshWorkflow.Diagram do
   ```bash
   mix ash_workflow.diagram MyApp.Candidate
   mix ash_workflow.diagram --format json --output priv/diagrams
+  mix ash_workflow.diagram --format d2 --svg --output priv/diagrams
+  mix ash_workflow.diagram --format d2 --svg --theme dark --output priv/diagrams
   mix ash_workflow.diagram --format dot --svg --theme dark MyApp.Candidate
   ```
   """
@@ -63,7 +66,7 @@ defmodule Mix.Tasks.AshWorkflow.Diagram do
   ]
 
   # The formats that draw an SVG and take a theme.
-  @svg_formats [:dot]
+  @svg_formats [:d2, :dot]
 
   @impl Mix.Task
   def run(argv) do
@@ -111,7 +114,7 @@ defmodule Mix.Tasks.AshWorkflow.Diagram do
         []
 
       {{:ok, _theme}, format} when format not in @svg_formats ->
-        Mix.raise("--theme needs --format dot, not #{format}")
+        Mix.raise("--theme needs --format d2 or dot, not #{format}")
 
       {{:ok, theme}, _format} when theme in ["light", "dark"] ->
         [theme: String.to_atom(theme)]
@@ -125,7 +128,7 @@ defmodule Mix.Tasks.AshWorkflow.Diagram do
     case {Keyword.get(opts, :svg, false), format} do
       {false, _format} -> false
       {true, format} when format in @svg_formats -> true
-      {true, format} -> Mix.raise("--svg needs --format dot, not #{format}")
+      {true, format} -> Mix.raise("--svg needs --format d2 or dot, not #{format}")
     end
   end
 
