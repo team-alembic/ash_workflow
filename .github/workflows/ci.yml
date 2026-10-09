@@ -74,6 +74,10 @@ jobs:
 
       - run: mix deps.get
 
+      # The test helper excludes the tests tagged :dot when `dot` is not on
+      # the PATH. Graphviz has no download to fetch, so install it here.
+      - run: sudo apt-get update && sudo apt-get install -y graphviz
+
       # mix check runs compilation with warnings as errors, formatting, Credo,
       # dependency audits, the test suite with coverage, Dialyzer, docs, and the
       # vendored usage rules check.

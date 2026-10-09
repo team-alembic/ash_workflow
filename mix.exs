@@ -164,8 +164,10 @@ defmodule AshWorkflow.MixProject do
           AshWorkflow.Charts.Graph.Edge,
           AshWorkflow.Charts.Graph.Note,
           AshWorkflow.Charts.Backend,
+          AshWorkflow.Charts.Palette,
           AshWorkflow.Charts.Mermaid,
-          AshWorkflow.Charts.Json
+          AshWorkflow.Charts.Json,
+          AshWorkflow.Charts.Dot
         ],
         Internals: ~r/.*/
       ]

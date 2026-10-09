@@ -5,6 +5,7 @@ defmodule AshWorkflow.Charts.FormatTest do
 
   alias AshWorkflow.Charts.Format
   alias AshWorkflow.Charts.Graph.Edge
+  alias AshWorkflow.Charts.Graph.Node
   alias AshWorkflow.Charts.Graph.Note
   alias AshWorkflow.Entities.Retry
   alias AshWorkflow.Entities.Undo
@@ -117,6 +118,32 @@ defmodule AshWorkflow.Charts.FormatTest do
       assert Format.kind_text(:automatic) == "⚙\u{FE0F} automatic"
       assert Format.kind_text(:manual) == "✋ manual"
       assert Format.kind_text(:wait_state) == "⏳ wait state"
+    end
+  end
+
+  describe "node_text/1" do
+    test "gives the name, the kind, and the notes under a rule" do
+      assert Format.node_text(%Node{id: :review, kind: :manual}) == "review\n✋ manual"
+
+      assert Format.node_text(%Node{
+               id: :review,
+               kind: :manual,
+               notes: [
+                 %Note{kind: :policy, label: "actor.role == :reviewer"},
+                 %Note{kind: :retry, label: "3 attempts, exponential backoff"}
+               ]
+             }) ==
+               "review\n✋ manual\n—\npolicy: actor.role == :reviewer\nretry: 3 attempts, exponential backoff"
+    end
+
+    test "a terminal step has no kind line, and keeps its notes" do
+      assert Format.node_text(%Node{id: :done, kind: :terminal}) == "done"
+
+      assert Format.node_text(%Node{
+               id: :done,
+               kind: :terminal,
+               notes: [%Note{kind: :policy, label: "actor.role == :admin"}]
+             }) == "done\n—\npolicy: actor.role == :admin"
     end
   end
 
