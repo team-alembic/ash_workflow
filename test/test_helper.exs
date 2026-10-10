@@ -18,6 +18,18 @@ Ecto.Adapters.SQL.Sandbox.mode(AshWorkflowTest.Repo, :manual)
 
 ExUnit.start()
 
+# The tests tagged `:dot` run Graphviz's `dot`. This library does not download
+# it, so when `dot` is not on the PATH, the helper excludes those tests. CI
+# installs Graphviz first, so CI runs them.
+if AshWorkflow.Charts.Dot.executable() == nil do
+  ExUnit.configure(exclude: [:dot | Keyword.get(ExUnit.configuration(), :exclude, [])])
+
+  IO.puts(
+    "dot is not on the PATH, so the tests tagged :dot do not run. " <>
+      "Install Graphviz to run them."
+  )
+end
+
 # Pre-initialize ETS tables for all test resources to avoid race conditions
 # when async tests run before a table is lazily created.
 for resource <- Ash.Domain.Info.resources(AshWorkflowTest.Domain) do

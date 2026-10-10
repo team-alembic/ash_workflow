@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Regenerates the chart examples in documentation/topics/*.md from the
 # workflows in examples/. See AshWorkflowTest.ChartExamples for the markers.
+# The SVGs under documentation/topics/assets/ need the dot command of
+# Graphviz. Without it, the script fails and changes no file.
 # The examples compile only in the test environment, hence MIX_ENV=test.
 set -euo pipefail
 

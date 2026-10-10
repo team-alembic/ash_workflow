@@ -306,6 +306,7 @@ stateDiagram-v2
 |---|---|---|---|
 | `:mermaid` | `AshWorkflow.Charts.Mermaid` | `.mmd` | GitHub, Livebook and ExDoc show it without other tools |
 | `:json` | `AshWorkflow.Charts.Json` | `.json` | A client that draws the workflow itself |
+| `:dot` | `AshWorkflow.Charts.Dot` | `.dot` | A chart with colour and line styles, drawn by Graphviz `dot` or by `svg: true` |
 
 Every format draws from the same `AshWorkflow.Charts.Graph`, which
 `AshWorkflow.Charts.Graph.build/2` makes from the DSL. So all formats show the
@@ -406,6 +407,168 @@ no layout for directed graphs, so pair it with a layout library such as dagre
 or ELK.js. `AshWorkflow.Charts.Json.to_map/1` returns the same data as Elixir
 maps, for a LiveView that pushes it to a JavaScript hook.
 
+### DOT
+
+DOT is the text format of [Graphviz](https://graphviz.org). Its `dot`
+command lays the diagram out and draws it as SVG. A DOT chart shows the same
+steps, edges and labels as the Mermaid chart, and it adds two things:
+
+* **Colour.** Automatic steps are blue, manual steps amber and wait states
+  lavender. A terminal step is green, red or amber by how the record gets
+  there.
+* **Line styles.** `on_success` is a thick line, a timeout is dashed, and
+  undo is dotted with a hollow arrowhead.
+
+GitHub and ExDoc do not draw DOT. So `render/3` can run `dot` for you and
+give you the SVG:
+
+```elixir
+AshWorkflow.Charts.render(BasicWorkflow.Incident, :dot, svg: true)
+```
+
+```bash
+mix ash_workflow.diagram --format dot --svg --output priv/diagrams
+```
+
+`svg: true` runs the `dot` command of Graphviz. This library does not
+download Graphviz. Install it with the package manager of your system, for
+example `apt-get install graphviz` or `brew install graphviz`. The chart runs
+`dot` from the `PATH`. For a `dot` that is not on the `PATH`, set
+`config :ash_workflow, :dot, path: "/opt/graphviz/bin/dot"`. A release runs
+the `dot` of the machine that runs the release, so install Graphviz there,
+or set `:path`. When there is no `dot`, `svg: true` raises `ArgumentError`.
+`AshWorkflow.Charts.Dot.executable/0` gives the `dot` that `svg: true` runs.
+
+This is the incident workflow from above, as Graphviz 15.1.1 drew it:
+
+![The incident workflow, drawn by Graphviz](assets/incident-dot.svg)
+
+#### What the colours mean
+
+| In the chart | Means |
+|---|---|
+| Blue box | An automatic step |
+| Amber box | A manual step: a person must act |
+| Lavender box, dashed border | A wait state |
+| Green box, double border | A terminal step that only transitions and `on_success` reach |
+| Red box, double border | A terminal step that only `on_error` reaches |
+| Amber box, double border | A terminal step that only timeouts reach |
+| Grey box, double border | A terminal step with a mix of these, or with no edge |
+| Thick blue line | `on_success` |
+| Red line | `on_error` |
+| Dashed amber line | A timeout |
+| Dotted grey line, hollow arrowhead | Undo |
+| Plain line | A transition |
+
+A step has round corners, and a terminal step has square corners. The colour
+of a terminal step comes from the edges, not from the step's name. A
+`rejected` step that a person chooses is green, the same as `approved`,
+because the workflow reaches both in the same way.
+`AshWorkflow.Charts.Palette.terminal_class/2` gives the class of one step.
+
+Each edge kind other than a transition has a symbol in its label as well as
+a colour. `on_success`, timeouts and undo also have a line style, and
+`on_error` is a plain red line with `✖`. So a reader who cannot tell the
+colours apart loses nothing. By the WCAG 2 formula, the label text
+has a contrast above 8.6:1 on its fill or on the background, in both themes.
+Each line and each border has a contrast above 3.6:1 on the background.
+
+#### Your own colours
+
+DOT has no classes, so each node and each edge gets the attributes of its
+class in the file. Pass `classes:` to change a class. A key is a Graphviz
+attribute name, such as `fillcolor`, `penwidth` or `style`. Each class merges
+over its default, so this changes the fill of manual steps and keeps their
+border. It also draws the undo edges dashed:
+
+```elixir
+AshWorkflow.Charts.render(BasicWorkflow.Incident, :dot,
+  classes: [manual: [fillcolor: "#FFE4E6"], undo: [style: "dashed"]]
+)
+```
+
+This list applies to both themes. To give each theme its own colours, put
+the classes under `:light` and `:dark`. Only the entry for the current theme
+applies:
+
+```elixir
+AshWorkflow.Charts.render(BasicWorkflow.Incident, :dot,
+  theme: :dark,
+  classes: [
+    light: [manual: [fillcolor: "#FFE4E6"]],
+    dark: [manual: [fillcolor: "#881337"]]
+  ]
+)
+```
+
+To change the colours of every chart, put the same list under
+`config :ash_workflow, :dot, classes: [...]`.
+`AshWorkflow.Charts.Dot.default_classes/1` lists the classes and their
+defaults.
+
+#### Dark theme
+
+`theme: :dark`, or `--theme dark`, selects a dark background and a second
+set of colours, with deep fills, light borders and light text. An SVG has
+one palette. A page that follows the reader's theme needs one chart for each
+theme. With `--theme dark`, the mix task adds `-dark` to each file name, such
+as `BasicWorkflow.Incident-dark.svg`. So the light and the dark charts can
+go in the same directory:
+
+```bash
+mix ash_workflow.diagram --format dot --svg --output priv/diagrams
+mix ash_workflow.diagram --format dot --svg --theme dark --output priv/diagrams
+```
+
+To draw every chart dark, set `config :ash_workflow, :dot, theme: :dark`. A
+light fill under the dark theme's light text is hard to read. So put a fill
+for one theme under that theme's key in `classes:`, as in "Your own
+colours".
+
+![The incident workflow, drawn by Graphviz with the dark theme](assets/incident-dot-dark.svg)
+
+#### Layout
+
+`dot` puts the steps in ranks, from the initial step down to the end steps.
+An undo edge points back up to the earlier step, next to the edge that it
+undoes. The file writes an undo edge from the earlier step, with
+`dir="back"`, so `dot` ranks it in the same direction as the edge that it
+undoes, and the steps keep their forward order. The arrowhead is at the tail
+of the edge, so the `undo` class sets `arrowtail`, not `arrowhead`.
+`direction: :right` turns the chart on its side. That gives a long, thin
+chart, so keep it for a short chain of steps.
+
+#### The DOT source
+
+Without `svg: true`, `render/3` gives the DOT source. This is the source for
+the incident workflow:
+
+<!-- chart: BasicWorkflow.Incident dot -->
+```dot
+digraph "BasicWorkflow.Incident" {
+  graph [rankdir=TB, bgcolor="#FFFFFF", fontname="Helvetica", pad=0.3, nodesep=0.5, ranksep=0.6];
+  node [shape=box, fontname="Helvetica", fontsize=14, margin="0.2,0.1", penwidth=2];
+  edge [fontname="Helvetica", fontsize=12, fontcolor="#0A0F25", color="#0A0F25", penwidth=1.5];
+  "start" [shape=circle, label="", width=0.2, style=filled, fillcolor="#0A0F25", color="#0A0F25"];
+  "step_triaging" [label="triaging\n⚙️ automatic", fillcolor="#E8F0FE", color="#1A56DB", fontcolor="#0A0F25", style="rounded,filled"];
+  "step_investigating" [label="investigating\n✋ manual\n—\n↻ every 1 hour: send_status_update", fillcolor="#FFF4E5", color="#B7791F", fontcolor="#0A0F25", style="rounded,filled"];
+  "step_escalated" [label="escalated\n✋ manual", fillcolor="#FFF4E5", color="#B7791F", fontcolor="#0A0F25", style="rounded,filled"];
+  "step_resolved" [label="resolved", fillcolor="#E6F4EA", color="#1E7B34", fontcolor="#0A0F25", style="filled", peripheries=2];
+  "step_triage_failed" [label="triage_failed", fillcolor="#FDE8E8", color="#C81E1E", fontcolor="#0A0F25", style="filled", peripheries=2];
+  "start" -> "step_triaging";
+  "step_triaging" -> "step_investigating" [label="⚙ classify_severity", color="#1A56DB", penwidth=3];
+  "step_triaging" -> "step_triage_failed" [label="✖ on_error", color="#C81E1E"];
+  "step_investigating" -> "step_escalated" [label="escalate"];
+  "step_investigating" -> "step_resolved" [label="resolve"];
+  "step_investigating" -> "step_escalated" [label="⏱ auto_escalate after 4 hours", color="#B45309", style="dashed"];
+  "step_escalated" -> "step_resolved" [label="resolve"];
+  "step_investigating" -> "step_escalated" [label="↶ undo within 1 hour", dir="back", color="#6B7280", style="dotted", arrowtail="onormal"];
+  "step_investigating" -> "step_resolved" [label="↶ undo within 1 hour", dir="back", color="#6B7280", style="dotted", arrowtail="onormal"];
+  "step_escalated" -> "step_resolved" [label="↶ undo within 1 hour", dir="back", color="#6B7280", style="dotted", arrowtail="onormal"];
+}
+```
+<!-- /chart -->
+
 ## Your own format
 
 A format is a module that implements `AshWorkflow.Charts.Backend`. It receives
@@ -434,5 +597,7 @@ AshWorkflow.Charts.render(MyApp.Candidate, MyApp.PlainTextChart)
 ## Limits
 
 - A Mermaid state diagram cannot draw a dashed edge, so the edge kind is a
-  symbol in the label.
+  symbol in the label. The DOT format also gives `on_success`, `on_error`,
+  timeouts and undo a colour, and `on_success`, timeouts and undo a line
+  style.
 - Steps are not grouped, so a chart of a large workflow can be wide.
