@@ -78,6 +78,19 @@ jobs:
       # the PATH. Graphviz has no download to fetch, so install it here.
       - run: sudo apt-get update && sudo apt-get install -y graphviz
 
+      # The _build cache above is keyed on mix.lock only and is not saved again
+      # on an exact hit, so it does not keep d2. This cache does. Its key
+      # changes when binary.ex changes, which is where the d2 version is pinned.
+      - name: Cache d2
+        uses: actions/cache@v6
+        with:
+          path: _build/d2-v*
+          key: d2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('lib/ash_workflow/charts/d2/binary.ex') }}
+
+      # The test helper excludes the tests tagged :d2 when `d2` is not
+      # installed. Install it here, so CI runs those tests.
+      - run: mix ash_workflow.d2.install
+
       # mix check runs compilation with warnings as errors, formatting, Credo,
       # dependency audits, the test suite with coverage, Dialyzer, docs, and the
       # vendored usage rules check.

@@ -20,6 +20,12 @@ defmodule AshWorkflow.MixProject do
       deps: deps(),
       usage_rules: usage_rules(),
       aliases: aliases(),
+      # The d2 download calls :httpc and :inets, from the :inets application,
+      # and :public_key. This library does not list those applications, so
+      # that a release does not start them at boot. The download starts them
+      # itself. When no dependency brings these applications, the compiler
+      # warns about the three modules, so xref leaves them out.
+      xref: [exclude: [:httpc, :inets, :public_key]],
       dialyzer: [
         plt_add_apps: [:mix, :ex_unit],
         plt_core_path: "priv/plts",
@@ -168,6 +174,8 @@ defmodule AshWorkflow.MixProject do
           AshWorkflow.Charts.Palette,
           AshWorkflow.Charts.Mermaid,
           AshWorkflow.Charts.Json,
+          AshWorkflow.Charts.D2,
+          AshWorkflow.Charts.D2.Binary,
           AshWorkflow.Charts.Dot
         ],
         Internals: ~r/.*/

@@ -2,7 +2,9 @@
 # Regenerates the chart examples in documentation/topics/*.md from the
 # workflows in examples/. See AshWorkflowTest.ChartExamples for the markers.
 # The SVGs under documentation/topics/assets/ need the dot command of
-# Graphviz. Without it, the script fails and changes no file.
+# Graphviz and the d2 binary, which `mix ash_workflow.d2.install` downloads.
+# When d2 is not there, the script downloads it. Without dot, or when the d2
+# download fails, the script fails and changes no file.
 # The examples compile only in the test environment, hence MIX_ENV=test.
 set -euo pipefail
 
