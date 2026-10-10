@@ -59,6 +59,15 @@ defmodule AshWorkflowDemoWeb.Router do
     get "/rewind", TimelineRedirectController, :show
   end
 
+  # Clarity browses the workflow's steps, moves and timing. It is an operator
+  # page, so it stays off the tunnel.
+  scope "/" do
+    import Clarity.Router
+
+    pipe_through [:browser, :local_only]
+    clarity "/clarity"
+  end
+
   scope "/webhooks", AshWorkflowDemoWeb do
     pipe_through :api
 

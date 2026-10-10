@@ -40,6 +40,7 @@ defmodule AshWorkflowDemo.MixProject do
       {:phoenix_live_reload, "~> 1.2", only: :dev},
       {:phoenix_live_view, "~> 1.0"},
       {:floki, ">= 0.30.0", only: :test},
+      {:lazy_html, ">= 0.1.0", only: :test},
       {:esbuild, "~> 0.8", runtime: Mix.env() == :dev},
       {:tailwind, "~> 0.2", runtime: Mix.env() == :dev},
       {:heroicons,
@@ -64,8 +65,18 @@ defmodule AshWorkflowDemo.MixProject do
       # application it can see but cannot find a .app file for.
       {:igniter, "~> 0.6", only: [:dev, :test]},
       {:oban, "~> 2.18"},
-      {:eqrcode, "~> 0.2"}
+      {:eqrcode, "~> 0.2"},
+      clarity_dep()
     ]
+  end
+
+  # Clarity browses this app's workflows at /clarity. Set CLARITY_PATH to a local
+  # checkout to try Clarity changes before they are pushed.
+  defp clarity_dep do
+    case System.get_env("CLARITY_PATH") do
+      nil -> {:clarity, github: "team-alembic/clarity", override: true}
+      path -> {:clarity, path: path, override: true}
+    end
   end
 
   # Aliases are shortcuts or tasks specific to the current project.

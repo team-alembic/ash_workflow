@@ -144,6 +144,12 @@ defmodule AshWorkflow.Charts.Mermaid do
   defp end_line(%{kind: :terminal} = node), do: [@indent, id(node.id), " --> [*]\n"]
   defp end_line(_node), do: []
 
+  # AshWorkflow.Clarity styles and highlights states by the IDs this backend
+  # writes, so it has to write them the same way.
+  @doc false
+  @spec state_id(atom()) :: String.t()
+  def state_id(step_name), do: id(step_name)
+
   defp id(step_name) do
     "step_" <>
       String.replace(to_string(step_name), ~r/[^A-Za-z0-9_]/u, fn <<char::utf8>> ->
