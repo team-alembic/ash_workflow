@@ -89,7 +89,6 @@ defmodule AshWorkflow.Scheduler.Oban do
         where: work.match,
         queue: queue(dsl, opts),
         on_error: work.on_error,
-        trigger_once?: work.once?,
         max_attempts: work.retry.max_attempts,
         backoff: oban_backoff(work.retry.backoff),
         worker_module_name: module_name(work, Workers),

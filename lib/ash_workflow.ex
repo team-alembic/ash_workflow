@@ -244,6 +244,7 @@ defmodule AshWorkflow do
       AshWorkflow.Verifiers.ValidateWorkflow,
       AshWorkflow.Verifiers.ValidateTimeoutFields,
       AshWorkflow.Verifiers.ValidateEvery,
+      AshWorkflow.Verifiers.ValidateTimeoutFiredFields,
       AshWorkflow.Verifiers.ValidateTimeoutPrecision,
       AshWorkflow.Verifiers.ValidateRetry,
       AshWorkflow.Verifiers.ValidateTransitionLog,

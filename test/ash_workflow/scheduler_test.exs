@@ -94,9 +94,9 @@ defmodule AshWorkflow.SchedulerTest do
       assert work(:__timeout_trigger_review_nudge).action == :send_nudge
     end
 
-    test "marks an action timeout as firing once, since it does not change state" do
-      assert work(:__timeout_trigger_review_nudge).once?
-      refute work(:__timeout_trigger_review_escalate).once?
+    test "names the fired column of an action timeout, since it does not change state" do
+      assert work(:__timeout_trigger_review_nudge).fired_field == :review_nudge_fired_at
+      assert work(:__timeout_trigger_review_escalate).fired_field == nil
     end
 
     test "carries the resource, so an implementation can query it" do

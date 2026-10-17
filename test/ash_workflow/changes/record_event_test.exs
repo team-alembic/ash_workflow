@@ -10,9 +10,14 @@ defmodule AshWorkflow.Changes.RecordEventTest do
   alias AshWorkflowTest.SharedTimeoutNameWorkflow
 
   describe "injection onto action timeouts" do
-    test "a non-repeating action timeout gets RecordEvent and leaves state_entered_at alone" do
+    test "a non-repeating action timeout gets RecordEvent, writes its fired column and leaves state_entered_at alone" do
       assert [
-               {RecordEvent, [triggered_by: :timeout, touch_state_entered_at: false]}
+               {RecordEvent,
+                [
+                  triggered_by: :timeout,
+                  touch_state_entered_at: false,
+                  timeout_fields: %{review: [:review_nudge_fired_at]}
+                ]}
              ] ==
                change_specs(LoggedWorkflow, :send_nudge)
     end
@@ -29,9 +34,17 @@ defmodule AshWorkflow.Changes.RecordEventTest do
                change_specs(LoggedWorkflow, :send_reminder)
     end
 
-    test "two timeouts naming the same action get one RecordEvent between them" do
+    test "two timeouts naming the same action get one RecordEvent carrying both fired columns by step" do
       assert [
-               {RecordEvent, [triggered_by: :timeout, touch_state_entered_at: false]}
+               {RecordEvent,
+                [
+                  triggered_by: :timeout,
+                  touch_state_entered_at: false,
+                  timeout_fields: %{
+                    standard: [:standard_warn_fired_at],
+                    urgent: [:urgent_warn_fired_at]
+                  }
+                ]}
              ] ==
                change_specs(SharedTimeoutNameWorkflow, :send_warning)
     end
@@ -41,6 +54,61 @@ defmodule AshWorkflow.Changes.RecordEventTest do
       |> ResourceInfo.action(action_name)
       |> Map.get(:changes)
       |> Enum.map(& &1.change)
+    end
+  end
+
+  describe "an action timeout's fired columns" do
+    @timeout_fields %{urgent: [:urgent_warn_fired_at], standard: [:standard_warn_fired_at]}
+
+    defp update_changeset(data) do
+      SharedTimeoutNameWorkflow
+      |> Ash.Changeset.for_create(:create, %{title: "fired columns"})
+      |> Map.put(:action_type, :update)
+      |> Map.put(:data, data)
+    end
+
+    defp opts,
+      do: [triggered_by: :timeout, touch_state_entered_at: false, timeout_fields: @timeout_fields]
+
+    test "atomic/3 writes only the current step's column" do
+      changeset = update_changeset(%SharedTimeoutNameWorkflow{state: :urgent})
+
+      assert {:atomic, _changeset, atomics} =
+               RecordEvent.atomic(changeset, opts(), %Context{actor: nil})
+
+      assert Map.keys(atomics) == [:urgent_warn_fired_at]
+    end
+
+    test "change/3 writes only the current step's column" do
+      changeset = update_changeset(%SharedTimeoutNameWorkflow{state: :standard})
+
+      changeset = RecordEvent.change(changeset, opts(), %Context{actor: nil})
+
+      assert %DateTime{} = changeset.attributes[:standard_warn_fired_at]
+      refute Map.has_key?(changeset.attributes, :urgent_warn_fired_at)
+    end
+
+    test "writes every step's column when the changeset's data does not hold the state" do
+      changeset = update_changeset(%SharedTimeoutNameWorkflow{state: %Ash.NotLoaded{}})
+
+      assert {:atomic, _changeset, atomics} =
+               RecordEvent.atomic(changeset, opts(), %Context{actor: nil})
+
+      assert Enum.sort(Map.keys(atomics)) == [:standard_warn_fired_at, :urgent_warn_fired_at]
+    end
+
+    test "running a shared action writes the column of the step the record is in" do
+      record =
+        SharedTimeoutNameWorkflow
+        |> Ash.Changeset.for_create(:create, %{title: "shared action"})
+        |> Ash.create!()
+        |> Ash.Changeset.for_update(:to_urgent, %{})
+        |> Ash.update!()
+
+      record = record |> Ash.Changeset.for_update(:send_warning, %{}) |> Ash.update!()
+
+      assert %DateTime{} = record.urgent_warn_fired_at
+      assert record.standard_warn_fired_at == nil
     end
   end
 

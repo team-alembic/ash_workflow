@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Upgrading from 0.9.x
+
+- **Generate a migration.** Each action timeout (a `timeout` with `action` and no `transition_to`) adds a nilable `<step>_<timeout>_fired_at` column. On AshPostgres, run `mix ash.codegen` after upgrading.
+- A record whose action timeout already fired before the upgrade has a `nil` column, so that timeout fires once more for it after the upgrade.
+
+### Fixed
+
+- An action timeout fires once for each deadline under both schedulers. `AshWorkflow.Scheduler.Precise` fired a due action timeout in a loop: firing left the record matching, `AshWorkflow.Changes.RecordEvent` rearmed it, and `run_due/2` never returned 0. `AshWorkflow.Scheduler.Oban` relied on `trigger_once?`, so the completed job row was the only record of a firing. Pruning the row fired the timeout again, keeping it stopped a second visit to the step from firing, and a `fire_at` timeout whose action moved its own field later never fired a second time. Each action timeout now writes its own `<step>_<timeout>_fired_at` column (`AshWorkflow.Entities.Timeout.fired_field/2`) when it fires, and `AshWorkflow.Scheduler.Work.not_fired/1` adds `is_nil(fired_at) or fired_at < deadline` to the timeout's `match`. The timeout fires again once its deadline moves past the column. A new visit to the step and a later `fire_at` value both do that. `AshWorkflow.Scheduler.Work` replaces `once?` with `fired_field`, the generated Oban trigger no longer sets `trigger_once?`, and `pending_deadlines` omits an action timeout that has fired for its current deadline. `AshWorkflow.Verifiers.ValidateTimeoutFiredFields` rejects a fired column that names an existing non-datetime attribute, and two timeouts, or a timeout and an `every`, that resolve to the same column. (#106)
+
 ## [0.9.0] - 2026-10-17
 
 ### Upgrading from 0.8.x
