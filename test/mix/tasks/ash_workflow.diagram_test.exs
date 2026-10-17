@@ -19,6 +19,13 @@ defmodule Mix.Tasks.AshWorkflow.DiagramTest do
     assert %{"resource" => "AshWorkflowTest.PolicyWorkflow"} = Jason.decode!(output)
   end
 
+  test "prints D2 with --format d2" do
+    output =
+      capture_io(fn -> Diagram.run(["--format", "d2", "AshWorkflowTest.PolicyWorkflow"]) end)
+
+    assert output == Charts.render(AshWorkflowTest.PolicyWorkflow, :d2) <> "\n"
+  end
+
   test "prints DOT with --format dot" do
     output =
       capture_io(fn -> Diagram.run(["--format", "dot", "AshWorkflowTest.PolicyWorkflow"]) end)
@@ -87,7 +94,14 @@ defmodule Mix.Tasks.AshWorkflow.DiagramTest do
     assert_raise Mix.Error, ~r/Unknown options/, fn -> Diagram.run(["--bogus"]) end
   end
 
-  test "--theme dark reaches the DOT backend, and needs --format dot" do
+  test "--theme dark reaches the D2 and DOT backends, and needs --format d2 or dot" do
+    output =
+      capture_io(fn ->
+        Diagram.run(["--format", "d2", "--theme", "dark", "AshWorkflowTest.PolicyWorkflow"])
+      end)
+
+    assert output =~ "theme-id: 200"
+
     output =
       capture_io(fn ->
         Diagram.run(["--format", "dot", "--theme", "dark", "AshWorkflowTest.PolicyWorkflow"])
@@ -96,18 +110,56 @@ defmodule Mix.Tasks.AshWorkflow.DiagramTest do
     assert output =~ ~S(bgcolor="#1E1E2E")
 
     assert_raise Mix.Error, ~r/--theme must be light or dark/, fn ->
-      Diagram.run(["--format", "dot", "--theme", "sepia", "AshWorkflowTest.PolicyWorkflow"])
+      Diagram.run(["--format", "d2", "--theme", "sepia", "AshWorkflowTest.PolicyWorkflow"])
     end
 
-    assert_raise Mix.Error, ~r/--theme needs --format dot, not mermaid/, fn ->
+    assert_raise Mix.Error, ~r/--theme needs --format d2 or dot, not mermaid/, fn ->
       Diagram.run(["--theme", "dark", "AshWorkflowTest.PolicyWorkflow"])
     end
   end
 
-  test "--svg needs --format dot" do
-    assert_raise Mix.Error, ~r/--svg needs --format dot, not mermaid/, fn ->
+  @tag :tmp_dir
+  test "--theme dark adds -dark to the file name, so it does not overwrite the light file",
+       %{tmp_dir: dir} do
+    capture_io(fn ->
+      for theme <- ["light", "dark"] do
+        Diagram.run([
+          "--format",
+          "d2",
+          "--theme",
+          theme,
+          "--output",
+          dir,
+          "AshWorkflowTest.PolicyWorkflow"
+        ])
+      end
+    end)
+
+    assert Enum.sort(File.ls!(dir)) ==
+             ["AshWorkflowTest.PolicyWorkflow-dark.d2", "AshWorkflowTest.PolicyWorkflow.d2"]
+
+    assert File.read!(Path.join(dir, "AshWorkflowTest.PolicyWorkflow-dark.d2")) ==
+             Charts.render(AshWorkflowTest.PolicyWorkflow, :d2, theme: :dark)
+
+    assert File.read!(Path.join(dir, "AshWorkflowTest.PolicyWorkflow.d2")) ==
+             Charts.render(AshWorkflowTest.PolicyWorkflow, :d2, theme: :light)
+  end
+
+  test "--svg needs --format d2 or dot" do
+    assert_raise Mix.Error, ~r/--svg needs --format d2 or dot, not mermaid/, fn ->
       Diagram.run(["--svg", "AshWorkflowTest.PolicyWorkflow"])
     end
+  end
+
+  @tag :tmp_dir
+  @tag :d2
+  test "--format d2 --svg writes .svg files that d2 drew", %{tmp_dir: dir} do
+    capture_io(fn ->
+      Diagram.run(["--format", "d2", "--svg", "--output", dir, "AshWorkflowTest.PolicyWorkflow"])
+    end)
+
+    assert File.ls!(dir) == ["AshWorkflowTest.PolicyWorkflow.svg"]
+    assert File.read!(Path.join(dir, "AshWorkflowTest.PolicyWorkflow.svg")) =~ "<svg"
   end
 
   @tag :tmp_dir
