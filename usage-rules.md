@@ -547,6 +547,7 @@ the code:
 ```elixir
 AshWorkflow.Charts.mermaid_state_diagram(MyApp.Candidate)
 AshWorkflow.Charts.render(MyApp.Candidate, :json)
+AshWorkflow.Charts.render(MyApp.Candidate, :dot, svg: true)
 ```
 
 ```bash
@@ -556,6 +557,9 @@ mix ash_workflow.diagram --format json --output priv/diagrams
 
 - For a workflow diagram, prefer `AshWorkflow.Charts`. It reads the DSL, so it shows step kinds, deadlines, route conditions, step notes and undo moves. `AshStateMachine.Charts` draws the generated state machine itself.
 - `undo: false` and `notes: false` (`--no-undo`, `--no-notes`) make a smaller chart.
+- For a chart with colour, use `:dot`. `svg: true` (`--svg`) runs `dot` from the `PATH` and gives the SVG. It does not download Graphviz, so install Graphviz first, in CI and in a release too. Set `config :ash_workflow, :dot, path:` for a `dot` that is not on the `PATH`.
+- `theme: :dark` (`--theme dark`) gives a dark DOT chart. With `--output`, it writes to a file such as `MyApp.Candidate-dark.svg`.
+- `classes:` changes the colours and line styles of the step kinds, the terminal steps, and the `on_success`, `on_error`, timeout and undo edges. Transitions, the start circle and the background have no class. A key is a Graphviz attribute name, such as `fillcolor`: a node attribute for a step class, and an edge attribute for an edge class. No class takes `label`, and the undo class does not take `dir`. A plain list applies to both themes, and `classes: [light: [...], dark: [...]]` gives each theme its own colours.
 - A new format is a module that implements `AshWorkflow.Charts.Backend`. Pass the module to `AshWorkflow.Charts.render/3` in place of a format name.
 
 ## Common Patterns
