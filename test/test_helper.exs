@@ -4,6 +4,7 @@
   Supervisor.start_link(
     [
       AshWorkflowTest.Repo,
+      AshWorkflowTest.NoExprErrorRepo,
       {Oban,
        AshOban.config(
          Application.fetch_env!(:ash_workflow, :ash_domains),
@@ -15,6 +16,7 @@
   )
 
 Ecto.Adapters.SQL.Sandbox.mode(AshWorkflowTest.Repo, :manual)
+Ecto.Adapters.SQL.Sandbox.mode(AshWorkflowTest.NoExprErrorRepo, :manual)
 
 ExUnit.start()
 

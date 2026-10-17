@@ -38,7 +38,7 @@ if Mix.env() == :test do
     ash_domains: [AshWorkflowTest.Domain, AshWorkflowTest.Postgres.Domain],
     ecto_repos: [AshWorkflowTest.Repo]
 
-  config :ash_workflow, AshWorkflowTest.Repo,
+  repo_config = [
     username: System.get_env("POSTGRES_USER", "postgres"),
     password: System.get_env("POSTGRES_PASSWORD", "postgres"),
     hostname: System.get_env("POSTGRES_HOST", "localhost"),
@@ -46,6 +46,14 @@ if Mix.env() == :test do
     database: "ash_workflow_test#{System.get_env("MIX_TEST_PARTITION")}",
     pool: Ecto.Adapters.SQL.Sandbox,
     pool_size: 10
+  ]
+
+  config :ash_workflow, AshWorkflowTest.Repo, repo_config
+
+  # Shares the database and migrations, without `error/2` expression support.
+  config :ash_workflow,
+         AshWorkflowTest.NoExprErrorRepo,
+         Keyword.put(repo_config, :priv, "priv/repo")
 
   # Oban runs inline in tests: `Oban.Testing` drives the queues explicitly so
   # trigger execution is deterministic rather than time-dependent.
