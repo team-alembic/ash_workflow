@@ -10,6 +10,7 @@ defmodule Mix.AshWorkflow.RecipeTest do
 
   for {task, argv} <- [
         {"ash_workflow.gen.approval", ["--approver", inspect(User)]},
+        {"ash_workflow.gen.deletion", ["--grace-period", "30d"]},
         {"ash_workflow.gen.expiry", []}
       ] do
     test "#{task} stops when a missing subject has no data layer to copy" do
@@ -34,6 +35,7 @@ defmodule Mix.AshWorkflow.RecipeTest do
 
   for {task, argv} <- [
         {"ash_workflow.gen.approval", ["--approver", inspect(User)]},
+        {"ash_workflow.gen.deletion", ["--grace-period", "30d"]},
         {"ash_workflow.gen.expiry", []}
       ] do
     test "#{task} stops when an existing subject has no data layer" do
