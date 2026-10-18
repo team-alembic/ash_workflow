@@ -1,6 +1,8 @@
 defmodule Mix.Tasks.AshWorkflow.Gen.TransitionLogTest do
   use AshWorkflow.RecipeCase, async: true
 
+  alias Ash.Domain.Igniter, as: DomainIgniter
+
   alias AshWorkflowTest.RecipeFixtures.TransitionLog.PostgresTicket
   alias AshWorkflowTest.RecipeFixtures.TransitionLog.Reviewer
   alias AshWorkflowTest.RecipeFixtures.TransitionLog.Ticket
@@ -113,6 +115,53 @@ defmodule Mix.Tasks.AshWorkflow.Gen.TransitionLogTest do
 
     assert [%{fields: [:workflow_id, :occurred_at]}] =
              AshPostgres.DataLayer.Info.custom_indexes(log)
+  end
+
+  test "logs a workflow generated earlier in the same run, before it has compiled", %{
+    tmp_dir: tmp_dir
+  } do
+    workflow = AshWorkflowTest.RecipeFixtures.TransitionLog.Draft
+
+    recipe =
+      @ets_files
+      |> project()
+      |> Igniter.Project.Module.create_module(workflow, """
+      use Ash.Resource,
+        domain: AshWorkflowTest.RecipeFixtures.TransitionLog.Domain,
+        data_layer: Ash.DataLayer.Ets,
+        extensions: [AshWorkflow, AshOban]
+
+      workflow do
+        step :drafting do
+          transition :publish, to: :published
+        end
+
+        step :published, terminal: true
+      end
+
+      actions do
+        defaults [:read, :create]
+      end
+
+      attributes do
+        uuid_v7_primary_key :id
+      end
+      """)
+      |> DomainIgniter.add_resource_reference(
+        AshWorkflowTest.RecipeFixtures.TransitionLog.Domain,
+        workflow
+      )
+      |> run_task("ash_workflow.gen.transition_log", [inspect(workflow)])
+      |> compile(tmp_dir)
+
+    log = recipe.modules[AshWorkflowTest.RecipeFixtures.TransitionLog.DraftTransition]
+
+    recipe.modules[workflow]
+    |> Ash.Changeset.for_create(:create, %{})
+    |> Ash.create!()
+    |> Ash.update!(action: :publish)
+
+    assert [%{to_state: :drafting}, %{to_state: :published}] = log_rows(log)
   end
 
   test "warns instead of duplicating when a transition_log is already configured" do
