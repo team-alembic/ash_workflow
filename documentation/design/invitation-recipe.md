@@ -1,6 +1,6 @@
 # Design: invitation recipe generator
 
-Status: proposed.
+Status: implemented.
 
 ## The problem
 
