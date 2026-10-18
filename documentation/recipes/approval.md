@@ -20,7 +20,7 @@ mix ash_workflow.gen.approval MyApp.Expenses.Expense \
 | `--overdue-after` | none | Moves a waiting request to `:overdue` after this long. Accepts `30m`, `12h`, `2d` and `2w`. Without it, no `:overdue` step is generated. |
 | `--transition-log` | `true` | Also runs `mix ash_workflow.gen.transition_log` for the approval resource, recording the approver as the actor. Pass `--no-transition-log` to skip it. |
 
-When the subject does not exist, the task creates it with `mix ash.gen.resource`, using the approver's data layer. Running the task again on the same subject changes nothing.
+When the subject does not exist, the task creates it with `mix ash.gen.resource`, using the approver's data layer, or else the data layer of the first ETS or Postgres resource in `--domain`. When neither the approver nor any resource there uses ETS or Postgres, the task stops with an issue and writes nothing. Create the subject resource first, or pass a `--domain` that has one. Running the task again on the same subject changes nothing.
 
 ## What it generates
 
@@ -137,7 +137,7 @@ authorize_if actor_attribute_equals(:role, :finance_manager)
 
 ### Open a request
 
-Call `request/2` wherever a request should start, such as a submit action or a LiveView event. The actor becomes the requester:
+Call `request/2` wherever a request should start, such as a submit action or a LiveView event. The actor becomes the requester. The generated `:request` action has no policy, so add one to the approval resource if your application restricts who can open a request:
 
 ```elixir
 MyApp.Expenses.ExpenseApproval.request(expense.id, actor: current_user)

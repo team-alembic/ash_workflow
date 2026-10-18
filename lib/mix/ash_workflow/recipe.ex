@@ -30,13 +30,14 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
     Resolves where the recipe's resources are stored, composing
     `ash.gen.resource` first when the subject does not exist.
 
-    `missing_storage` receives the `--domain` module and returns the storage a
-    created subject should use.
+    A created subject takes its data layer from the first of `sources`, then of
+    the `--domain` resources, that uses ETS or Postgres. When none does, the
+    task stops with an issue rather than create a subject that cannot store
+    records.
     """
-    @spec ensure_subject(Igniter.t(), module(), String.t() | nil, String.t(), (module() ->
-                                                                                 storage())) ::
+    @spec ensure_subject(Igniter.t(), module(), String.t() | nil, String.t(), [module()]) ::
             {:ok, Igniter.t(), storage()} | {:error, Igniter.t()}
-    def ensure_subject(igniter, subject, domain, recipe, missing_storage) do
+    def ensure_subject(igniter, subject, domain, recipe, sources) do
       {exists?, igniter} = ProjectModule.module_exists(igniter, subject)
 
       cond do
@@ -44,7 +45,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
           existing_subject(igniter, subject, recipe)
 
         domain ->
-          missing_subject(igniter, subject, missing_storage.(ProjectModule.parse(domain)))
+          missing_subject(igniter, subject, ProjectModule.parse(domain), sources)
 
         true ->
           {:error,
@@ -70,34 +71,52 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       end
     end
 
-    defp missing_subject(igniter, subject, storage) do
-      igniter =
-        Igniter.compose_task(
-          igniter,
-          "ash.gen.resource",
-          [
-            inspect(subject),
-            "--uuid-v7-primary-key",
-            "id",
-            "--timestamps",
-            "--default-actions",
-            "read,create,update,destroy",
-            "--domain",
-            inspect(storage.domain)
-          ] ++ extend_flag(storage.data_layer)
-        )
+    defp missing_subject(igniter, subject, domain, sources) do
+      case Enum.find(sources ++ domain_resources(domain), &known_data_layer?/1) do
+        nil ->
+          {:error,
+           Igniter.add_issue(
+             igniter,
+             "#{inspect(subject)} does not exist, and no ETS or Postgres resource was found " <>
+               "to copy a data layer from. Create #{inspect(subject)} first, or pass a " <>
+               "--domain that has an ETS or Postgres resource."
+           )}
 
-      {:ok, igniter, storage}
-    end
+        resource ->
+          storage = storage(resource, domain)
 
-    @doc "Returns the storage of `resource` when it compiles, for resources registered in `domain`."
-    @spec storage_like(module() | nil, module()) :: storage()
-    def storage_like(resource, domain) do
-      case resource && Code.ensure_compiled(resource) do
-        {:module, _module} -> storage(resource, domain)
-        _missing -> %{domain: domain, data_layer: nil, repo: nil}
+          igniter =
+            Igniter.compose_task(igniter, "ash.gen.resource", [
+              inspect(subject),
+              "--uuid-v7-primary-key",
+              "id",
+              "--timestamps",
+              "--default-actions",
+              "read,create,update,destroy",
+              "--domain",
+              inspect(domain),
+              "--extend",
+              extension(storage.data_layer)
+            ])
+
+          {:ok, igniter, storage}
       end
     end
+
+    defp domain_resources(domain) do
+      case Code.ensure_compiled(domain) do
+        {:module, _module} -> Ash.Domain.Info.resources(domain)
+        {:error, _reason} -> []
+      end
+    end
+
+    defp known_data_layer?(resource) do
+      match?({:module, _module}, Code.ensure_compiled(resource)) and
+        ResourceInfo.data_layer(resource) in [Ash.DataLayer.Ets, AshPostgres.DataLayer]
+    end
+
+    defp extension(Ash.DataLayer.Ets), do: "ets"
+    defp extension(AshPostgres.DataLayer), do: "postgres"
 
     defp storage(resource, domain) do
       data_layer = ResourceInfo.data_layer(resource)
@@ -111,16 +130,6 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
     end
 
     defp repo(_resource, _data_layer), do: nil
-
-    @doc "Returns whether a created subject can take its data layer from `resource`."
-    @spec known_data_layer?(module()) :: boolean()
-    def known_data_layer?(resource) do
-      ResourceInfo.data_layer(resource) in [Ash.DataLayer.Ets, AshPostgres.DataLayer]
-    end
-
-    defp extend_flag(Ash.DataLayer.Ets), do: ["--extend", "ets"]
-    defp extend_flag(AshPostgres.DataLayer), do: ["--extend", "postgres"]
-    defp extend_flag(_data_layer), do: []
 
     @doc """
     Adds each relationship and calculation to the subject unless one of the

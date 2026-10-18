@@ -94,7 +94,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
                  subject,
                  options[:domain],
                  "expiry",
-                 &domain_storage/1
+                 []
                ) do
             {:ok, igniter, storage} -> generate(igniter, config, storage)
             {:error, igniter} -> igniter
@@ -107,19 +107,6 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
 
     defp expiry_module(subject, nil), do: Module.concat([inspect(subject) <> "Expiry"])
     defp expiry_module(_subject, module), do: ProjectModule.parse(module)
-
-    # There is no actor resource to take a data layer from, so a created
-    # subject stores its records the way the rest of its domain does.
-    defp domain_storage(domain) do
-      resource =
-        with {:module, _module} <- Code.ensure_compiled(domain) do
-          domain
-          |> Ash.Domain.Info.resources()
-          |> Enum.find(&Recipe.known_data_layer?/1)
-        end
-
-      Recipe.storage_like(resource, domain)
-    end
 
     defp generate(igniter, config, storage) do
       {exists?, igniter} = ProjectModule.module_exists(igniter, config.expiry)

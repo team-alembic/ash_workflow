@@ -15,7 +15,7 @@ mix ash_workflow.gen.expiry MyApp.Contracts.Contract --notice-period 30d
 | `--notice-period` | none | Moves an expiry to `:expiring` this long before `expires_at`. Accepts `30m`, `12h`, `2d` and `2w`. Without it, no `:expiring` step is generated. |
 | `--transition-log` | `true` | Also runs `mix ash_workflow.gen.transition_log` for the expiry resource. Pass `--no-transition-log` to skip it. |
 
-When the subject does not exist, the task creates it with `mix ash.gen.resource`, using the data layer of the other resources in `--domain`. Running the task again on the same subject changes nothing.
+When the subject does not exist, the task creates it with `mix ash.gen.resource`, using the data layer of the first ETS or Postgres resource in `--domain`. When no resource there uses ETS or Postgres, the task stops with an issue and writes nothing. Create the subject resource first, or pass a `--domain` that has one. Running the task again on the same subject changes nothing.
 
 ## What it generates
 
@@ -88,6 +88,8 @@ MyApp.Contracts.ContractExpiry.create(contract.id, ~U[2027-06-30 00:00:00Z])
 ```
 
 A second expiry for the same contract fails on the `:unique_subject` identity.
+
+The generated `:create` action has no policy. Add one to the expiry resource if your application restricts who can create an expiry.
 
 ### Decide who may renew
 

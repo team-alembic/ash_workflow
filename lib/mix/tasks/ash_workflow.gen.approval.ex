@@ -114,7 +114,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
                subject,
                options[:domain],
                "approval",
-               &Recipe.storage_like(approver, &1)
+               [approver]
              ) do
           {:ok, igniter, storage} -> generate_with_key_types(igniter, config, storage)
           {:error, igniter} -> igniter

@@ -48,7 +48,7 @@ Expiry is a lifecycle recipe. A subject has one current expiry, not a history of
 
 The generator adds no change, argument or policy to the subject's actions. Gating a subject action on `expired?` is an application decision.
 
-When the subject module does not exist, the generator creates it with `ash.gen.resource` as approval does. Approval takes the created subject's data layer from the approver. Expiry has no actor resource, so it takes the data layer from the first resource in `--domain` that uses `Ash.DataLayer.Ets` or `AshPostgres.DataLayer`. A domain with neither gets a subject with no data layer, which is what `ash.gen.resource` writes on its own.
+When the subject module does not exist, the generator creates it with `ash.gen.resource` as approval does. Approval takes the created subject's data layer from the approver. Expiry has no actor resource, so it takes the data layer from the first resource in `--domain` that uses `Ash.DataLayer.Ets` or `AshPostgres.DataLayer`. When no resource in the domain uses either, the generator stops with an Igniter issue and writes nothing, rather than create a subject that cannot store records. `Mix.AshWorkflow.Recipe.ensure_subject/5` makes this check for every recipe.
 
 ## The workflow
 
