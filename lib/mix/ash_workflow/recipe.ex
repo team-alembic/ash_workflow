@@ -275,7 +275,13 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
     end
 
     defp table_name(module) do
-      module |> Module.split() |> List.last() |> Macro.underscore() |> Kernel.<>("s")
+      module |> Module.split() |> List.last() |> Macro.underscore() |> plural()
+    end
+
+    defp plural(name) do
+      if Regex.match?(~r/[^aeiou]y$/, name),
+        do: String.replace_suffix(name, "y", "ies"),
+        else: name <> "s"
     end
   end
 end
