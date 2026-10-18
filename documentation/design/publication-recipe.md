@@ -1,6 +1,6 @@
 # Design: publication recipe generator
 
-Status: proposed.
+Status: implemented.
 
 ## The problem
 
@@ -27,7 +27,7 @@ The generator owns the publication lifecycle: the steps, the transitions, the tw
 
 The application owns three things:
 
-- When a publication is created. The application calls `PostPublication.create/2` with the subject, from the subject's create action or wherever a draft starts.
+- When a publication is created. The application calls `PostPublication.create/2` with the subject, from the subject's create action or wherever a draft starts. The generated `create` action has no policy, and the application adds one if it needs it.
 - Who may move a publication. This is one `Ash.Policy.Check` module, generated to deny everyone.
 - What happens on publishing or unpublishing, such as a cache purge or a notification. The generator adds no notifier.
 
@@ -46,7 +46,7 @@ mix ash_workflow.gen.publication MyApp.Blog.Post --with-unpublish-at
 
 There is no actor option, for the reason expiry has none. Nothing in the generated resource records who published, so the transition log is generated without `--actor`.
 
-When the subject module does not exist, the generator creates it with `ash.gen.resource` and takes the data layer from the first resource in `--domain` that uses ETS or Postgres, as expiry does.
+When the subject module does not exist, the generator creates it with `ash.gen.resource` and takes the data layer from the first resource in `--domain` that uses ETS or Postgres, as expiry does. When no resource there uses either, the generator stops with an Igniter issue and writes nothing.
 
 ## The workflow
 
@@ -189,7 +189,7 @@ One check rather than one per transition, because the people who schedule a post
 
 ## Code shared with other recipes
 
-The task uses `Mix.AshWorkflow.Recipe` as expiry does: `ensure_subject/5`, `storage_like/2`, `add_subject_edits/4`, `compose_transition_log/3` and the rendering helpers. It needs nothing new from it.
+The task uses `Mix.AshWorkflow.Recipe` as expiry does: `ensure_subject/5`, `add_subject_edits/4`, `compose_transition_log/3` and the rendering helpers. It needs nothing new from it.
 
 ## Open questions
 
