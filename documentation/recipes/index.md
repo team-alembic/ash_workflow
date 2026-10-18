@@ -15,7 +15,7 @@ A recipe without a link has not been released yet. Each row links to its page on
 | `gen.review` | `in_review → changes_requested → in_review → approved` | Content, design review, sign-off |
 | `gen.publication` | `draft → scheduled → published → unpublished` | Posts, announcements, listings |
 | `gen.invitation` | `sent → accepted \| declined \| expired`, with `resend` | Team invites, RSVPs, access grants |
-| `gen.acknowledgement` | `pending → acknowledged \| overdue` | Policy attestations, terms updates |
+| [`gen.acknowledgement`](acknowledgement.md) | `pending → acknowledged \| overdue` | Policy attestations, terms updates |
 | `gen.deletion` | `requested → scheduled → deleted`, with `restore` | Account closure, GDPR erasure |
 | `gen.dormancy` | `active → dormant → archived` | Accounts, projects, leads |
 | `gen.verification` | `submitted → verifying → verified \| rejected` | Identity documents, registrations |
