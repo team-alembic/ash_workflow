@@ -156,6 +156,7 @@ defmodule AshWorkflow.MixProject do
         {"documentation/recipes/index.md", filename: "recipes"},
         "documentation/recipes/approval.md",
         "documentation/recipes/expiry.md",
+        "documentation/recipes/invitation.md",
         "documentation/dsls/DSL-AshWorkflow.md"
       ],
       groups_for_extras: [
