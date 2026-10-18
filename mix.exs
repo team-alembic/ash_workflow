@@ -154,6 +154,7 @@ defmodule AshWorkflow.MixProject do
         "documentation/topics/diagrams.md",
         "documentation/topics/bpmn-comparison.md",
         {"documentation/recipes/index.md", filename: "recipes"},
+        "documentation/recipes/approval.md",
         "documentation/dsls/DSL-AshWorkflow.md"
       ],
       groups_for_extras: [

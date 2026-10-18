@@ -1,6 +1,6 @@
 # Design: approval recipe generator
 
-Status: proposed.
+Status: implemented.
 
 ## The problem
 
@@ -35,7 +35,7 @@ mix ash_workflow.gen.approval MyApp.Expenses.Expense \
 | `--domain` | the subject's domain | Domain for a subject the generator creates. Required only when the subject does not exist. |
 | `--required-approvals` | `1` | Default number of approvals a request needs. Stored per request, so a caller can override it. |
 | `--overdue-after` | none | Move a waiting request to `:overdue`. Omitted means no `:overdue` step. |
-| `--transition-log` | `true` | Composes `ash_workflow.gen.transition_log` with `--actor` set to the approver. |
+| `--transition-log` | `true` | Composes `ash_workflow.gen.transition_log` with `--actor` set to the approver. `--no-transition-log` skips it. |
 
 Durations accept `30m`, `12h`, `2d` and `2w`, and parse into the `{n, unit}` tuples `AshWorkflow.Duration` already validates.
 
@@ -48,13 +48,15 @@ The generator adds two resources next to the subject rather than adding a `workf
 
 A resource has one `workflow` and one `state_attribute`. Adding approval inline would fail on any subject that already runs a workflow, and would overwrite the subject's `state` on one that runs `ash_state_machine` directly. The sibling resource also covers resubmission: a rejected expense that is edited and submitted again gets a new approval row, and the old row keeps the rejection and who made it. That follows the same reasoning as [undo appending rather than erasing](workflow-undo.md).
 
-When the subject module does not exist, the generator composes `ash.gen.resource` with `--uuid-v7-primary-key id`, `--timestamps`, `--default-actions read,create,update,destroy` and `--domain`. Composing Ash's own task keeps data layer selection and domain registration in one place rather than reimplementing them. The approval edits below then apply to it the same way they apply to an existing subject. Re-running the generator on that subject finds the relationships already present and leaves them, so the task stays idempotent.
+When the subject module does not exist, the generator composes `ash.gen.resource` with `--uuid-v7-primary-key id`, `--timestamps`, `--default-actions read,create,update,destroy` and `--domain`. It also passes `--extend ets` or `--extend postgres` when the approver uses that data layer, so the created subject stores its records the way the approver does. Without it, `ash.gen.resource` writes a resource with no data layer, and the approval resources could not persist against it. Composing Ash's own task keeps data layer selection and domain registration in one place rather than reimplementing them. The approval edits below then apply to it the same way they apply to an existing subject. Re-running the generator on that subject finds the relationships already present and leaves them, so the task stays idempotent.
 
 The subject gains, by `Ash.Resource.Igniter` edits, and nothing else:
 
 - `has_many :approvals, MyApp.Expenses.ExpenseApproval`
 - `has_one :latest_approval`, sorted by `inserted_at` descending
 - `calculate :approved?, :boolean, expr(latest_approval.state == :approved)`
+
+The calculation has no `public?: true`. `Ash.Resource.Igniter.defines_calculation/3` only matches a three-argument `calculate`, so a fourth argument would make a second run add the calculation again.
 
 The generator adds no change, argument or policy to the subject's actions. Gating a subject action on `approved?` is an application decision.
 
@@ -114,9 +116,15 @@ The overdue timeout is anchored on `requested_at`, not `state_entered_at`. A par
 
 Routes read the record as it was when the call arrived, as `AshWorkflow.Changes.ConditionalTransition` documents. `approvals_remaining` therefore counts approvals before the current one, and `<= 1` means this call is the last approval needed.
 
+`ConditionalTransition` used to evaluate routes against the record exactly as the caller passed it, so an unloaded calculation read as `nil` and no route matched. It now loads the calculations, aggregates and related fields its routes reference before evaluating them, as the `:transition_targets` calculation already did. The decision row is written in an `after_action`, so the loaded count still excludes the current call.
+
+The count is read when each call arrives. Two approvals that arrive together can both read it before either decision row is written, and both loop back. The recipe page states this limit. Locking the approval row in the `:approve` action would close it, and is left to the application.
+
 ## Decisions and the quorum
 
-`ExpenseApprovalDecision` attributes: `approval_id`, `approver_id`, `decision` (`:approved | :rejected`), `comment`, `decided_at`. An identity on `(approval_id, approver_id)` stops an approver deciding twice.
+`ExpenseApprovalDecision` attributes: `approval_id`, `approver_id`, `decision` (`:approved | :rejected`), `comment`, `decided_at`. The identity `:unique_approver` on `(approval_id, approver_id)` stops an approver deciding twice. On a data layer without unique constraints, such as ETS, it sets `pre_check_with` to the domain. On Postgres, a table name long enough to push the default index name past 63 bytes gets a shortened `identity_index_names` entry.
+
+`ExpenseApprovalDecision` has `Ash.Policy.Authorizer` and one policy, which allows reads. Its `:create` action has no policy, so it is forbidden except through `RecordDecision`, which creates the row with `authorize?: false`. Without this, any caller could create a decision row directly and inflate the quorum.
 
 `:approve` and `:reject` accept a `comment` argument. A generated change creates the actor's decision row in the same transaction. Decision rows are created when someone decides, not when the request opens, so the generated code never needs a list of approvers.
 
@@ -171,6 +179,12 @@ The alternative is a `Spark.Dsl.Fragment` or a `use AshWorkflow.Recipes.Approval
 
 The recommendation is generated code. Approval varies per application in the policies, the quorum rule and what happens once a request is overdue, and each of those variations would otherwise become an option on a public API. The strongest objection is that a bug in the generated template stays in every app that ran it. The generator keeps that small by emitting only DSL, one change module and one check module, with no runtime helpers of its own.
 
-## Open questions
+## Composing the transition log
 
-1. Does a shared transition name with routes in two steps (`:approve` in `:pending` and `:overdue`) compose today? The "same name across steps" section of `automatic-vs-manual-steps.md` covers static targets. Routed targets need a test before the generator relies on it.
+`ash_workflow.gen.transition_log` loaded the workflow resource with `Code.ensure_compiled/1`. The approval resource exists only as source while the generator runs, so the task now falls back to reading the resource's source when the module is not compiled. It reads the domain, data layer, extensions, the Postgres `table` and `repo`, and whether the `workflow` block already has a `transition_log`.
+
+The generator composes the transition log only when it creates the approval resource. A second run finds the approval resource and skips it, which keeps the task idempotent.
+
+## Resolved questions
+
+1. A shared transition name with routes in two steps (`:approve` in `:pending` and `:overdue`) composes. `AshWorkflow.Routing.guarded_routes/2` scopes each route to the step it leaves. `AshWorkflow.SharedRoutedTransitionTest` covers a route that loops back from each step.
