@@ -57,8 +57,8 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
     use Igniter.Mix.Task
 
     alias Ash.Domain.Igniter, as: DomainIgniter
-    alias Ash.Resource.Igniter, as: ResourceIgniter
     alias Igniter.Project.Module, as: ProjectModule
+    alias Mix.AshWorkflow.Recipe
 
     @impl Igniter.Mix.Task
     def info(_argv, _composing_task) do
@@ -85,13 +85,15 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       options = igniter.args.options
       subject = ProjectModule.parse(igniter.args.positional.subject)
 
-      with {:ok, overdue_after} <- parse_duration(options[:overdue_after]),
+      with {:ok, overdue_after} <-
+             Recipe.parse_duration(options[:overdue_after], "--overdue-after"),
            :ok <- validate_required_approvals(options[:required_approvals]) do
         approval = approval_module(subject, options[:module])
+        approver = ProjectModule.parse(options[:approver])
 
         names = %{
           subject: subject,
-          approver: ProjectModule.parse(options[:approver]),
+          approver: approver,
           approval: approval,
           decision: Module.concat([inspect(approval) <> "Decision"]),
           can_request: Module.concat([approval, Checks, CanRequest]),
@@ -106,29 +108,21 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
           transition_log?: options[:transition_log]
         }
 
-        {exists?, igniter} = ProjectModule.module_exists(igniter, subject)
-
-        if exists?,
-          do: existing_subject(igniter, config),
-          else: missing_subject(igniter, config, options[:domain])
+        # A created subject stores its records the same way the approver does.
+        case Recipe.ensure_subject(
+               igniter,
+               subject,
+               options[:domain],
+               "approval",
+               &Recipe.storage_like(approver, &1)
+             ) do
+          {:ok, igniter, storage} -> generate_with_key_types(igniter, config, storage)
+          {:error, igniter} -> igniter
+        end
       else
         {:error, message} -> Igniter.add_issue(igniter, message)
       end
     end
-
-    defp parse_duration(nil), do: {:ok, nil}
-
-    defp parse_duration(value) do
-      case Regex.run(~r/^([1-9]\d*)([mhdw])$/, value) do
-        [_match, count, unit] -> {:ok, duration(String.to_integer(count), unit)}
-        nil -> {:error, "--overdue-after must look like 30m, 12h, 2d or 2w, got: #{value}"}
-      end
-    end
-
-    defp duration(count, "m"), do: {count, :minutes}
-    defp duration(count, "h"), do: {count, :hours}
-    defp duration(count, "d"), do: {count, :days}
-    defp duration(count, "w"), do: {count * 7, :days}
 
     defp validate_required_approvals(count) when count >= 1, do: :ok
 
@@ -138,63 +132,13 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
     defp approval_module(subject, nil), do: Module.concat([inspect(subject) <> "Approval"])
     defp approval_module(_subject, module), do: ProjectModule.parse(module)
 
-    defp existing_subject(igniter, config) do
-      subject = config.names.subject
-
-      case Code.ensure_compiled(subject) do
-        {:module, _module} ->
-          storage = storage(subject, Ash.Resource.Info.domain(subject))
-          generate_with_key_types(igniter, config, storage, key_type(subject))
-
-        {:error, reason} ->
-          Igniter.add_issue(
-            igniter,
-            "Could not load #{inspect(subject)} (#{inspect(reason)}). " <>
-              "An existing subject must compile before adding approval to it."
-          )
-      end
-    end
-
-    defp missing_subject(igniter, config, nil) do
-      Igniter.add_issue(
-        igniter,
-        "#{inspect(config.names.subject)} does not exist. Pass --domain to create it."
-      )
-    end
-
-    # A created subject stores its records the same way the approver does.
-    defp missing_subject(igniter, config, domain) do
-      domain = ProjectModule.parse(domain)
-      approver = config.names.approver
-
-      storage =
-        case Code.ensure_compiled(approver) do
-          {:module, _module} -> storage(approver, domain)
-          {:error, _reason} -> %{domain: domain, data_layer: nil, repo: nil}
-        end
-
-      igniter
-      |> Igniter.compose_task(
-        "ash.gen.resource",
-        [
-          inspect(config.names.subject),
-          "--uuid-v7-primary-key",
-          "id",
-          "--timestamps",
-          "--default-actions",
-          "read,create,update,destroy",
-          "--domain",
-          inspect(domain)
-        ] ++ extend_flag(storage.data_layer)
-      )
-      |> generate_with_key_types(config, storage, {:ok, :uuid_v7})
-    end
-
     # The approval's foreign keys take the type of the key they point at, so a
-    # subject or approver with an integer key gets an integer column.
-    defp generate_with_key_types(igniter, config, storage, subject_key_type) do
-      with {:ok, subject_type} <- subject_key_type,
-           {:ok, approver_type} <- approver_key_type(config.names.approver) do
+    # subject or approver with an integer key gets an integer column. A subject
+    # created in this run does not compile yet and gets ash.gen.resource's
+    # uuid_v7 key.
+    defp generate_with_key_types(igniter, config, storage) do
+      with {:ok, subject_type} <- Recipe.key_type(config.names.subject, "approval", :uuid_v7),
+           {:ok, approver_type} <- Recipe.key_type(config.names.approver, "approval", nil) do
         key_types = %{subject: subject_type, approver: approver_type}
         generate(igniter, Map.put(config, :key_types, key_types), storage)
       else
@@ -202,78 +146,35 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       end
     end
 
-    defp approver_key_type(approver) do
-      case Code.ensure_compiled(approver) do
-        {:module, _module} -> key_type(approver)
-        {:error, _reason} -> {:ok, nil}
-      end
-    end
-
-    defp key_type(resource) do
-      case Ash.Resource.Info.primary_key(resource) do
-        [field] ->
-          type = Ash.Resource.Info.attribute(resource, field).type
-          {:ok, Enum.find_value(Ash.Type.short_names(), type, &short_name(&1, type))}
-
-        fields ->
-          {:error,
-           "#{inspect(resource)} has a composite primary key #{inspect(fields)}. " <>
-             "The approval resource can only belong to a resource with a single-field primary key."}
-      end
-    end
-
-    defp short_name({name, type}, type), do: name
-    defp short_name(_entry, _type), do: nil
-
-    defp storage(resource, domain) do
-      data_layer = Ash.Resource.Info.data_layer(resource)
-      %{domain: domain, data_layer: data_layer, repo: repo(resource, data_layer)}
-    end
-
-    defp repo(resource, AshPostgres.DataLayer) do
-      # Resolved at runtime: ash_postgres is a dev/test-only dependency of this
-      # library, so referencing it directly warns in every consuming project.
-      Module.concat(["AshPostgres", "DataLayer", "Info"]).repo(resource)
-    end
-
-    defp repo(_resource, _data_layer), do: nil
-
-    defp extend_flag(Ash.DataLayer.Ets), do: ["--extend", "ets"]
-    defp extend_flag(AshPostgres.DataLayer), do: ["--extend", "postgres"]
-    defp extend_flag(_data_layer), do: []
-
     defp generate(igniter, config, storage) do
       names = config.names
       {exists?, igniter} = ProjectModule.module_exists(igniter, names.approval)
 
       igniter
-      |> add_subject_relationships(names)
+      |> Recipe.add_subject_edits(
+        names.subject,
+        [
+          approvals: """
+          has_many :approvals, #{inspect(names.approval)} do
+            destination_attribute :subject_id
+            public? true
+          end
+          """,
+          latest_approval: """
+          has_one :latest_approval, #{inspect(names.approval)} do
+            destination_attribute :subject_id
+            from_many? true
+            sort inserted_at: :desc
+            public? true
+          end
+          """
+        ],
+        approved?:
+          "calculate :approved?, :boolean, expr(latest_approval.state == :approved || false)"
+      )
       |> then(fn igniter ->
         if exists?, do: igniter, else: create_approval(igniter, config, storage)
       end)
-    end
-
-    defp add_subject_relationships(igniter, names) do
-      igniter
-      |> ResourceIgniter.add_new_relationship(names.subject, :approvals, """
-      has_many :approvals, #{inspect(names.approval)} do
-        destination_attribute :subject_id
-        public? true
-      end
-      """)
-      |> ResourceIgniter.add_new_relationship(names.subject, :latest_approval, """
-      has_one :latest_approval, #{inspect(names.approval)} do
-        destination_attribute :subject_id
-        from_many? true
-        sort inserted_at: :desc
-        public? true
-      end
-      """)
-      |> ResourceIgniter.add_new_calculation(
-        names.subject,
-        :approved?,
-        "calculate :approved?, :boolean, expr(latest_approval.state == :approved || false)"
-      )
     end
 
     defp create_approval(igniter, config, storage) do
@@ -302,25 +203,24 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
 
     defp compose_transition_log(igniter, _names, false), do: igniter
 
-    defp compose_transition_log(igniter, names, true) do
-      Igniter.compose_task(igniter, "ash_workflow.gen.transition_log", [
-        inspect(names.approval),
-        "--actor",
-        inspect(names.approver)
-      ])
-    end
+    defp compose_transition_log(igniter, names, true),
+      do: Recipe.compose_transition_log(igniter, names.approval, names.approver)
 
+    # Two approvals of one request would otherwise both count the decisions
+    # before either writes its own, and both loop back to the current step.
+    # The lock's before_action runs ahead of the route's, which then reads
+    # approvals_remaining from the locked row.
     defp approval_contents(config, storage) do
       names = config.names
 
       """
       use Ash.Resource,
         domain: #{inspect(storage.domain)},
-        #{data_layer_option(storage)}
+        #{Recipe.data_layer_option(storage)}
         authorizers: [Ash.Policy.Authorizer],
         extensions: [AshWorkflow, AshOban]
 
-      #{postgres_block(storage, names.approval)}
+      #{Recipe.postgres_block(storage, names.approval)}
 
       workflow do
         step :pending do
@@ -355,20 +255,18 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
         update :approve do
           require_atomic? false
           argument :comment, :string
-          #{lock_for_update(storage)}change {#{inspect(names.record_decision)}, decision: :approved}
+          #{Recipe.lock_for_update(storage)}change {#{inspect(names.record_decision)}, decision: :approved}
         end
 
         update :reject do
           require_atomic? false
           argument :comment, :string
-          #{lock_for_update(storage)}change {#{inspect(names.record_decision)}, decision: :rejected}
+          #{Recipe.lock_for_update(storage)}change {#{inspect(names.record_decision)}, decision: :rejected}
         end
       end
 
       policies do
-        policy action(:request) do
-          authorize_if #{inspect(names.can_request)}
-        end
+        #{Recipe.create_policy(:request, names.can_request)}
 
         policy action([:approve, :reject]) do
           forbid_if expr(requested_by_id == ^actor(:id))
@@ -397,8 +295,8 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       end
 
       relationships do
-        belongs_to :subject, #{inspect(names.subject)}, allow_nil?: false, public?: true#{attribute_type(config.key_types.subject)}
-        belongs_to :requested_by, #{inspect(names.approver)}, allow_nil?: false, public?: true#{attribute_type(config.key_types.approver)}
+        #{Recipe.belongs_to(:subject, names.subject, config.key_types.subject)}
+        #{Recipe.belongs_to(:requested_by, names.approver, config.key_types.approver)}
 
         has_many :decisions, #{inspect(names.decision)} do
           destination_attribute :approval_id
@@ -450,10 +348,10 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       """
       use Ash.Resource,
         domain: #{inspect(storage.domain)},
-        #{data_layer_option(storage)}
+        #{Recipe.data_layer_option(storage)}
         authorizers: [Ash.Policy.Authorizer]
 
-      #{postgres_block(storage, names.decision, identity_index_name(names.decision))}
+      #{Recipe.postgres_block(storage, names.decision, Recipe.identity_index_name(names.decision, :unique_approver))}
 
       actions do
         defaults [:read]
@@ -487,12 +385,12 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       end
 
       relationships do
-        belongs_to :approval, #{inspect(names.approval)}, allow_nil?: false, public?: true
-        belongs_to :approver, #{inspect(names.approver)}, allow_nil?: false, public?: true#{attribute_type(approver_key_type)}
+        #{Recipe.belongs_to(:approval, names.approval, nil)}
+        #{Recipe.belongs_to(:approver, names.approver, approver_key_type)}
       end
 
       identities do
-        identity :unique_approver, [:approval_id, :approver_id]#{pre_check_with(storage)}
+        identity :unique_approver, [:approval_id, :approver_id]#{Recipe.pre_check_with(storage)}
       end
       """
     end
@@ -528,90 +426,17 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
     end
 
     defp can_request_contents(names) do
-      """
-      @moduledoc \"\"\"
-      Decides who may open an `#{inspect(names.approval)}` on a subject.
-
-      Denies everyone until the application replaces `match?/3`.
-      \"\"\"
-
-      use Ash.Policy.SimpleCheck
-
-      @impl true
-      def describe(_opts), do: "actor may request approval of this subject"
-
-      @impl true
-      def match?(_actor, _context, _opts), do: false
-      """
+      Recipe.deny_check_contents(
+        "Decides who may open an `#{inspect(names.approval)}` on a subject.",
+        "actor may request approval of this subject"
+      )
     end
 
     defp can_approve_contents(names) do
-      """
-      @moduledoc \"\"\"
-      Decides who may approve or reject an `#{inspect(names.approval)}`.
-
-      Denies everyone until the application replaces `match?/3`.
-      \"\"\"
-
-      use Ash.Policy.SimpleCheck
-
-      @impl true
-      def describe(_opts), do: "actor may decide this approval"
-
-      @impl true
-      def match?(_actor, _context, _opts), do: false
-      """
-    end
-
-    # Two approvals of one request would otherwise both count the decisions
-    # before either writes its own, and both loop back to the current step.
-    # The lock's before_action runs ahead of the route's, which then reads
-    # approvals_remaining from the locked row.
-    defp lock_for_update(%{data_layer: AshPostgres.DataLayer}),
-      do: "change get_and_lock_for_update()\n"
-
-    defp lock_for_update(_storage), do: ""
-
-    defp attribute_type(nil), do: ""
-    defp attribute_type(type), do: ", attribute_type: #{inspect(type)}"
-
-    defp pre_check_with(%{data_layer: AshPostgres.DataLayer}), do: ""
-    defp pre_check_with(storage), do: ", pre_check_with: #{inspect(storage.domain)}"
-
-    defp data_layer_option(%{data_layer: nil}), do: ""
-    defp data_layer_option(%{data_layer: data_layer}), do: "data_layer: #{inspect(data_layer)},"
-
-    defp postgres_block(storage, module, extra \\ "")
-
-    defp postgres_block(%{data_layer: AshPostgres.DataLayer, repo: repo}, module, extra) do
-      """
-      postgres do
-        table #{inspect(table_name(module))}
-        repo #{inspect(repo)}
-        #{extra}
-      end
-      """
-    end
-
-    defp postgres_block(_storage, _module, _extra), do: ""
-
-    # Postgres truncates identifiers past 63 bytes, and AshPostgres rejects an
-    # identity whose default index name would be truncated.
-    defp identity_index_name(decision) do
-      suffix = "_unique_approver_index"
-      table = table_name(decision)
-      max_table_bytes = 63 - byte_size(suffix)
-
-      if byte_size(table) > max_table_bytes do
-        name = binary_part(table, 0, max_table_bytes) <> suffix
-        "identity_index_names unique_approver: #{inspect(name)}"
-      else
-        ""
-      end
-    end
-
-    defp table_name(module) do
-      module |> Module.split() |> List.last() |> Macro.underscore() |> Kernel.<>("s")
+      Recipe.deny_check_contents(
+        "Decides who may approve or reject an `#{inspect(names.approval)}`.",
+        "actor may decide this approval"
+      )
     end
   end
 else
