@@ -11,7 +11,7 @@ A recipe without a link has not been released yet. Each row links to its page on
 | Recipe | Steps | Example uses |
 |---|---|---|
 | [`gen.approval`](approval.md) | `pending → approved \| rejected \| cancelled`, optional `overdue` | Expenses, leave requests, purchase orders |
-| `gen.expiry` | `active → expiring → expired`, with `renew` | Contracts, certifications, licences |
+| [`gen.expiry`](expiry.md) | `active → expiring → expired`, with `renew` | Contracts, certifications, licences |
 | `gen.review` | `in_review → changes_requested → in_review → approved` | Content, design review, sign-off |
 | `gen.publication` | `draft → scheduled → published → unpublished` | Posts, announcements, listings |
 | `gen.invitation` | `sent → accepted \| declined \| expired`, with `resend` | Team invites, RSVPs, access grants |
