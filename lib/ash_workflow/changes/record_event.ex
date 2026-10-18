@@ -289,6 +289,11 @@ defmodule AshWorkflow.Changes.RecordEvent do
       nil ->
         record
 
+      # A create that upserts onto an existing row leaves it in the step it
+      # was in, so there is no event to log.
+      _log when changeset.action_type == :create and record.__metadata__.upsert_action == :update ->
+        record
+
       log ->
         attrs = build_log_attrs(changeset, record, log, opts, context)
 
