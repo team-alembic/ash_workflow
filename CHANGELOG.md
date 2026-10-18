@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-18
+
 ### Upgrading from 0.9.x
 
 - **Generate a migration.** Each action timeout (a `timeout` with `action` and no `transition_to`) adds a nilable `<step>_<timeout>_fired_at` column. On AshPostgres, run `mix ash.codegen` after upgrading.
