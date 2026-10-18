@@ -153,11 +153,13 @@ defmodule AshWorkflow.MixProject do
         "documentation/topics/workflows-and-relationships.md",
         "documentation/topics/diagrams.md",
         "documentation/topics/bpmn-comparison.md",
+        {"documentation/recipes/index.md", filename: "recipes"},
         "documentation/dsls/DSL-AshWorkflow.md"
       ],
       groups_for_extras: [
         Tutorials: ~r'documentation/tutorials',
         Topics: ~r'documentation/topics',
+        Recipes: ~r'documentation/recipes',
         DSLs: ~r'documentation/dsls'
       ],
       groups_for_modules: [
