@@ -9,8 +9,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Workflow diagrams.** `AshWorkflow.Charts` draws a workflow from its DSL. `AshWorkflow.Charts.mermaid_state_diagram/2` returns a Mermaid `stateDiagram-v2` that marks each step as automatic, manual, wait state or terminal. It labels a timeout with its name and its deadline (`⏱ auto_escalate after 4 hours`, `⏱ go_live at publish_at`) and gives each conditional route its `when` expression. It notes a step's policy through the check's own `describe/1`, its `retry`, the timeouts that run an action and its `every` entries. It draws each undo move that `AshWorkflow.Info.undoable_edges/1` allows, with the undo window when `within` is set (`↶ undo within 1 hour`). `AshWorkflow.Charts.render/3` takes `:mermaid`, `:json` or any module that implements `AshWorkflow.Charts.Backend`. Every format draws from one `AshWorkflow.Charts.Graph`, so all formats show the same workflow. `:json` gives that graph as plain data, for a client that draws the workflow itself. `mix ash_workflow.diagram` prints a diagram, or with `--output` writes one file for each workflow resource in the project's domains. The Diagrams guide shows four small workflows from `examples/basic` with their charts, and both the definitions and the charts are generated from the code: `bin/update-chart-examples` rewrites them, and `test/documentation_charts_test.exs` fails when one is stale. (#16)
 - **A Workflows lens for Clarity.** With [Clarity](https://hex.pm/packages/clarity) installed, `AshWorkflow.Clarity.Lensmaker` adds a Workflows lens that lists each workflow resource with its steps. `AshWorkflow.Clarity.Introspector` adds an `AshWorkflow.Clarity.Vertex.Step` for each step. A workflow resource gets Workflow Overview, Workflow Diagram and Workflow Timing tabs, and a step gets Step Overview, Step Diagram and Step Timeline tabs. The timing tabs place each automatic action, retry attempt, timeout, `every` firing and undo window at its offset from entering the step, and say how long a record can stay in each step. Clarity is an optional dependency, so a project without it compiles none of these modules.
+
+## [0.10.1] - 2026-10-19
+
+### Upgrading from 0.10.0
+
+- A conditional route that reads a related field, a calculation or an aggregate now loads it when the transition runs. A route that relied on an unloaded relationship reading as `nil`, such as `is_nil(sponsor.name)`, now sees the real value. A route on a relationship the caller had already loaded now reads the current value, not the loaded copy. `AshWorkflow.Info.transition_target/3` still loads nothing.
+
+### Fixed
+
+- A transition whose action the resource declares without `accept` no longer crashes `AshWorkflow.Transformers.AddActions` with `nil ++ []`. The action keeps Ash's `default_accept` unless the transition accepts attributes of its own.
+- A conditional route that references a calculation, an aggregate or a related field now reads its current value. `AshWorkflow.Changes.ConditionalTransition` loads those fields before evaluating routes, as the `:transition_targets` calculation already did. The action used to read them off the record it was called on, so an unloaded field read as `nil` and no route matched. A route over a relationship the caller had already loaded now reads the current value rather than the loaded copy.
+
+## [0.10.0] - 2026-10-18
+
+### Upgrading from 0.9.x
+
+- **Generate a migration.** Each action timeout (a `timeout` with `action` and no `transition_to`) adds a nilable `<step>_<timeout>_fired_at` column. On AshPostgres, run `mix ash.codegen` after upgrading.
+- A record whose action timeout already fired before the upgrade has a `nil` column, so that timeout fires once more for it after the upgrade.
+
+### Added
+
+- A generated `:workflow_terminated_at` calculation returns `state_entered_at` while a record is in a terminal step, and `nil` while the workflow is still running. A terminal step has no outgoing transitions, so the time the record entered it is the time the workflow ended, and no new attribute or migration is needed. The calculation is an expression, so it filters and sorts in the data layer: `Ash.Query.filter(workflow_terminated_at > ago(7, :day))`. The new `terminated_at_calculation` option on the `workflow` section renames it, for a resource that already has a field by that name. `AshWorkflow.Transformers.AddCalculations` adds it with `add_new_calculation`, so a user-defined calculation with the configured name takes precedence. (#120)
+
+### Fixed
+
+- An action timeout fires once for each deadline under both schedulers. `AshWorkflow.Scheduler.Precise` fired a due action timeout in a loop: firing left the record matching, `AshWorkflow.Changes.RecordEvent` rearmed it, and `run_due/2` never returned 0. `AshWorkflow.Scheduler.Oban` relied on `trigger_once?`, so the completed job row was the only record of a firing. Pruning the row fired the timeout again, keeping it stopped a second visit to the step from firing, and a `fire_at` timeout whose action moved its own field later never fired a second time. Each action timeout now writes its own `<step>_<timeout>_fired_at` column (`AshWorkflow.Entities.Timeout.fired_field/2`) when it fires, and `AshWorkflow.Scheduler.Work.not_fired/1` adds `is_nil(fired_at) or fired_at < deadline` to the timeout's `match`. The timeout fires again once its deadline moves past the column. A new visit to the step and a later `fire_at` value both do that. `AshWorkflow.Scheduler.Work` replaces `once?` with `fired_field`, the generated Oban trigger no longer sets `trigger_once?`, and `pending_deadlines` omits an action timeout that has fired for its current deadline. `AshWorkflow.Verifiers.ValidateTimeoutFiredFields` rejects a fired column that names an existing non-datetime attribute, and two timeouts, or a timeout and an `every`, that resolve to the same column. (#106)
+- The exported `locals_without_parens` now includes `last_fired_field`. A project with `import_deps: [:ash_workflow]` in its `.formatter.exs` had `mix format` rewrite `last_fired_field :reminder_fired_at` as `last_fired_field(:reminder_fired_at)`. (#120)
+
+## [0.9.0] - 2026-10-17
+
+### Upgrading from 0.8.x
+
+- `ash_workflow` now depends on `jason ~> 1.4`, for the `:json` chart backend.
+
+### Added
+
+- **Workflow diagrams.** `AshWorkflow.Charts` draws a workflow from its DSL. `AshWorkflow.Charts.mermaid_state_diagram/2` returns a Mermaid `stateDiagram-v2` that marks each step as automatic, manual, wait state or terminal. It labels a timeout with its name and its deadline (`⏱ auto_escalate after 4 hours`, `⏱ go_live at publish_at`) and gives each conditional route its `when` expression. It notes a step's policy through the check's own `describe/1`, its `retry`, the timeouts that run an action and its `every` entries. It draws each undo move that `AshWorkflow.Info.undoable_edges/1` allows, with the undo window when `within` is set (`↶ undo within 1 hour`). `AshWorkflow.Charts.render/3` takes `:mermaid`, `:json` or any module that implements `AshWorkflow.Charts.Backend`. Every format draws from one `AshWorkflow.Charts.Graph`, so all formats show the same workflow. `:json` gives that graph as plain data, for a client that draws the workflow itself. `mix ash_workflow.diagram` prints a diagram, or with `--output` writes one file for each workflow resource in the project's domains. The Diagrams guide shows four small workflows from `examples/basic` with their charts, and both the definitions and the charts are generated from the code: `bin/update-chart-examples` rewrites them, and `test/documentation_charts_test.exs` fails when one is stale. (#16)
+- **Graphviz DOT diagrams.** `AshWorkflow.Charts.render(resource, :dot)` and `mix ash_workflow.diagram --format dot` give a [Graphviz](https://graphviz.org) DOT chart of a workflow. It shows the same steps, edges and labels as the Mermaid chart, with colour and line styles. It takes its colours from `AshWorkflow.Charts.Palette`.
+  - `svg: true`, or `--svg`, runs `dot` from the `PATH` and returns the SVG. You install Graphviz. `:path` under `config :ash_workflow, :dot` selects another `dot`, for example in a release. Without a `dot`, `svg: true` raises an `ArgumentError` that says to install Graphviz.
+  - Colour follows the graph: blue automatic steps, amber manual steps and lavender wait states. A terminal step is green, red, amber or grey by the kinds of edges that reach it. `on_success` is a thick line, a timeout is dashed, and undo is dotted with a hollow arrowhead.
+  - `theme: :dark`, or `--theme dark`, gives a dark chart. With `--output`, a dark chart goes to a file such as `MyApp.Candidate-dark.svg`, beside the light file.
+  - `classes:` changes the colours and line styles of the step kinds, the terminal steps, and the `on_success`, `on_error`, timeout and undo edges. Transitions, the start circle and the background have no class. A key is a Graphviz attribute name, such as `fillcolor` or `penwidth`: a node attribute for a step class, and an edge attribute for an edge class. `classes: [light: [...], dark: [...]]` gives each theme its own colours. `classes:` and `theme:` can also go under `config :ash_workflow, :dot`.
+  - The chart puts a step's notes inside the step. `direction: :right` turns the chart on its side.
 
 ## [0.8.0] - 2026-09-30
 

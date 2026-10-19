@@ -55,13 +55,13 @@ The extension generates a hidden update action (`:__timeout_review_escalation` �
 
 ## Recurring actions with `every`
 
-A timeout fires once. For an action that keeps firing on an interval for as long as the workflow remains in a step, use `every` instead — it is a sibling entity to `timeout`, declared inside the same `step` block:
+A timeout fires once for each deadline. For an action that keeps firing on an interval for as long as the workflow remains in a step, use `every` instead — it is a sibling entity to `timeout`, declared inside the same `step` block:
 
 ```elixir
 step :awaiting_response do
   transition :respond, to: :next_step
 
-  # Fires once after 3 days
+  # Fires once, 3 days after entering the step
   timeout :reminder, fire_after: {3, :days}, action: :send_reminder
 
   # Fires after 3 days, then every 3 days while still waiting
@@ -76,7 +76,9 @@ end
 
 Each `every` writes its own nilable `:utc_datetime_usec` attribute, holding the instant it last fired — named `<step>_<every>_last_fired_at` by default, or explicitly with `last_fired_field`. `interval` is measured against that column, not against `state_entered_at`, so two `every` entities on the same step — and any `timeout` sharing it — no longer share one anchor that firing resets out from under the others. A record whose column is still `nil` (never fired) measures its interval from `state_entered_at` instead, so the first firing lands one whole interval after entry.
 
-A timeout never touches `state_entered_at` either, and uses Oban's `trigger_once?` to prevent re-firing after the action completes. Neither an action timeout nor an `every` moves any other deadline's anchor on the same step, so a `timeout :warn, fire_after: {30, :minutes}, action: :warn` cannot delay the `timeout :breach, fire_after: {1, :hours}, transition_to: :escalated` beside it, and neither can an `every`. A transition timeout (with `transition_to`) doesn't need either mechanism, since the state change naturally prevents re-firing.
+A timeout never touches `state_entered_at` either. An action timeout writes its own nilable `:utc_datetime_usec` attribute when it fires, named `<step>_<timeout>_fired_at`, and its trigger skips a record whose column holds an instant at or after the deadline. The timeout fires again only once its deadline moves past that instant: a new visit to the step moves a `state_entered_at` deadline, and a new value in its `field` or `fire_at` moves that deadline. The column lives on the record, so the result is the same under `AshWorkflow.Scheduler.Oban` and `AshWorkflow.Scheduler.Precise`, and it does not depend on how long Oban keeps completed jobs.
+
+Neither an action timeout nor an `every` moves any other deadline's anchor on the same step, so a `timeout :warn, fire_after: {30, :minutes}, action: :warn` cannot delay the `timeout :breach, fire_after: {1, :hours}, transition_to: :escalated` beside it, and neither can an `every`. A transition timeout (with `transition_to`) has no fired column, since leaving the step stops it matching.
 
 ### Bounding `every` with `until`
 
@@ -140,7 +142,7 @@ Use cases include:
 >
 > `timeout`'s `field` names an anchor AshWorkflow reads and never writes. `every` writes its own column on every fire — named with `last_fired_field`, not `field` — so reusing the name would give it two opposite meanings. Pointing that column at an arbitrary existing field would mean writing "now" to an attribute representing a real-world event that did not happen; if `field: :last_session_date`, that would falsely claim a session occurred. So `every` always writes and measures against its own generated column, and cannot be pointed at a custom field the way `timeout` can.
 >
-> A timeout against a custom field is not a periodic check. Its trigger keeps matching while the condition holds, but `trigger_once?` stops the action running a second time for the same record, so the reminder fires once. For a genuinely periodic check, add the cadence to the field itself — advance `:next_check_at` in the timeout action — so the condition stops matching until the next window opens.
+> A timeout against a custom field is not a periodic check. Its deadline stays where the field puts it, and the timeout's `<step>_<timeout>_fired_at` column stops it running a second time for that deadline, so the reminder fires once. For a periodic check, put the cadence in the field itself. A timeout action that moves `:next_check_at` to the next window moves the deadline past the fired column, so the timeout fires again when that window opens.
 
 ### Durations are constants, anchors are not
 
@@ -359,4 +361,4 @@ The extension auto-adds a `state_entered_at` (`utc_datetime_usec`) attribute to 
 
 If you need to define this attribute yourself (e.g., with a custom default or source), the extension skips adding it.
 
-It also auto-adds one nilable `:utc_datetime_usec` attribute per `every`, named `<step>_<every>_last_fired_at` by default — see [Recurring actions with `every`](#recurring-actions-with-every) above.
+It also auto-adds one nilable `:utc_datetime_usec` attribute per `every`, named `<step>_<every>_last_fired_at` by default, and one per action timeout, named `<step>_<timeout>_fired_at`. See [Recurring actions with `every`](#recurring-actions-with-every) above. On AshPostgres, generate a migration after adding an `every` or an action timeout.

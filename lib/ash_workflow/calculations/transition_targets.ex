@@ -12,9 +12,7 @@ defmodule AshWorkflow.Calculations.TransitionTargets do
   evaluate. A record in an automatic or terminal step gets an empty map.
 
   The calculation loads every field the route conditions reference, including
-  fields on related resources. The transition action does not: it reads the
-  record it is called on, where an unloaded relationship is `nil`. Call the
-  action on a record with those fields loaded, or the two can disagree.
+  fields on related resources, as the transition action does.
 
   Routes that read accepted input see none here, since a preview has no input.
   """
@@ -34,7 +32,7 @@ defmodule AshWorkflow.Calculations.TransitionTargets do
       |> Enum.uniq()
       |> Enum.flat_map(&Info.transition(query.resource, &1).routes)
       |> Enum.flat_map(&Routing.references(&1.when, query.resource))
-      |> Enum.map(&load_path/1)
+      |> Enum.map(&Routing.load_path/1)
       |> Enum.uniq()
 
     [Keyword.fetch!(opts, :state_attribute) | references]
@@ -59,12 +57,4 @@ defmodule AshWorkflow.Calculations.TransitionTargets do
       {:error, _error} -> nil
     end
   end
-
-  # `relationship.field` becomes `{:relationship, [:field]}`.
-  defp load_path(%Ash.Query.Ref{relationship_path: path, attribute: attribute}) do
-    List.foldr(path, field_name(attribute), &{&1, [&2]})
-  end
-
-  defp field_name(%{name: name}), do: name
-  defp field_name(name) when is_atom(name), do: name
 end

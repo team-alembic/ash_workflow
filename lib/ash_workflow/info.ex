@@ -152,9 +152,8 @@ defmodule AshWorkflow.Info do
 
   Routes are evaluated against `record` as given, and this function loads
   nothing. A `when` that reads an unloaded relationship or calculation sees
-  `nil`. The generated action does the same with the record it is called on,
-  so load what the routes read before previewing or running the transition.
-  The `:transition_targets` calculation loads it for you.
+  `nil`, so load what the routes read before previewing. The generated action
+  and the `:transition_targets` calculation load it for you.
 
   A route that reads accepted input sees that input only when the transition
   runs. To preview a particular call, pass its input as `input`. Only the keys

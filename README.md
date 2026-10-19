@@ -31,7 +31,7 @@ Add `ash_workflow` to your dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:ash_workflow, "~> 0.8"}
+    {:ash_workflow, "~> 0.10"}
   ]
 end
 ```
@@ -330,7 +330,7 @@ From the workflow DSL, the extension generates:
 | **Indexes** | One `(state, field)` composite per deadline field | `AshPostgres.DataLayer` resources; opt out with `generate_indexes? false` |
 | **Policies** | Step-level `policy` declarations | Ash policies on generated transition actions |
 | **Code interface** | One function per transition name | Ash code interface definitions |
-| **Calculations** | `:steps`, `:current_step`, `:available_actions`, `:transition_targets`, `:pending_deadlines` | Workflow introspection |
+| **Calculations** | `:steps`, `:current_step`, `:available_actions`, `:transition_targets`, `:pending_deadlines`, `:workflow_terminated_at` | Workflow introspection |
 | **Attributes** | `state_entered_at`, plus one last-fired column per `every` | Added if not already defined |
 
 The initial state is the step with `initial true`, or the first non-terminal step by declaration order if none is marked. Declaration order is easy to trip over, so mark the step when the reading order is not the running order:
@@ -378,7 +378,9 @@ Workflows are started through your own create action — AshWorkflow does not ge
 workflow, drawn from the DSL. It shows step kinds, timeouts with their
 deadlines, route conditions, policies and the moves undo can rewind.
 `--format json` gives the same graph as data, for a client that draws it
-itself. See [Diagrams](documentation/topics/diagrams.md).
+itself. `--format dot --svg` gives a chart with colour and line styles, from
+the `dot` command of an installed Graphviz. See
+[Diagrams](documentation/topics/diagrams.md).
 
 ## Demos
 

@@ -15,6 +15,7 @@ defmodule AshWorkflowTest.Domain do
     resource AshWorkflowTest.ConditionalWorkflow
     resource AshWorkflowTest.SharedTransitionWorkflow
     resource AshWorkflowTest.SharedConditionalWorkflow
+    resource AshWorkflowTest.AggregateRouteWorkflow
     resource AshWorkflowTest.AcceptWorkflow
     resource AshWorkflowTest.AcceptedRouteWorkflow
     resource AshWorkflowTest.InitialFlagWorkflow
@@ -69,5 +70,7 @@ defmodule AshWorkflowTest.Domain do
     resource AshWorkflowTest.StatusLog
     resource AshWorkflowTest.RetryWorkflow
     resource AshWorkflowTest.PreciseRetryWorkflow
+    resource AshWorkflowTest.PreciseActionTimeoutWorkflow
+    resource AshWorkflowTest.PreciseRevisitWorkflow
   end
 end

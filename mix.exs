@@ -1,7 +1,7 @@
 defmodule AshWorkflow.MixProject do
   use Mix.Project
 
-  @version "0.8.0"
+  @version "0.10.1"
   @source_url "https://github.com/team-alembic/ash_workflow"
 
   @description """
@@ -139,6 +139,7 @@ defmodule AshWorkflow.MixProject do
       source_url: @source_url,
       extra_section: "GUIDES",
       before_closing_body_tag: &before_closing_body_tag/1,
+      assets: %{"documentation/topics/assets" => "assets"},
       extras: [
         {"README.md", title: "Home"},
         "documentation/tutorials/getting-started-with-ash-workflow.md",
@@ -177,8 +178,10 @@ defmodule AshWorkflow.MixProject do
           AshWorkflow.Charts.Graph.Edge,
           AshWorkflow.Charts.Graph.Note,
           AshWorkflow.Charts.Backend,
+          AshWorkflow.Charts.Palette,
           AshWorkflow.Charts.Mermaid,
-          AshWorkflow.Charts.Json
+          AshWorkflow.Charts.Json,
+          AshWorkflow.Charts.Dot
         ],
         Internals: ~r/.*/
       ]

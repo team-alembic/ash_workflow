@@ -4,6 +4,9 @@ defmodule AshWorkflow.Charts.FormatTest do
   require Ash.Expr
 
   alias AshWorkflow.Charts.Format
+  alias AshWorkflow.Charts.Graph.Edge
+  alias AshWorkflow.Charts.Graph.Node
+  alias AshWorkflow.Charts.Graph.Note
   alias AshWorkflow.Entities.Retry
   alias AshWorkflow.Entities.Undo
 
@@ -107,6 +110,82 @@ defmodule AshWorkflow.Charts.FormatTest do
 
     test "no policy has no label" do
       assert Format.policy(nil) == nil
+    end
+  end
+
+  describe "kind_text/1" do
+    test "gives each step kind its symbol" do
+      assert Format.kind_text(:automatic) == "⚙\u{FE0F} automatic"
+      assert Format.kind_text(:manual) == "✋ manual"
+      assert Format.kind_text(:wait_state) == "⏳ wait state"
+    end
+  end
+
+  describe "node_text/1" do
+    test "gives the name, the kind, and the notes under a rule" do
+      assert Format.node_text(%Node{id: :review, kind: :manual}) == "review\n✋ manual"
+
+      assert Format.node_text(%Node{
+               id: :review,
+               kind: :manual,
+               notes: [
+                 %Note{kind: :policy, label: "actor.role == :reviewer"},
+                 %Note{kind: :retry, label: "3 attempts, exponential backoff"}
+               ]
+             }) ==
+               "review\n✋ manual\n—\npolicy: actor.role == :reviewer\nretry: 3 attempts, exponential backoff"
+    end
+
+    test "a terminal step has no kind line, and keeps its notes" do
+      assert Format.node_text(%Node{id: :done, kind: :terminal}) == "done"
+
+      assert Format.node_text(%Node{
+               id: :done,
+               kind: :terminal,
+               notes: [%Note{kind: :policy, label: "actor.role == :admin"}]
+             }) == "done\n—\npolicy: actor.role == :admin"
+    end
+  end
+
+  describe "edge_text/1" do
+    test "a transition has no symbol, and on_success a gear" do
+      assert Format.edge_text(%Edge{kind: :transition, label: "approve"}) == "approve"
+      assert Format.edge_text(%Edge{kind: :on_success, label: "run_checks"}) == "⚙ run_checks"
+    end
+
+    test "a timeout gives its name before its deadline" do
+      edge = %Edge{kind: :timeout, name: :auto_escalate, label: "after 4 hours"}
+      assert Format.edge_text(edge) == "⏱ auto_escalate after 4 hours"
+    end
+
+    test "a conditional route adds when, and a fallback route otherwise" do
+      routed = %Edge{kind: :on_success, label: "run", condition: "score < 3"}
+      fallback = %Edge{kind: :on_success, label: "run", fallback?: true}
+
+      assert Format.edge_text(routed) == "⚙ run when score < 3"
+      assert Format.edge_text(fallback) == "⚙ run otherwise"
+    end
+  end
+
+  describe "note_text/1" do
+    test "a timeout note gives its deadline, its action and its own retry" do
+      note = %Note{
+        kind: :timeout,
+        label: "after 2 days",
+        action: :send_nudge,
+        retry: "2 attempts, 30 seconds apart"
+      }
+
+      assert Format.note_text(note) ==
+               "⏱ after 2 days: send_nudge, retry: 2 attempts, 30 seconds apart"
+    end
+
+    test "a policy note and an every note" do
+      assert Format.note_text(%Note{kind: :policy, label: "actor.role == :reviewer"}) ==
+               "policy: actor.role == :reviewer"
+
+      assert Format.note_text(%Note{kind: :every, label: "every 1 hour", action: :ping}) ==
+               "↻ every 1 hour: ping"
     end
   end
 

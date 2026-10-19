@@ -30,6 +30,14 @@ defmodule AshWorkflow.Changes.ConditionalTransition do
   `first_approver_id` is set by a change on `:approve`, not accepted from the
   caller, so the first approver reads `nil` and loops back to `:in_review`.
 
+  Calculations, aggregates and related fields a route references are loaded
+  before the routes run, so a route can count related records:
+
+      transition :approve do
+        route :approved, when: expr(approvals_remaining <= 1)
+        route :pending, when: expr(approvals_remaining > 1)
+      end
+
   This differs from `AshWorkflow.Changes.ConditionalOnSuccess`, which applies
   every attribute the changeset carries. An automatic step has no caller
   supplying input, so the only thing its routes could branch on is what its
@@ -51,35 +59,49 @@ defmodule AshWorkflow.Changes.ConditionalTransition do
     routes = opts[:routes]
     transition_name = opts[:transition_name]
     accept = opts[:accept] || []
-    resource = changeset.resource
 
     Ash.Changeset.before_action(changeset, fn changeset ->
-      # Only accepted input, not every pending change: a route must still see
-      # the state before this call when one of the action's changes writes to it.
-      record = Routing.with_input(changeset.data, changeset.attributes, accept)
-      result = Routing.match(routes, record, resource)
+      case Routing.load_references(changeset.data, routes, load_opts(changeset)) do
+        {:ok, loaded} ->
+          # Only accepted input, not every pending change: a route must still see
+          # the state before this call when one of the action's changes writes to it.
+          record = Routing.with_input(loaded, changeset.attributes, accept)
+          route(changeset, routes, record, transition_name)
 
-      emit_route_evaluation(result, changeset, routes, transition_name)
-
-      case result do
-        {:ok, target} ->
-          AshStateMachine.transition_state(changeset, target)
-
-        {:error, route, error} ->
-          Ash.Changeset.add_error(
-            changeset,
-            "Route condition evaluation failed for transition :#{transition_name} " <>
-              "(route to :#{route.to}): #{inspect(error)}"
-          )
-
-        :no_match ->
-          Ash.Changeset.add_error(
-            changeset,
-            "No matching condition for transition :#{transition_name}. " <>
-              "Record did not match any of the #{length(routes)} configured routes."
-          )
+        {:error, error} ->
+          Ash.Changeset.add_error(changeset, error)
       end
     end)
+  end
+
+  # Routing reads the record as the workflow sees it, not as the actor may.
+  defp load_opts(changeset) do
+    [domain: changeset.domain, tenant: changeset.tenant, authorize?: false]
+  end
+
+  defp route(changeset, routes, record, transition_name) do
+    result = Routing.match(routes, record, changeset.resource)
+
+    emit_route_evaluation(result, changeset, routes, transition_name)
+
+    case result do
+      {:ok, target} ->
+        AshStateMachine.transition_state(changeset, target)
+
+      {:error, route, error} ->
+        Ash.Changeset.add_error(
+          changeset,
+          "Route condition evaluation failed for transition :#{transition_name} " <>
+            "(route to :#{route.to}): #{inspect(error)}"
+        )
+
+      :no_match ->
+        Ash.Changeset.add_error(
+          changeset,
+          "No matching condition for transition :#{transition_name}. " <>
+            "Record did not match any of the #{length(routes)} configured routes."
+        )
+    end
   end
 
   # Emitted whether or not a route matched, since a transition that matched

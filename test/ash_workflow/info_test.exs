@@ -134,14 +134,14 @@ defmodule AshWorkflow.InfoTest do
       assert Info.transition_target(sponsored, :refer) == {:ok, :activated}
     end
 
-    test "reads an unloaded related field as nil, as the transition does" do
+    test "reads an unloaded related field as nil, where the transition loads it" do
       {:ok, sponsor} = AshWorkflowTest.Reviewer.create(%{name: "Direct"})
 
       {:ok, unloaded} =
         TransitionTargetWorkflow.create(%{title: "sponsored", sponsor_id: sponsor.id})
 
       assert Info.transition_target(unloaded, :refer) == {:ok, nil}
-      assert {:error, _no_match} = Ash.update(unloaded, action: :refer)
+      assert {:ok, %{state: :activated}} = Ash.update(unloaded, action: :refer)
     end
 
     test "applies accepted input the same way the action does" do

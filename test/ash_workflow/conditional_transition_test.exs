@@ -238,6 +238,20 @@ defmodule AshWorkflow.ConditionalTransitionTest do
       assert workflow.state == :approved
     end
 
+    test "a route reads an aggregate the record was not loaded with" do
+      {:ok, sponsor} = AshWorkflowTest.Reviewer.create(%{name: "Direct"})
+      {:ok, workflow} = AshWorkflowTest.AggregateRouteWorkflow.create(%{sponsor_id: sponsor.id})
+
+      assert {:ok, %{state: :activated}} = Ash.update(workflow, action: :refer)
+    end
+
+    test "a route reads a calculation the record was not loaded with" do
+      {:ok, sponsor} = AshWorkflowTest.Reviewer.create(%{name: "Referred"})
+      {:ok, workflow} = AshWorkflowTest.AggregateRouteWorkflow.create(%{sponsor_id: sponsor.id})
+
+      assert {:ok, %{state: :compliance}} = Ash.update(workflow, action: :refer)
+    end
+
     test "a route does not see an attribute the action's own change writes" do
       {:ok, workflow} =
         AshWorkflowTest.AcceptedRouteWorkflow.create(%{title: "test"})

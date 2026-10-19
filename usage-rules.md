@@ -301,7 +301,7 @@ record.transition_targets
 ```
 
 - `transition_target/3` returns `{:ok, step}`, `{:ok, nil}` when the current step does not declare the transition or no route matches, and `{:error, error}` when a route fails to evaluate. It raises `ArgumentError` for a name no step declares.
-- It loads nothing. A route that reads an unloaded relationship sees `nil`, in the preview and in the real action alike.
+- It loads nothing. A route that reads an unloaded relationship or calculation sees `nil` in the preview. The real action loads what its routes reference.
 - A route that reads accepted input sees it only when the transition runs. Pass the input as the third argument to preview a particular call.
 - `:transition_targets` has one key per transition of the current step, is not filtered by authorization, and maps a transition to `nil` when no route matches or a route fails to evaluate. It is an empty map at an automatic or terminal step. It loads the fields its routes reference.
 
@@ -328,6 +328,7 @@ timeout :reminder, fire_after: {3, :days}, action: :send_reminder
 ```
 
 - `action`: References a user-defined update action. The workflow stays in the current state.
+- The extension adds a nilable `<step>_<timeout>_fired_at` attribute that records the firing. The timeout fires again only when its deadline moves later, such as on a new visit to the step. On AshPostgres, generate a migration after adding an action timeout.
 
 ### Recurring Action (`every`, fires on every interval)
 
@@ -376,9 +377,10 @@ workflow do
 end
 ```
 
-- `state_attribute` (optional): the attribute the current step is stored in. Defaults to `:state`. AshWorkflow passes it down to `ash_state_machine`, so set it here rather than in a `state_machine` block. Everything generated follows it: the `match` expression on each unit of scheduled work, the `current_step`, `available_actions`, `transition_targets` and `pending_deadlines` calculations, and the recommended indexes. `state_entered_at` keeps its name either way.
+- `state_attribute` (optional): the attribute the current step is stored in. Defaults to `:state`. AshWorkflow passes it down to `ash_state_machine`, so set it here rather than in a `state_machine` block. Everything generated follows it: the `match` expression on each unit of scheduled work, the `current_step`, `available_actions`, `transition_targets`, `pending_deadlines` and `workflow_terminated_at` calculations, and the recommended indexes. `state_entered_at` keeps its name either way.
 - `queue` (optional): the Oban queue for all generated triggers. Defaults to `:workflow`. The queue MUST exist in your Oban config or Oban raises at boot.
 - `check_interval` (optional): Oban cron expression controlling how often every trigger on the resource polls — automatic steps and timeouts alike. Defaults to `"* * * * *"` (every minute). Individual timeouts can override it.
+- `terminated_at_calculation` (optional): the name of the generated calculation that returns when the record entered a terminal step, or `nil` while it is still running. Defaults to `:workflow_terminated_at`. Rename it when the resource already has a field by that name.
 
 Prefer raising `check_interval` over leaving the default when deadlines are measured in days. Every automatic step and every timeout gets its own scheduler, and each runs a query on every tick regardless of whether any record is waiting, so the cost scales with the number of triggers on the resource.
 
@@ -387,6 +389,7 @@ Prefer raising `check_interval` over leaving the default when deadlines are meas
 - Each timeout must have EITHER `action` OR `transition_to` — not both, not neither.
 - Supported duration units: `:seconds`, `:minutes`, `:hours`, `:days`.
 - `check_interval` (optional): Oban cron expression for how often to poll. Defaults to the workflow-level `check_interval`, which itself defaults to `"* * * * *"` (every minute).
+- `terminated_at_calculation` (optional): the name of the generated calculation that returns when the record entered a terminal step, or `nil` while it is still running. Defaults to `:workflow_terminated_at`. Rename it when the resource already has a field by that name.
 - A timeout can also declare a `retry` block, with the same `max_attempts` and `backoff` options as a step's — see [Retry](#retry) under Automatic Steps.
 
 ## Transition Log (Workflow History)
@@ -524,6 +527,7 @@ AshWorkflow generates these automatically — do NOT define them yourself:
 |---|---|
 | `:state` attribute | Added by `ash_state_machine`. Rename it with `state_attribute` |
 | `:state_entered_at` attribute | `utc_datetime_usec`, tracks when current state was entered |
+| `:workflow_terminated_at` calculation | `state_entered_at` while in a terminal step, `nil` otherwise. Rename it with `terminated_at_calculation` |
 | Primary `:read` action | Added if automatic steps exist (needed for Oban triggers) |
 | Transition update actions | One per manual transition |
 | Timeout transition actions | Hidden `__timeout_<step>_<name>` actions |
@@ -547,6 +551,7 @@ the code:
 ```elixir
 AshWorkflow.Charts.mermaid_state_diagram(MyApp.Candidate)
 AshWorkflow.Charts.render(MyApp.Candidate, :json)
+AshWorkflow.Charts.render(MyApp.Candidate, :dot, svg: true)
 ```
 
 ```bash
@@ -556,6 +561,9 @@ mix ash_workflow.diagram --format json --output priv/diagrams
 
 - For a workflow diagram, prefer `AshWorkflow.Charts`. It reads the DSL, so it shows step kinds, deadlines, route conditions, step notes and undo moves. `AshStateMachine.Charts` draws the generated state machine itself.
 - `undo: false` and `notes: false` (`--no-undo`, `--no-notes`) make a smaller chart.
+- For a chart with colour, use `:dot`. `svg: true` (`--svg`) runs `dot` from the `PATH` and gives the SVG. It does not download Graphviz, so install Graphviz first, in CI and in a release too. Set `config :ash_workflow, :dot, path:` for a `dot` that is not on the `PATH`.
+- `theme: :dark` (`--theme dark`) gives a dark DOT chart. With `--output`, it writes to a file such as `MyApp.Candidate-dark.svg`.
+- `classes:` changes the colours and line styles of the step kinds, the terminal steps, and the `on_success`, `on_error`, timeout and undo edges. Transitions, the start circle and the background have no class. A key is a Graphviz attribute name, such as `fillcolor`: a node attribute for a step class, and an edge attribute for an edge class. No class takes `label`, and the undo class does not take `dir`. A plain list applies to both themes, and `classes: [light: [...], dark: [...]]` gives each theme its own colours.
 - A new format is a module that implements `AshWorkflow.Charts.Backend`. Pass the module to `AshWorkflow.Charts.render/3` in place of a format name.
 
 ## Common Patterns

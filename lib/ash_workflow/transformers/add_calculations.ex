@@ -11,6 +11,9 @@ defmodule AshWorkflow.Transformers.AddCalculations do
   - `:steps` — list of all workflow step names (static, same for every record)
   - `:current_step` — the name of the workflow's current step
   - `:pending_deadlines` — the timeouts ahead of the record in its current step
+  - `:workflow_terminated_at` — when the record entered a terminal step, or nil
+    while the workflow is still running. The `terminated_at_calculation` option
+    renames it
   """
   use Spark.Dsl.Transformer
 
@@ -18,7 +21,10 @@ defmodule AshWorkflow.Transformers.AddCalculations do
   alias AshWorkflow.Entities.Every
   alias AshWorkflow.Entities.Step
   alias AshWorkflow.Entities.Timeout
+  alias AshWorkflow.Scheduler.Work
   alias Spark.Dsl.Transformer
+
+  require Ash.Expr
 
   def transform(dsl) do
     steps =
@@ -35,6 +41,14 @@ defmodule AshWorkflow.Transformers.AddCalculations do
 
     step_names = Enum.map(steps, & &1.name)
     state_attribute = AshWorkflow.Info.state_attribute(dsl)
+
+    terminated_at_calculation =
+      Transformer.get_option(
+        dsl,
+        [:workflow],
+        :terminated_at_calculation,
+        :workflow_terminated_at
+      )
 
     with {:ok, dsl} <-
            Builder.add_new_calculation(
@@ -69,16 +83,39 @@ defmodule AshWorkflow.Transformers.AddCalculations do
              :atom,
              {AshWorkflow.Calculations.CurrentStep, state_attribute: state_attribute},
              public?: true
+           ),
+         {:ok, dsl} <-
+           Builder.add_new_calculation(
+             dsl,
+             :pending_deadlines,
+             {:array, :map},
+             {AshWorkflow.Calculations.PendingDeadlines,
+              timeouts: timeouts_map(steps), state_attribute: state_attribute},
+             public?: true
            ) do
       Builder.add_new_calculation(
         dsl,
-        :pending_deadlines,
-        {:array, :map},
-        {AshWorkflow.Calculations.PendingDeadlines,
-         timeouts: timeouts_map(steps), state_attribute: state_attribute},
+        terminated_at_calculation,
+        :utc_datetime_usec,
+        terminated_at_expr(steps, state_attribute),
         public?: true
       )
     end
+  end
+
+  # A terminal step has no outgoing transitions, so the instant the record
+  # entered it is the instant the workflow ended. An expression keeps it
+  # filterable and sortable in the data layer.
+  defp terminated_at_expr(steps, state_attribute) do
+    terminal_steps = steps |> Enum.filter(&Step.terminal?/1) |> Enum.map(& &1.name)
+
+    Ash.Expr.expr(
+      if ^Ash.Expr.ref(state_attribute) in ^terminal_steps do
+        state_entered_at
+      else
+        nil
+      end
+    )
   end
 
   # Flattened at compile time so the calculation does no DSL introspection per
@@ -88,24 +125,28 @@ defmodule AshWorkflow.Transformers.AddCalculations do
     |> Enum.reject(&(Step.terminal?(&1) or (&1.timeouts == [] and &1.everys == [])))
     |> Map.new(fn step ->
       {step.name,
-       Enum.map(step.timeouts, &timeout_entry/1) ++
+       Enum.map(step.timeouts, &timeout_entry(step, &1)) ++
          Enum.map(step.everys, &every_entry(step, &1))}
     end)
   end
 
-  defp timeout_entry(timeout) do
+  defp timeout_entry(step, timeout) do
+    field = Timeout.deadline_field(timeout)
+    fired_field = Timeout.fired_field(step.name, timeout)
+
     %{
       name: timeout.name,
-      field: Timeout.deadline_field(timeout),
+      field: field,
+      fired_field: fired_field,
+      not_fired: Work.not_fired(fired_field, %{field: field, fire_after: timeout.fire_after}),
       fire_after: timeout.fire_after,
       kind: if(timeout.transition_to, do: :transition, else: :action),
       target: timeout.transition_to
     }
   end
 
-  # An `every` writes its own last-fired column on every fire, so unlike a
-  # non-repeating action timeout its `due_at` never goes stale: it is always
-  # the next instant the action will run. A record that has never fired has a
+  # An `every` writes its own last-fired column on every fire, so its `due_at`
+  # is always the next instant the action will run. A record that has never fired has a
   # nil column, and `AshWorkflow.Calculations.PendingDeadlines` measures from
   # `state_entered_at` for it, rather than omitting it the way it omits any
   # other nil `field`.
