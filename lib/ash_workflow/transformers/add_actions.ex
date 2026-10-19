@@ -202,7 +202,7 @@ defmodule AshWorkflow.Transformers.AddActions do
         Transformer.add_entity(dsl, [:actions], action)
 
       existing_action ->
-        merged_accept = Enum.uniq(existing_action.accept ++ accepted)
+        merged_accept = merge_accept(existing_action.accept, accepted)
 
         updated_action = %{
           existing_action
@@ -220,6 +220,11 @@ defmodule AshWorkflow.Transformers.AddActions do
         |> Transformer.add_entity([:actions], updated_action)
     end
   end
+
+  # An action declared without `accept` leaves it nil until Ash fills in the
+  # resource's default_accept, so nil stays nil unless the transition accepts.
+  defp merge_accept(nil, []), do: nil
+  defp merge_accept(existing, accepted), do: Enum.uniq(List.wrap(existing) ++ accepted)
 
   # One action for every undoable edge, rather than one per transition. The
   # rewind target comes from the log row being reversed, so a single action can

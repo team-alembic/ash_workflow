@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- A transition whose action the resource declares without `accept` no longer crashes `AshWorkflow.Transformers.AddActions` with `nil ++ []`. The action keeps Ash's `default_accept` unless the transition accepts attributes of its own.
+
 ## [0.10.0] - 2026-10-18
 
 ### Upgrading from 0.9.x
