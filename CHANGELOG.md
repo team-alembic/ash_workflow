@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - A transition whose action the resource declares without `accept` no longer crashes `AshWorkflow.Transformers.AddActions` with `nil ++ []`. The action keeps Ash's `default_accept` unless the transition accepts attributes of its own.
+- A conditional route that references a calculation, an aggregate or a related field now reads its current value. `AshWorkflow.Changes.ConditionalTransition` loads those fields before evaluating routes, as the `:transition_targets` calculation already did. The action used to read them off the record it was called on, so an unloaded field read as `nil` and no route matched. A route over a relationship the caller had already loaded now reads the current value rather than the loaded copy.
 
 ## [0.10.0] - 2026-10-18
 
