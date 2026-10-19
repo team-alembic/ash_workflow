@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-10-19
+
+### Upgrading from 0.10.0
+
+- A conditional route that reads a related field, a calculation or an aggregate now loads it when the transition runs. A route that relied on an unloaded relationship reading as `nil`, such as `is_nil(sponsor.name)`, now sees the real value. A route on a relationship the caller had already loaded now reads the current value, not the loaded copy. `AshWorkflow.Info.transition_target/3` still loads nothing.
+
 ### Fixed
 
 - A transition whose action the resource declares without `accept` no longer crashes `AshWorkflow.Transformers.AddActions` with `nil ++ []`. The action keeps Ash's `default_accept` unless the transition accepts attributes of its own.
