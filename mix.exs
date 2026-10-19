@@ -81,7 +81,19 @@ defmodule AshWorkflow.MixProject do
   # Run "mix help compile.app" to learn about applications.
   def application do
     [
-      extra_applications: [:logger]
+      extra_applications: [:logger],
+      env: [
+        clarity_introspectors: [AshWorkflow.Clarity.Introspector],
+        clarity_content_providers: [
+          AshWorkflow.Clarity.Content.WorkflowOverview,
+          AshWorkflow.Clarity.Content.WorkflowDiagram,
+          AshWorkflow.Clarity.Content.WorkflowTiming,
+          AshWorkflow.Clarity.Content.StepOverview,
+          AshWorkflow.Clarity.Content.StepDiagram,
+          AshWorkflow.Clarity.Content.StepTimeline
+        ],
+        clarity_perspective_lensmakers: [AshWorkflow.Clarity.Lensmaker]
+      ]
     ]
   end
 
@@ -106,6 +118,7 @@ defmodule AshWorkflow.MixProject do
       # with "could not find application file: igniter.app" whenever the
       # optional dep was fetched but not compiled.
       {:igniter, "~> 0.6", optional: true, runtime: false},
+      {:clarity, "~> 0.6", optional: true},
       {:simple_sat, "~> 0.1", only: [:dev, :test]},
 
       # Postgres + Oban integration tests
