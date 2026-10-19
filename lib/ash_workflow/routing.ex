@@ -73,7 +73,7 @@ defmodule AshWorkflow.Routing do
   The load statement for a reference: `relationship.field` becomes
   `{:relationship, [:field]}`.
   """
-  @spec load_path(Ash.Query.Ref.t()) :: atom() | tuple()
+  @spec load_path(struct()) :: atom() | tuple()
   def load_path(%Ash.Query.Ref{relationship_path: path, attribute: attribute}) do
     List.foldr(path, field_name(attribute), &{&1, [&2]})
   end
