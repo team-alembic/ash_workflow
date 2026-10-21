@@ -135,6 +135,20 @@ defmodule AshWorkflow.Charts.LayeredTest do
     assert Enum.all?(right.edges[1].points, fn {_x, y} -> abs(y - ay) < 1 end)
   end
 
+  test "an edge that turns at once leaves from the middle part of its box, not a corner" do
+    nodes = [box(:a, 60), box(:b), box(:c), box(:d)]
+    edges = [edge(1, :a, :b, 200, 60), edge(2, :a, :c, 200, 60), edge(3, :a, :d, 200, 60)]
+
+    result = Layered.layout(nodes, edges)
+    {ax, _, aw, _} = result.nodes[:a]
+
+    for id <- [1, 2, 3] do
+      [{px, _} | rest] = result.edges[id].points
+      straight? = Enum.all?(rest, fn {x, _} -> x == px end)
+      assert straight? or abs(px - ax) <= 0.3 * aw
+    end
+  end
+
   test "a lane companion runs in its own lane, at least 24 px left of its partner" do
     nodes = [box(:a), box(:b)]
     forward = edge(1, :a, :b, 30, 16)
@@ -144,12 +158,17 @@ defmodule AshWorkflow.Charts.LayeredTest do
     {_, ay, _, ah} = paired.nodes[:a]
     {_, by, _, bh} = paired.nodes[:b]
 
-    # The lane in the label rank, between the two boxes and their stubs.
+    # The lane in the label rank: where the edge crosses the middle height
+    # between the two boxes.
+    mid = (ay + ah / 2 + by - bh / 2) / 2
+
     lane = fn id ->
       paired.edges[id].points
-      |> Enum.filter(fn {_x, y} -> y > ay + ah / 2 + 24 and y < by - bh / 2 - 24 end)
-      |> Enum.map(&elem(&1, 0))
-      |> Enum.min()
+      |> Enum.chunk_every(2, 1, :discard)
+      |> Enum.find_value(fn [{x1, y1}, {x2, y2}] ->
+        if min(y1, y2) <= mid and mid <= max(y1, y2) and y1 != y2,
+          do: x1 + (x2 - x1) * (mid - y1) / (y2 - y1)
+      end)
     end
 
     assert lane.(1) - lane.(2) >= 24

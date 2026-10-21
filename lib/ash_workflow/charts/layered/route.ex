@@ -105,7 +105,8 @@ defmodule AshWorkflow.Charts.Layered.Route do
   # A port sits where its edge's lane meets the box side, so an edge that
   # comes straight down its lane enters with no sideways step. It moves only
   # as far as it must: inside the side, 6 px from each corner, and 16 px
-  # from its neighbours, or closer when the side is too short for that.
+  # from its neighbours, or closer when the side is too short for that. A
+  # lane past a corner moves its port in to the middle part of the side.
   defp ports(graph, coords) do
     line = fn id ->
       {x, _y, _w, _h} = Map.fetch!(coords, id)
@@ -127,6 +128,8 @@ defmodule AshWorkflow.Charts.Layered.Route do
 
   @port_inset 6
   @port_gap 16
+  # Ports whose lanes are past a corner line up inside the middle 60% of the side.
+  @port_slots 0.6
 
   defp spread(sides, kind, coords) do
     Enum.flat_map(sides, fn {node, ends} ->
@@ -136,7 +139,20 @@ defmodule AshWorkflow.Charts.Layered.Route do
       sorted = Enum.sort_by(ends, fn {id, lane} -> {lane, id} end)
       k = length(sorted)
       gap = if k > 1, do: min(@port_gap, (high - low) / (k - 1)), else: 0
-      wanted = Enum.map(sorted, fn {_id, lane} -> lane |> max(low) |> min(high) end)
+      # A lane over the side keeps its port on the lane, so the edge stays
+      # straight. Lanes past a corner must turn anyway, so their ports line up
+      # from the edge of the middle part of the side inwards, not at the corner.
+      reach = w * @port_slots / 2
+      {before, rest} = Enum.split_while(sorted, fn {_id, lane} -> lane < low end)
+      {over, beyond} = Enum.split_while(rest, fn {_id, lane} -> lane <= high end)
+
+      lanes = Enum.map(over, &elem(&1, 1))
+      first = Enum.min([x - reach + length(before) * gap | lanes]) - length(before) * gap
+      last = Enum.max([x + reach - length(beyond) * gap | lanes]) + gap
+
+      wanted =
+        Enum.map(Enum.with_index(before), fn {_, j} -> first + j * gap end) ++
+          lanes ++ Enum.map(Enum.with_index(beyond), fn {_, j} -> last + j * gap end)
 
       left =
         wanted
