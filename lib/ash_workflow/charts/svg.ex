@@ -24,10 +24,18 @@ defmodule AshWorkflow.Charts.Svg do
   def file_extension, do: "svg"
 
   @impl true
-  def render(%Graph{} = graph, opts) do
-    opts = Keyword.validate!(opts, theme: :light)
+  def render(%Graph{} = graph, opts), do: render_graph(graph, opts)
+
+  @doc false
+  # Draws any Graph, also one built by hand. `layout:` is a keyword list for
+  # Layered.layout/3, so a gallery run can try stage options.
+  def render_graph(%Graph{} = graph, opts) do
+    opts =
+      Keyword.validate!(opts, theme: :light, direction: :down, edges: :polyline, layout: [])
+
     theme = opts[:theme]
-    {result, edges} = layout(graph)
+    layout_opts = [direction: opts[:direction], routing: routing(opts[:edges])] ++ opts[:layout]
+    {result, edges} = layout(graph, layout_opts)
     colours = Palette.colours(theme)
     text = Palette.edge_label_colour(theme)
 
@@ -47,9 +55,22 @@ defmodule AshWorkflow.Charts.Svg do
     |> IO.iodata_to_binary()
   end
 
+  defp routing(:polyline), do: :polyline
+  defp routing(:curved), do: :spline
+  defp routing(:orthogonal), do: :orthogonal
+
   @doc false
-  # The layout and the graph edges by layout edge id, for the comparison script.
-  def layout(%Graph{} = graph) do
+  # The layout and the graph edges by layout edge id. `opts` go to
+  # Layered.layout/3.
+  def layout(%Graph{} = graph, opts \\ []) do
+    {nodes, layered_edges, edges} = layered_input(graph)
+    {Layered.layout(nodes, layered_edges, opts), edges}
+  end
+
+  @doc false
+  # The engine's input: the boxes for the start circle, the steps and the edge
+  # labels, and the graph edges by layout edge id.
+  def layered_input(%Graph{} = graph) do
     initial = Enum.find(graph.nodes, & &1.initial?)
 
     nodes =
@@ -89,25 +110,12 @@ defmodule AshWorkflow.Charts.Svg do
           }
         end
 
-    {Layered.layout(nodes, layered_edges), edges}
+    {nodes, layered_edges, edges}
   end
 
   @doc false
   # Pairs of boxes that overlap, as {a, b}: node boxes and label boxes.
-  def overlaps(%Layered.Result{} = result) do
-    boxes =
-      Enum.map(result.nodes, fn {id, {x, y, w, h}} ->
-        {{:node, id}, x - w / 2, y - h / 2, w, h}
-      end) ++
-        for {id, %{label: {lx, ly, w, h}}} <- result.edges,
-            do: {{:label, id}, lx, ly - h / 2, w, h}
-
-    for {a, ax, ay, aw, ah} <- boxes,
-        {b, bx, by, bw, bh} <- boxes,
-        a < b,
-        ax < bx + bw and bx < ax + aw and ay < by + bh and by < ay + ah,
-        do: {a, b}
-  end
+  def overlaps(%Layered.Result{} = result), do: Layered.Metrics.overlaps(result)
 
   defp node_lines(%{kind: :terminal} = node), do: [to_string(node.id) | note_lines(node)]
   defp node_lines(node), do: [to_string(node.id), Format.kind_text(node.kind) | note_lines(node)]

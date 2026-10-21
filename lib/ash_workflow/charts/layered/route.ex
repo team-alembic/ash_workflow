@@ -32,6 +32,7 @@ defmodule AshWorkflow.Charts.Layered.Route do
     %Result{
       nodes: nodes,
       edges: edges,
+      reversed: reversed,
       width: (boxes |> Enum.map(&elem(&1, 0)) |> Enum.max(fn -> 0 end)) + opts[:margin],
       height: (boxes |> Enum.map(&elem(&1, 1)) |> Enum.max(fn -> 0 end)) + opts[:margin]
     }

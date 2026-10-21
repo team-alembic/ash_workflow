@@ -24,7 +24,15 @@ defmodule AshWorkflow.Charts.Layered do
 
   defmodule Result do
     @moduledoc false
-    defstruct width: 0, height: 0, crossings: 0, nodes: %{}, edges: %{}
+    defstruct width: 0,
+              height: 0,
+              crossings: 0,
+              nodes: %{},
+              edges: %{},
+              reversed: MapSet.new(),
+              direction: :down,
+              routing: :polyline
+
     @type t :: %__MODULE__{}
   end
 
@@ -42,6 +50,11 @@ defmodule AshWorkflow.Charts.Layered do
     {layers, crossings} = Order.run(graph, opts[:sweeps])
     coords = Position.run(graph, layers, opts)
 
-    %{Route.run(graph, coords, reversed, loops, opts) | crossings: crossings}
+    %{
+      Route.run(graph, coords, reversed, loops, opts)
+      | crossings: crossings,
+        direction: Keyword.get(opts, :direction, :down),
+        routing: Keyword.get(opts, :routing, :polyline)
+    }
   end
 end
