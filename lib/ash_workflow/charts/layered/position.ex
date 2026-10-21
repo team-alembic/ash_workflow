@@ -116,9 +116,12 @@ defmodule AshWorkflow.Charts.Layered.Position do
     |> Map.new(fn {id, line} -> {id, line - off.(id)} end)
   end
 
+  # The segment into a step weighs 3, not 2: the last lane lines up with its
+  # target, where a box side may be too short for a port to absorb a small
+  # step; a small step at the source end moves the source's port instead.
   defp omega(%{dummy: nil}, %{dummy: nil}), do: 1
   defp omega(%{dummy: nil}, _), do: 2
-  defp omega(_, %{dummy: nil}), do: 2
+  defp omega(_, %{dummy: nil}), do: 3
   defp omega(_, _), do: 8
 
   defp pull(xs, ranks, layers, neighbours, graph, opts) do
