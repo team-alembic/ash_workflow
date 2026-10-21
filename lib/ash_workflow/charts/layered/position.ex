@@ -58,8 +58,14 @@ defmodule AshWorkflow.Charts.Layered.Position do
     Enum.reduce(ranks, xs, fn rank, xs ->
       place(Map.fetch!(layers, rank), xs, graph, opts, fn id ->
         case Map.get(neighbours, id, []) do
-          [] -> Map.fetch!(xs, id)
-          ns -> Enum.sum(Enum.map(ns, &Map.fetch!(xs, &1))) / length(ns)
+          [] ->
+            Map.fetch!(xs, id)
+
+          ns ->
+            line =
+              Enum.sum(Enum.map(ns, &(Map.fetch!(xs, &1) + offset(graph.nodes[&1])))) / length(ns)
+
+            line - offset(graph.nodes[id])
         end
       end)
     end)
@@ -94,6 +100,11 @@ defmodule AshWorkflow.Charts.Layered.Position do
     |> Enum.reduce([first], fn {d, g}, [prev | _] = acc -> [fun.(d, prev, g) | acc] end)
     |> Enum.reverse()
   end
+
+  # An edge passes a label dummy along its left side, not its centre (see
+  # Route), so the pulls line that side up with the neighbours.
+  defp offset(%{dummy: :label, width: w}), do: -w / 2
+  defp offset(_node), do: 0
 
   # Half of each width, plus the mean of the two nodes' own separations. A
   # dummy that only carries an edge needs less room than a step or a label.
