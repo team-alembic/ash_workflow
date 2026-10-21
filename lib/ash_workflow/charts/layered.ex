@@ -31,7 +31,8 @@ defmodule AshWorkflow.Charts.Layered do
               edges: %{},
               reversed: MapSet.new(),
               direction: :down,
-              routing: :polyline
+              routing: :polyline,
+              loops: MapSet.new()
 
     @type t :: %__MODULE__{}
   end

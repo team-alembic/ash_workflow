@@ -17,8 +17,8 @@ defmodule AshWorkflow.Charts.Layered.MetricsTest do
   end
 
   @good %{
-    1 => %{points: [{50, 15}, {50, 35}, {20, 55}], label: {20, 30, 24, 10}},
-    2 => %{points: [{50, 15}, {80, 56}], label: nil}
+    1 => %{points: [{50, 15}, {50, 35}, {20, 40}, {20, 55}], label: {20, 30, 24, 10}},
+    2 => %{points: [{50, 15}, {80, 40}, {80, 56}], label: nil}
   }
 
   test "a clean layout has no hard failures" do
@@ -26,10 +26,12 @@ defmodule AshWorkflow.Charts.Layered.MetricsTest do
 
     assert Metrics.hard_failures(card) == []
     assert card.crossings == 0
-    assert card.bends == 1
+    assert card.bends == 3
     assert card.flow == 1.0
     assert card.edge_through_label == 0
-    assert card.segments == 3
+    assert card.segments == 5
+    assert card.arrow_room == 0
+    assert card.jogs == 0
   end
 
   test "an edge through another edge's label is a hard failure" do
@@ -47,6 +49,14 @@ defmodule AshWorkflow.Charts.Layered.MetricsTest do
     assert card.edge_through_node == 0
     through_c = Map.put(@good, 3, %{points: [{0, 61}, {120, 61}], label: nil})
     assert Metrics.scorecard(result(through_c)).edge_through_node == 2
+  end
+
+  test "an arrow on a short or slanted last segment is a hard failure" do
+    slanted = put_in(@good, [2, :points], [{50, 15}, {80, 56}])
+    short = put_in(@good, [2, :points], [{50, 15}, {80, 50}, {80, 56}])
+
+    assert Metrics.scorecard(result(slanted)).arrow_room == 1
+    assert Metrics.scorecard(result(short)).arrow_room == 1
   end
 
   test "an edge that runs against the flow lowers flow" do

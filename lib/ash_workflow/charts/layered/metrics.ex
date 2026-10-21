@@ -29,6 +29,8 @@ defmodule AshWorkflow.Charts.Layered.Metrics do
       crossings: crossings(lines),
       bends: lines |> Map.values() |> Enum.map(&bends/1) |> Enum.sum(),
       segments: lines |> Map.values() |> Enum.map(&(length(&1) - 1)) |> Enum.sum(),
+      arrow_room: arrow_room(result, lines),
+      jogs: lines |> Map.values() |> Enum.map(&jogs/1) |> Enum.sum(),
       lateral: Float.round(lateral(result.direction, lines) / mean_width, 2),
       area_ratio: Float.round(area_ratio(result), 2),
       aspect: Float.round(result.width / max(result.height, 1), 2)
@@ -41,6 +43,7 @@ defmodule AshWorkflow.Charts.Layered.Metrics do
       card.edge_through_node > 0 && "edge_through_node #{card.edge_through_node}",
       card.edge_through_label > 0 && "edge_through_label #{card.edge_through_label}",
       card.label_distance > @max_label_distance && "label_distance #{card.label_distance}",
+      card.arrow_room > 0 && "arrow_room #{card.arrow_room}",
       card.flow < 1.0 && "flow #{card.flow}"
     ]
     |> Enum.filter(& &1)
@@ -205,6 +208,33 @@ defmodule AshWorkflow.Charts.Layered.Metrics do
       u = ((x1 - x3) * (y1 - y2) - (y1 - y3) * (x1 - x2)) / d
       if t > 0 and t < 1 and u > 0 and u < 1, do: {x1 + t * (x2 - x1), y1 + t * (y2 - y1)}
     end
+  end
+
+  # The checkpoint 2 feedback: arrows that sit on a short or tilted last
+  # segment look broken. An arrow needs a last segment in the main direction,
+  # at least 12 px long. Counts the edges without one; self-loops enter from
+  # the side and do not count.
+  @arrow_room 12
+
+  defp arrow_room(result, lines) do
+    main = if result.direction == :right, do: 0, else: 1
+    side = 1 - main
+
+    Enum.count(lines, fn {id, points} ->
+      not MapSet.member?(result.loops, id) and length(points) >= 2 and
+        (fn [a, b] ->
+           abs(elem(b, side) - elem(a, side)) >= 0.5 or
+             abs(elem(b, main) - elem(a, main)) < @arrow_room
+         end).(Enum.take(points, -2))
+    end)
+  end
+
+  # Segments under 10 px: the small sideways steps the checkpoint 2 feedback
+  # called avoidable deviations.
+  defp jogs(points) do
+    points
+    |> segments()
+    |> Enum.count(fn {{x1, y1}, {x2, y2}} -> :math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2) < 10 end)
   end
 
   # A turn is an inner point where the route changes direction.

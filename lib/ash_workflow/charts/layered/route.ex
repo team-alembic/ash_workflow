@@ -63,6 +63,7 @@ defmodule AshWorkflow.Charts.Layered.Route do
       nodes: nodes,
       edges: edges,
       reversed: reversed,
+      loops: MapSet.new(loops, & &1.id),
       width: (corners |> Enum.map(&elem(&1, 0)) |> Enum.max(fn -> 0 end)) + opts[:margin],
       height: (corners |> Enum.map(&elem(&1, 1)) |> Enum.max(fn -> 0 end)) + opts[:margin]
     }

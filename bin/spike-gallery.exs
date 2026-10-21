@@ -20,7 +20,7 @@ directions =
   end
 
 modes = for direction <- directions, edges <- [:curved, :orthogonal], do: {direction, edges}
-soft = [:crossings, :bends, :segments, :lateral, :area_ratio]
+soft = [:crossings, :bends, :jogs, :segments, :lateral, :area_ratio]
 
 # Stage options to try, for example SPIKE_LAYOUT="[ranker: :network_simplex]".
 extra =
@@ -79,7 +79,7 @@ rows =
 
         ~s(<td style="vertical-align:top;padding:8px"><div><b>#{direction} / #{edges}</b>#{flag}</div>) <>
           ~s(<img src="#{key}.svg" style="max-width:420px"><div style="font-size:12px">) <>
-          "crossings #{card.crossings}, bends #{card.bends}, segments #{card.segments}, lateral #{card.lateral}, area #{card.area_ratio}</div></td>"
+          "crossings #{card.crossings}, bends #{card.bends}, jogs #{card.jogs}, segments #{card.segments}, lateral #{card.lateral}, area #{card.area_ratio}</div></td>"
       end
 
     "<h2>#{name}</h2><table><tr>#{Enum.join(cells)}</tr></table>\n"
