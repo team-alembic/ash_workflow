@@ -8,7 +8,7 @@ defmodule AshWorkflow.Charts.TextWidthTest do
     assert TextWidth.width("Hi", 10) == 9.44
   end
 
-  test "a variation selector has no width, and an emoji is one em" do
+  test "the emoji gear is one em: the text gear plus U+FE0F" do
     assert TextWidth.width("⚙\u{FE0F}", 14) == 14.0
   end
 

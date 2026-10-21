@@ -55,8 +55,15 @@ defmodule AshWorkflow.Charts.Svg do
     nodes =
       [%Layered.Node{id: @start, width: 14, height: 14}] ++
         Enum.map(graph.nodes, fn node ->
-          lines = node_lines(node)
-          width = lines |> Enum.map(&TextWidth.width(&1, @font_size)) |> Enum.max()
+          [name | rest] = node_lines(node)
+          lines = [name | rest]
+
+          width =
+            [
+              TextWidth.width(name, @font_size) * TextWidth.bold_factor()
+              | Enum.map(rest, &TextWidth.width(&1, @font_size))
+            ]
+            |> Enum.max()
 
           %Layered.Node{
             id: node.id,

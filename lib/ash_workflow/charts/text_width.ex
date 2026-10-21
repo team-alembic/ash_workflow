@@ -2,8 +2,8 @@ defmodule AshWorkflow.Charts.TextWidth do
   @moduledoc false
   # Spike: estimates text width from the Helvetica advance widths, because
   # Elixir has no font metrics. The SVG names Helvetica, then Arial, which has
-  # the same widths. Characters outside ASCII get a guess: symbols and emoji
-  # one em, a variation selector nothing, anything else the width of "n".
+  # the same widths. The chart symbols are measured; other characters outside
+  # ASCII get a guess: one em from U+2000 up, the width of "n" below it.
 
   @ascii %{
     ?\s => 278,
@@ -110,8 +110,25 @@ defmodule AshWorkflow.Charts.TextWidth do
     Float.round(thousandths * font_size / 1000, 2)
   end
 
+  # The symbols the charts use, measured in Chrome on macOS at 100 px. U+FE0F
+  # turns the 0.6 em text gear into a 1 em emoji, so it adds 0.4 em.
+  @symbols %{
+    0x2699 => 600,
+    0x23F1 => 780,
+    0x21BB => 600,
+    0x21B6 => 870,
+    0x2716 => 760,
+    0xFE0F => 400
+  }
+
+  # Chrome draws bold Helvetica about 11% wider than regular.
+  @bold 1.11
+
+  def bold_factor, do: @bold
+
   defp advance(char) when is_map_key(@ascii, char), do: @ascii[char]
-  defp advance(char) when char in 0xFE00..0xFE0F, do: 0
+  defp advance(char) when is_map_key(@symbols, char), do: @symbols[char]
+  defp advance(char) when char in 0xFE00..0xFE0E, do: 0
   defp advance(char) when char >= 0x2000, do: 1000
   defp advance(_char), do: 556
 
