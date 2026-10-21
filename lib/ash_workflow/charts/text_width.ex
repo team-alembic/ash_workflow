@@ -118,7 +118,8 @@ defmodule AshWorkflow.Charts.TextWidth do
     0x21BB => 600,
     0x21B6 => 870,
     0x2716 => 760,
-    0xFE0F => 400
+    0xFE0F => 400,
+    0x00A0 => 278
   }
 
   # Chrome draws bold Helvetica about 11% wider than regular.

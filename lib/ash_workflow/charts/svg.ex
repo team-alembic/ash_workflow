@@ -182,7 +182,14 @@ defmodule AshWorkflow.Charts.Svg do
   defp label_max(:right), do: @label_max_right
   defp label_max(_down), do: @label_max
 
-  defp label_lines(edge, max), do: TextWidth.wrap(Format.edge_text(edge), max, @font_size)
+  # A leading symbol (⚙, ✖, ⏱, ↶) stays on the line of the word after it: a
+  # no-break space joins them, so wrapping never leaves a symbol alone.
+  defp label_lines(edge, max) do
+    edge
+    |> Format.edge_text()
+    |> String.replace(~r/^(\S) /u, "\\1\u00A0")
+    |> TextWidth.wrap(max, @font_size)
+  end
 
   # %{undo edge id => the forward edge it rewinds}. An undo edge with a
   # forward partner is drawn beside it, and its text joins the partner's
