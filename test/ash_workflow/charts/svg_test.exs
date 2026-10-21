@@ -53,11 +53,11 @@ defmodule AshWorkflow.Charts.SvgTest do
     assert Charts.render(BasicWorkflow.Incident, Svg) =~ "undo within 1 hour"
   end
 
-  test "edges: :loopy draws curves that pass the hard rules" do
+  test "edges: :curved draws curves that pass the hard rules" do
     graph = Charts.graph(BasicWorkflow.Incident)
 
     for direction <- [:down, :right], labels <- [:beside, :over] do
-      opts = [edges: :loopy, direction: direction, labels: labels]
+      opts = [edges: :curved, direction: direction, labels: labels]
       assert well_formed?(Svg.render_graph(graph, opts))
       {result, _edges, _opts} = Svg.drawn_layout(graph, opts)
       assert result |> Layered.Metrics.scorecard() |> Layered.Metrics.hard_failures() == []

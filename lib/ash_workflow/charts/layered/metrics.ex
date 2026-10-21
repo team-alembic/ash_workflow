@@ -249,35 +249,12 @@ defmodule AshWorkflow.Charts.Layered.Metrics do
     main = if result.direction == :right, do: 0, else: 1
     side = 1 - main
 
-    short? = fn a, b ->
-      abs(elem(b, side) - elem(a, side)) >= 0.5 or
-        abs(elem(b, main) - elem(a, main)) < @arrow_room
-    end
-
-    # A loopy edge runs into its box at a slant, so its arrowhead may tilt,
-    # by up to 60 degrees from the main direction.
-    steep_short? = fn a, b ->
-      {dm, ds} = {elem(b, main) - elem(a, main), elem(b, side) - elem(a, side)}
-      length = :math.sqrt(dm * dm + ds * ds)
-      length < @arrow_room or abs(dm) < length / 2
-    end
-
-    # A curve that ends in a cubic piece has room when that piece arrives
-    # in the main direction: its last control point is straight behind it.
     Enum.count(lines, fn {id, points} ->
       not MapSet.member?(result.loops, id) and length(points) >= 2 and
-        case result.edges[id] do
-          %{curve: curve} when curve != [] ->
-            case List.last(curve) do
-              {:cubic, _a, _c1, c2, b} when result.routing == :loopy -> steep_short?.(c2, b)
-              {:cubic, _a, _c1, c2, b} -> short?.(c2, b)
-              {:line, a, b} -> short?.(a, b)
-            end
-
-          _ ->
-            [a, b] = Enum.take(points, -2)
-            short?.(a, b)
-        end
+        (fn [a, b] ->
+           abs(elem(b, side) - elem(a, side)) >= 0.5 or
+             abs(elem(b, main) - elem(a, main)) < @arrow_room
+         end).(Enum.take(points, -2))
     end)
   end
 

@@ -220,7 +220,6 @@ defmodule AshWorkflow.Charts.Svg do
 
   defp routing(:polyline), do: :polyline
   defp routing(:curved), do: :spline
-  defp routing(:loopy), do: :loopy
   defp routing(:orthogonal), do: :orthogonal
 
   @doc false

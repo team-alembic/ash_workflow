@@ -25,7 +25,7 @@ undos = [
 labels = System.get_env("SPIKE_LABELS", "over") |> String.to_atom()
 variants = for {undo, text} <- undos, undo_text <- [:label, :tag], do: {undo, undo_text, text}
 
-modes = for direction <- [:down, :right], edges <- [:orthogonal, :curved, :loopy], do: {direction, edges}
+modes = for direction <- [:down, :right], edges <- [:orthogonal, :curved], do: {direction, edges}
 
 sections =
   for {name, graph} <- scenarios, {direction, edges} <- modes do
