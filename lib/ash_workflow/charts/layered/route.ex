@@ -158,7 +158,7 @@ defmodule AshWorkflow.Charts.Layered.Route do
           {{{rank, _top, {x1, _y1}}, {_rank2, {x2, _y2}, _bottom}}, i} <-
             Enum.with_index(Enum.zip(lanes, tl(lanes))),
           abs(x1 - x2) >= 0.5,
-          do: {rank, {id, i}, min(x1, x2), max(x1, x2)}
+          do: {rank, {id, i}, x1, x2}
 
     tracks = tracks(spans, bands)
 
@@ -179,30 +179,122 @@ defmodule AshWorkflow.Charts.Layered.Route do
     end)
   end
 
+  # Track order in one gap, after Sander (1996): a segment whose upper
+  # vertical (at x1) falls inside another segment's horizontal span must run
+  # above it, and one whose lower vertical (at x2) falls inside must run below
+  # it; otherwise a vertical crosses a horizontal. Those rules form a graph;
+  # its cycles are crossings no order avoids, and a depth-first search breaks
+  # them. Each segment then takes the first level below all its
+  # predecessors where it overlaps no segment already there.
   defp tracks(spans, bands) do
     spans
     |> Enum.group_by(&elem(&1, 0))
     |> Enum.sort()
     |> Enum.flat_map(fn {rank, group} ->
-      {placed, ends} =
-        group
-        |> Enum.sort_by(&{elem(&1, 2), elem(&1, 3), elem(&1, 1)})
-        |> Enum.map_reduce([], fn {_rank, key, left, right}, ends ->
-          case Enum.find_index(ends, &(&1 + @track_gap < left)) do
-            nil -> {{key, length(ends)}, ends ++ [right]}
-            t -> {{key, t}, List.replace_at(ends, t, right)}
-          end
-        end)
-
-      k = length(ends)
+      levels = levels(group)
+      k = (levels |> Map.values() |> Enum.max(fn -> 0 end)) + 1
       {_top, gap_top} = Map.fetch!(bands, rank)
       {gap_bottom, _bottom} = Map.fetch!(bands, rank + 1)
 
-      Enum.map(placed, fn {key, t} ->
-        {key, gap_top + (gap_bottom - gap_top) * (t + 1) / (k + 1)}
+      Enum.map(levels, fn {key, level} ->
+        {key, gap_top + (gap_bottom - gap_top) * (level + 1) / (k + 1)}
       end)
     end)
     |> Map.new()
+  end
+
+  defp levels(group) do
+    inside? = fn x, {_r, _key, a, b} -> x > min(a, b) + 0.5 and x < max(a, b) - 0.5 end
+
+    above =
+      for {_r, ka, x1, x2} <- group, {_r2, kb, _, _} = b <- group, ka != kb, reduce: [] do
+        acc ->
+          acc = if inside?.(x1, b), do: [{ka, kb} | acc], else: acc
+          if inside?.(x2, b), do: [{kb, ka} | acc], else: acc
+      end
+      |> Enum.uniq()
+      |> acyclic(Enum.map(group, &elem(&1, 1)))
+
+    preds = Enum.group_by(above, &elem(&1, 1), &elem(&1, 0))
+    spans = Map.new(group, fn {_r, key, x1, x2} -> {key, {min(x1, x2), max(x1, x2)}} end)
+
+    group
+    |> Enum.map(&elem(&1, 1))
+    |> topological(above)
+    |> Enum.reduce(%{}, fn key, levels ->
+      floor =
+        preds
+        |> Map.get(key, [])
+        |> Enum.map(&(Map.fetch!(levels, &1) + 1))
+        |> Enum.max(fn -> 0 end)
+
+      {left, right} = Map.fetch!(spans, key)
+
+      level =
+        Stream.iterate(floor, &(&1 + 1))
+        |> Enum.find(fn level ->
+          not Enum.any?(levels, fn {other, l} ->
+            {ol, or_} = Map.fetch!(spans, other)
+            l == level and ol < right + @track_gap and left < or_ + @track_gap
+          end)
+        end)
+
+      Map.put(levels, key, level)
+    end)
+  end
+
+  # Drops each rule that closes a cycle, found by a depth-first search in key
+  # order.
+  defp acyclic(rules, keys) do
+    out = Enum.group_by(rules, &elem(&1, 0), &elem(&1, 1))
+
+    {_seen, dropped} =
+      Enum.reduce(keys, {MapSet.new(), MapSet.new()}, fn key, acc ->
+        dfs(key, out, MapSet.new(), acc)
+      end)
+
+    Enum.reject(rules, &MapSet.member?(dropped, &1))
+  end
+
+  defp dfs(key, out, stack, {seen, dropped} = acc) do
+    if MapSet.member?(seen, key) do
+      acc
+    else
+      stack = MapSet.put(stack, key)
+
+      out
+      |> Map.get(key, [])
+      |> Enum.reduce({MapSet.put(seen, key), dropped}, fn to, {seen, dropped} ->
+        if MapSet.member?(stack, to),
+          do: {seen, MapSet.put(dropped, {key, to})},
+          else: dfs(to, out, stack, {seen, dropped})
+      end)
+    end
+  end
+
+  defp topological(keys, rules) do
+    indegree =
+      Enum.reduce(rules, Map.new(keys, &{&1, 0}), fn {_a, b}, acc ->
+        Map.update!(acc, b, &(&1 + 1))
+      end)
+
+    out = Enum.group_by(rules, &elem(&1, 0), &elem(&1, 1))
+    take(keys, indegree, out, [])
+  end
+
+  defp take(keys, indegree, out, acc) do
+    case Enum.find(keys, &(Map.fetch!(indegree, &1) == 0)) do
+      nil ->
+        Enum.reverse(acc)
+
+      key ->
+        indegree =
+          out
+          |> Map.get(key, [])
+          |> Enum.reduce(indegree, fn b, acc -> Map.update!(acc, b, &(&1 - 1)) end)
+
+        take(List.delete(keys, key), indegree, out, [key | acc])
+    end
   end
 
   # Drops repeated points and points on a straight line between their
