@@ -150,7 +150,7 @@ defmodule AshWorkflow.Charts.Layered.Route do
   #
   # A port sits where its edge's lane meets the box side, so an edge that
   # comes straight down its lane enters with no sideways step. It moves only
-  # as far as it must: inside the side, 10 px from each corner, and 16 px
+  # as far as it must: inside the side, 6 px from each corner, and 16 px
   # from its neighbours, or closer when the side is too short for that.
   defp ports(graph, coords) do
     line = fn id ->
@@ -171,7 +171,7 @@ defmodule AshWorkflow.Charts.Layered.Route do
     Map.new(spread(out_side, :out, coords) ++ spread(in_side, :in, coords))
   end
 
-  @port_inset 10
+  @port_inset 6
   @port_gap 16
 
   defp spread(sides, kind, coords) do

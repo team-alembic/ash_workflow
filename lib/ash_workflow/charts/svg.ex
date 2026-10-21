@@ -99,9 +99,12 @@ defmodule AshWorkflow.Charts.Svg do
             ]
             |> Enum.max()
 
+          # Wide enough for its ports: 16 px apart and 6 px from each corner.
+          ports = max(degree(graph, node.id, :from), degree(graph, node.id, :to))
+
           %Layered.Node{
             id: node.id,
-            width: Float.ceil(width + 2 * @pad_x),
+            width: Float.ceil(max(width + 2 * @pad_x, (ports - 1) * 16 + 2 * 6) * 1.0),
             height: length(lines) * @line_height + 2 * @pad_y
           }
         end)
@@ -143,6 +146,29 @@ defmodule AshWorkflow.Charts.Svg do
   defp node_lines(node), do: [to_string(node.id), Format.kind_text(node.kind) | note_lines(node)]
 
   defp note_lines(node), do: Enum.map(node.notes, &Format.note_text/1)
+
+  # Edges that leave (:from) or enter (:to) a step, not counting self-loops
+  # or the undo edges that are drawn as markers.
+  defp degree(graph, id, side) do
+    other = if side == :from, do: :to, else: :from
+
+    undo =
+      graph.edges
+      |> Enum.with_index(1)
+      |> Map.new(fn {e, i} -> {i, e} end)
+      |> partners()
+      |> Map.keys()
+      |> MapSet.new()
+
+    graph.edges
+    |> Enum.with_index(1)
+    |> Enum.count(fn {e, i} ->
+      Map.fetch!(e, side) == id and Map.fetch!(e, other) != id and not MapSet.member?(undo, i)
+    end)
+    |> Kernel.+(
+      if side == :to and Enum.any?(graph.nodes, &(&1.id == id and &1.initial?)), do: 1, else: 0
+    )
+  end
 
   defp label_lines(edge), do: TextWidth.wrap(Format.edge_text(edge), @label_max, @font_size)
 
