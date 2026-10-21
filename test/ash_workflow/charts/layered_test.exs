@@ -125,6 +125,21 @@ defmodule AshWorkflow.Charts.LayeredTest do
     assert MapSet.member?(paired.reversed, 2)
   end
 
+  test "the right direction runs a chain left to right, and keeps box and label sizes" do
+    nodes = [box(:a, 60, 20), box(:b, 60, 20), box(:c, 60, 20)]
+    edges = [edge(1, :a, :b, 30, 16), edge(2, :b, :c, 30, 16)]
+
+    right = Layered.layout(nodes, edges, direction: :right)
+
+    {ax, ay, aw, ah} = right.nodes[:a]
+    {bx, by, _, _} = right.nodes[:b]
+    assert {aw, ah} == {60, 20}
+    assert ax < bx
+    assert_in_delta ay, by, 1
+    assert {_lx, _ly, 30, 16} = right.edges[1].label
+    assert Enum.all?(right.edges[1].points, fn {_x, y} -> abs(y - ay) < 1 end)
+  end
+
   test "the same input gives the same result" do
     nodes = [box(:a), box(:b), box(:c), box(:d)]
 

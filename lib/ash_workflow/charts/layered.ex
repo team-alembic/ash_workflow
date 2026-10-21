@@ -56,6 +56,15 @@ defmodule AshWorkflow.Charts.Layered do
   @spec layout([Node.t()], [Edge.t()], keyword()) :: Result.t()
   def layout(nodes, edges, opts \\ []) do
     opts = Keyword.merge(@defaults, opts)
+    right? = opts[:direction] == :right
+
+    # The right direction lays out the problem mirrored on the diagonal, as
+    # if it ran down, and mirrors the result back.
+    {nodes, edges} =
+      if right?,
+        do: {Enum.map(nodes, &swap_node/1), Enum.map(edges, &swap_edge/1)},
+        else: {nodes, edges}
+
     {companions, edges} = Enum.split_with(edges, &(&1.companion != nil))
     {loops, edges} = Enum.split_with(edges, &(&1.from == &1.to))
     {dag, reversed} = Acyclic.run(nodes, edges, opts[:acyclic])
@@ -73,13 +82,45 @@ defmodule AshWorkflow.Charts.Layered do
     {layers, crossings} = Order.run(graph, opts[:sweeps], opts)
     coords = Position.run(graph, layers, opts)
 
+    result =
+      graph
+      |> Route.run(coords, reversed, loops, opts)
+      |> Route.companions(companions, opts[:routing])
+
+    result = if right?, do: transpose(result), else: result
+
     %{
-      (graph
-       |> Route.run(coords, reversed, loops, opts)
-       |> Route.companions(companions, opts[:routing]))
+      result
       | crossings: crossings,
         direction: Keyword.get(opts, :direction, :down),
         routing: Keyword.get(opts, :routing, :polyline)
+    }
+  end
+
+  defp swap_node(node), do: %{node | width: node.height, height: node.width}
+
+  defp swap_edge(edge),
+    do: %{edge | label_width: edge.label_height, label_height: edge.label_width}
+
+  # Mirror on the diagonal: x and y swap, and so do widths and heights. A
+  # label box is {left_x, centre_y, w, h}, so its corners move too; a label
+  # right of a downward edge ends up under a rightward one.
+  defp transpose(%Result{} = r) do
+    %{
+      r
+      | width: r.height,
+        height: r.width,
+        nodes: Map.new(r.nodes, fn {id, {x, y, w, h}} -> {id, {y, x, h, w}} end),
+        edges:
+          Map.new(r.edges, fn {id, e} ->
+            label =
+              case e.label do
+                nil -> nil
+                {lx, ly, w, h} -> {ly - h / 2, lx + w / 2, h, w}
+              end
+
+            {id, %{e | points: Enum.map(e.points, fn {x, y} -> {y, x} end), label: label}}
+          end)
     }
   end
 end

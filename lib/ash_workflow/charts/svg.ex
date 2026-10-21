@@ -18,6 +18,7 @@ defmodule AshWorkflow.Charts.Svg do
   @pad_x 12
   @pad_y 8
   @label_max 180
+  @label_max_right 140
   @start :__start__
 
   @impl true
@@ -36,7 +37,7 @@ defmodule AshWorkflow.Charts.Svg do
     theme = opts[:theme]
     layout_opts = [direction: opts[:direction], routing: routing(opts[:edges])] ++ opts[:layout]
     {result, edges} = layout(graph, layout_opts)
-    labels = label_text(edges)
+    labels = label_text(edges, label_max(opts[:direction]))
     undone = edges |> partners() |> Map.values() |> MapSet.new()
     colours = Palette.colours(theme)
     text = Palette.edge_label_colour(theme)
@@ -56,11 +57,11 @@ defmodule AshWorkflow.Charts.Svg do
           Map.get(labels, id, []),
           colours,
           text,
-          result.routing,
+          {result.routing, result.direction},
           MapSet.member?(undone, id)
         )
       end),
-      start_edge_svg(result.edges[0], text, result.routing),
+      start_edge_svg(result.edges[0], text, {result.routing, result.direction}),
       graph.nodes |> Enum.map(&node_svg(&1, graph, result.nodes[&1.id], colours, text)),
       start_svg(result.nodes[@start], text),
       "</svg>\n"
@@ -76,14 +77,14 @@ defmodule AshWorkflow.Charts.Svg do
   # The layout and the graph edges by layout edge id. `opts` go to
   # Layered.layout/3.
   def layout(%Graph{} = graph, opts \\ []) do
-    {nodes, layered_edges, edges} = layered_input(graph)
+    {nodes, layered_edges, edges} = layered_input(graph, Keyword.get(opts, :direction, :down))
     {Layered.layout(nodes, layered_edges, opts), edges}
   end
 
   @doc false
   # The engine's input: the boxes for the start circle, the steps and the edge
   # labels, and the graph edges by layout edge id.
-  def layered_input(%Graph{} = graph) do
+  def layered_input(%Graph{} = graph, direction \\ :down) do
     initial = Enum.find(graph.nodes, & &1.initial?)
 
     nodes =
@@ -99,19 +100,25 @@ defmodule AshWorkflow.Charts.Svg do
             ]
             |> Enum.max()
 
-          # Wide enough for its ports: 16 px apart and 6 px from each corner.
+          # Long enough on the sides that carry ports: 16 px apart and 6 px
+          # from each corner. Those are the top and bottom sides going down,
+          # and the left and right sides going right.
           ports = max(degree(graph, node.id, :from), degree(graph, node.id, :to))
+          room = (ports - 1) * 16 + 2 * 6
+          width = width + 2 * @pad_x
+          height = length(lines) * @line_height + 2 * @pad_y
 
-          %Layered.Node{
-            id: node.id,
-            width: Float.ceil(max(width + 2 * @pad_x, (ports - 1) * 16 + 2 * 6) * 1.0),
-            height: length(lines) * @line_height + 2 * @pad_y
-          }
+          {width, height} =
+            if direction == :right,
+              do: {width, max(height, room)},
+              else: {max(width, room), height}
+
+          %Layered.Node{id: node.id, width: Float.ceil(width * 1.0), height: height}
         end)
 
     edges = graph.edges |> Enum.with_index(1) |> Map.new(fn {edge, i} -> {i, edge} end)
     partners = partners(edges)
-    labels = label_text(edges)
+    labels = label_text(edges, label_max(direction))
 
     layered_edges =
       [%Layered.Edge{id: 0, from: @start, to: initial.id}] ++
@@ -170,7 +177,12 @@ defmodule AshWorkflow.Charts.Svg do
     )
   end
 
-  defp label_lines(edge), do: TextWidth.wrap(Format.edge_text(edge), @label_max, @font_size)
+  # Labels wrap narrower in the right direction, where each label's width adds
+  # to the chart's length.
+  defp label_max(:right), do: @label_max_right
+  defp label_max(_down), do: @label_max
+
+  defp label_lines(edge, max), do: TextWidth.wrap(Format.edge_text(edge), max, @font_size)
 
   # %{undo edge id => the forward edge it rewinds}. An undo edge with a
   # forward partner is drawn beside it, and its text joins the partner's
@@ -191,18 +203,18 @@ defmodule AshWorkflow.Charts.Svg do
 
   # %{edge id => label lines}. A forward edge with an undo partner gets the
   # undo's text as its last line; the undo edge itself has no label.
-  defp label_text(edges) do
+  defp label_text(edges, max) do
     partners = partners(edges)
     undo_of = Map.new(partners, fn {undo, partner} -> {partner, undo} end)
 
     for {id, edge} <- edges, not Map.has_key?(partners, id), into: %{} do
       extra =
         case Map.fetch(undo_of, id) do
-          {:ok, undo} -> label_lines(Map.fetch!(edges, undo))
+          {:ok, undo} -> label_lines(Map.fetch!(edges, undo), max)
           :error -> []
         end
 
-      {id, label_lines(edge) ++ extra}
+      {id, label_lines(edge, max) ++ extra}
     end
   end
 
@@ -228,11 +240,11 @@ defmodule AshWorkflow.Charts.Svg do
         do: {class, colours[class][:stroke]}
       )
 
-  defp edge_svg(edge, route, lines, colours, text, routing, undone?) do
+  defp edge_svg(edge, route, lines, colours, text, {routing, direction}, undone?) do
     colour = if edge.kind == :transition, do: text, else: colours[edge.kind][:stroke]
 
     [
-      ~s(<path d="#{draw(route.points, routing)}" fill="none" stroke="#{colour}" stroke-width="#{stroke_width(edge.kind)}" ),
+      ~s(<path d="#{draw(route.points, routing, direction)}" fill="none" stroke="#{colour}" stroke-width="#{stroke_width(edge.kind)}" ),
       dash(edge.kind),
       if(undone?, do: ~s|marker-start="url(#undo-start)" |, else: ""),
       ~s|stroke-linejoin="round" marker-end="url(#arrow-#{edge.kind})"/>\n|,
@@ -241,35 +253,57 @@ defmodule AshWorkflow.Charts.Svg do
   end
 
   # The edge from the start circle to the initial step has no Graph.Edge.
-  defp start_edge_svg(route, text, routing),
+  defp start_edge_svg(route, text, {routing, direction}),
     do:
-      ~s|<path d="#{draw(route.points, routing)}" fill="none" stroke="#{text}" stroke-width="1.5" marker-end="url(#arrow-transition)"/>\n|
+      ~s|<path d="#{draw(route.points, routing, direction)}" fill="none" stroke="#{text}" stroke-width="1.5" marker-end="url(#arrow-transition)"/>\n|
 
-  defp draw(points, :spline), do: curve(points)
-  defp draw(points, :orthogonal), do: rounded(points)
-  defp draw(points, _polyline), do: path(points)
+  defp draw(points, :spline, direction), do: curve(points, direction)
+  defp draw(points, :orthogonal, _direction), do: rounded(points)
+  defp draw(points, _polyline, _direction), do: path(points)
 
   # A vertical segment stays straight: it is a lane through a band, beside a
   # label or a box. Any other segment is a gap crossing, drawn as a cubic
   # curve that leaves and arrives vertically. So the curve joins its lanes
   # without a kink, never swings wider than its two ends, and cannot bulge
   # into a label beside a lane.
-  defp curve([{x0, y0} | _] = points) do
-    segments =
-      points
-      |> Enum.zip(tl(points))
-      |> Enum.map(fn
-        {{x1, _y1}, {x2, y2}} when abs(x1 - x2) < 0.5 ->
-          " L#{num(x2)},#{num(y2)}"
+  defp curve([{x0, y0} | _] = points, :right) do
+    # The same curve, mirrored on the diagonal: lanes are horizontal.
+    [{y0, x0} | Enum.map(tl(points), fn {x, y} -> {y, x} end)]
+    |> curve_segments()
+    |> Enum.map(fn {kind, coords} -> {kind, Enum.map(coords, fn {a, b} -> {b, a} end)} end)
+    |> curve_path({x0, y0})
+  end
 
-        {{x1, y1}, {x2, y2}} ->
-          # Long vertical tangents make a deep S: the edge leaves and
-          # arrives straight, and swings in the middle of the gap.
-          reach = (y2 - y1) * 0.9
-          " C#{num(x1)},#{num(y1 + reach)} #{num(x2)},#{num(y2 - reach)} #{num(x2)},#{num(y2)}"
-      end)
+  defp curve([{x0, y0} | _] = points, _down) do
+    points |> curve_segments() |> curve_path({x0, y0})
+  end
 
-    ["M#{num(x0)},#{num(y0)}" | segments]
+  defp curve_segments(points) do
+    points
+    |> Enum.zip(tl(points))
+    |> Enum.map(fn
+      {{x1, _y1}, {x2, y2}} when abs(x1 - x2) < 0.5 ->
+        {:line, [{x2, y2}]}
+
+      {{x1, y1}, {x2, y2}} ->
+        # Long vertical tangents make a deep S: the edge leaves and arrives
+        # straight, and swings in the middle of the gap.
+        reach = (y2 - y1) * 0.9
+        {:cubic, [{x1, y1 + reach}, {x2, y2 - reach}, {x2, y2}]}
+    end)
+  end
+
+  defp curve_path(segments, {x0, y0}) do
+    [
+      "M#{num(x0)},#{num(y0)}"
+      | Enum.map(segments, fn
+          {:line, [{x, y}]} ->
+            " L#{num(x)},#{num(y)}"
+
+          {:cubic, coords} ->
+            " C" <> Enum.map_join(coords, " ", fn {x, y} -> "#{num(x)},#{num(y)}" end)
+        end)
+    ]
   end
 
   # Straight segments with each corner cut by a quadratic curve of radius 6,
