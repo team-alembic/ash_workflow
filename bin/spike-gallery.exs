@@ -87,9 +87,9 @@ rows =
   end
 
 File.write!(Path.join(dir, "index.html"), """
-<!doctype html><meta charset="utf-8"><title>Layout gallery: #{label}</title>
+<!doctype html><meta charset="utf-8"><title>Layout gallery: #{label}, labels #{labels}</title>
 <body style="font-family:sans-serif">
-<h1>Layout gallery: #{label}</h1>
+<h1>Layout gallery: #{label}, labels #{labels}</h1>
 #{rows}
 </body>
 """)
