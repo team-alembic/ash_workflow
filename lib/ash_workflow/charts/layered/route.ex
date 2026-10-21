@@ -23,8 +23,8 @@ defmodule AshWorkflow.Charts.Layered.Route do
 
   @loop 24
   @track_gap 4
-  @port_spread 0.6
   @label_inset 6
+  @stub 12
 
   def run(graph, coords, reversed, loops, opts) do
     nodes = for {id, %{dummy: nil}} <- graph.nodes, into: %{}, do: {id, Map.fetch!(coords, id)}
@@ -147,33 +147,60 @@ defmodule AshWorkflow.Charts.Layered.Route do
   end
 
   # %{{:out | :in, edge_id} => x offset from the node's centre}.
+  #
+  # A port sits where its edge's lane meets the box side, so an edge that
+  # comes straight down its lane enters with no sideways step. It moves only
+  # as far as it must: inside the side, 10 px from each corner, and 16 px
+  # from its neighbours, or closer when the side is too short for that.
   defp ports(graph, coords) do
+    line = fn id ->
+      {x, _y, w, _h} = Map.fetch!(coords, id)
+      if graph.nodes[id].dummy == :label, do: x - w / 2, else: x
+    end
+
     out_side =
       Enum.group_by(graph.chains, fn {_id, chain} -> hd(chain) end, fn {id, chain} ->
-        {id, Enum.at(chain, 1)}
+        {id, line.(Enum.at(chain, 1))}
       end)
 
     in_side =
       Enum.group_by(graph.chains, fn {_id, chain} -> List.last(chain) end, fn {id, chain} ->
-        {id, Enum.at(chain, -2)}
+        {id, line.(Enum.at(chain, -2))}
       end)
 
     Map.new(spread(out_side, :out, coords) ++ spread(in_side, :in, coords))
   end
 
+  @port_inset 10
+  @port_gap 16
+
   defp spread(sides, kind, coords) do
     Enum.flat_map(sides, fn {node, ends} ->
-      {_x, _y, w, _h} = Map.fetch!(coords, node)
-      sorted = Enum.sort_by(ends, fn {id, other} -> {elem(Map.fetch!(coords, other), 0), id} end)
+      {x, _y, w, _h} = Map.fetch!(coords, node)
+      inset = min(@port_inset, w / 4)
+      {low, high} = {x - w / 2 + inset, x + w / 2 - inset}
+      sorted = Enum.sort_by(ends, fn {id, lane} -> {lane, id} end)
       k = length(sorted)
-      # The middle 60% of the side, widened up to 90% so ports keep 16 px
-      # apart: room for an undo line beside each one.
-      spread = ((k + 1) * 16 / w) |> max(@port_spread) |> min(0.9)
+      gap = if k > 1, do: min(@port_gap, (high - low) / (k - 1)), else: 0
+      wanted = Enum.map(sorted, fn {_id, lane} -> lane |> max(low) |> min(high) end)
+
+      left =
+        wanted
+        |> Enum.drop(1)
+        |> Enum.reduce([hd(wanted)], fn d, [prev | _] = acc -> [max(d, prev + gap) | acc] end)
+        |> Enum.reverse()
+
+      right =
+        wanted
+        |> Enum.reverse()
+        |> then(fn [first | rest] ->
+          Enum.reduce(rest, [first], fn d, [prev | _] = acc -> [min(d, prev - gap) | acc] end)
+        end)
 
       sorted
-      |> Enum.with_index()
-      |> Enum.map(fn {{id, _other}, i} ->
-        {{kind, id}, ((i + 1) / (k + 1) - 0.5) * w * spread}
+      |> Enum.zip(Enum.zip(left, right))
+      |> Enum.map(fn {{id, _lane}, {l, r}} ->
+        {{kind, id}, ((l + r) / 2) |> max(low) |> min(high) |> Kernel.-(x)}
       end)
     end)
   end
@@ -194,13 +221,15 @@ defmodule AshWorkflow.Charts.Layered.Route do
         cond do
           # A box shorter than its rank leaves and enters vertically, so the
           # edge does not cut across a taller neighbour in the same band.
+          # Each end has a straight stub of at least 12 px, so its arrow
+          # (or undo marker) sits on a straight segment.
           i == 0 ->
             px = x + Map.get(ports, {:out, edge_id}, 0)
-            {{rank, {px, y + h / 2}, {px, bottom}}, label}
+            {{rank, {px, y + h / 2}, {px, max(bottom, y + h / 2 + @stub)}}, label}
 
           i == last ->
             px = x + Map.get(ports, {:in, edge_id}, 0)
-            {{rank, {px, top}, {px, y - h / 2}}, label}
+            {{rank, {px, min(top, y - h / 2 - @stub)}, {px, y - h / 2}}, label}
 
           graph.nodes[id].dummy == :label ->
             line = x - w / 2
@@ -261,8 +290,10 @@ defmodule AshWorkflow.Charts.Layered.Route do
     |> Enum.flat_map(fn {rank, group} ->
       levels = levels(group)
       k = (levels |> Map.values() |> Enum.max(fn -> 0 end)) + 1
-      {_top, gap_top} = Map.fetch!(bands, rank)
-      {gap_bottom, _bottom} = Map.fetch!(bands, rank + 1)
+      # Tracks stay clear of the stubs at both ends of the gap.
+      {_top, band_bottom} = Map.fetch!(bands, rank)
+      {band_top, _bottom} = Map.fetch!(bands, rank + 1)
+      {gap_top, gap_bottom} = {band_bottom + @stub, band_top - @stub}
 
       Enum.map(levels, fn {key, level} ->
         {key, gap_top + (gap_bottom - gap_top) * (level + 1) / (k + 1)}

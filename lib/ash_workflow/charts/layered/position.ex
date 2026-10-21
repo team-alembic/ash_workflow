@@ -37,8 +37,12 @@ defmodule AshWorkflow.Charts.Layered.Position do
         moves = Map.get(travel, rank, [])
         sideways = Enum.count(moves, &(&1 >= 0.5))
 
+        # Orthogonal tracks keep 12 px apart, and clear of the 12 px stubs
+        # at both ends of the gap.
+        tracks = if sideways > 0, do: (sideways + 1) * 12 + 24, else: 0
+
         gap =
-          [opts[:rank_sep] / 2, Enum.max(moves, fn -> 0 end) / 4, (sideways + 1) * 8]
+          [opts[:rank_sep] / 2, Enum.max(moves, fn -> 0 end) / 4, tracks]
           |> Enum.max()
           |> min(opts[:rank_sep] * 2)
 

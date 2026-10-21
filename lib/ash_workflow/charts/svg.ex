@@ -31,12 +31,13 @@ defmodule AshWorkflow.Charts.Svg do
   # Layered.layout/3, so a gallery run can try stage options.
   def render_graph(%Graph{} = graph, opts) do
     opts =
-      Keyword.validate!(opts, theme: :light, direction: :down, edges: :polyline, layout: [])
+      Keyword.validate!(opts, theme: :light, direction: :down, edges: :orthogonal, layout: [])
 
     theme = opts[:theme]
     layout_opts = [direction: opts[:direction], routing: routing(opts[:edges])] ++ opts[:layout]
     {result, edges} = layout(graph, layout_opts)
     labels = label_text(edges)
+    undone = edges |> partners() |> Map.values() |> MapSet.new()
     colours = Palette.colours(theme)
     text = Palette.edge_label_colour(theme)
 
@@ -44,11 +45,20 @@ defmodule AshWorkflow.Charts.Svg do
       ~s(<svg xmlns="http://www.w3.org/2000/svg" width="#{num(result.width)}" height="#{num(result.height)}" ),
       ~s(viewBox="0 0 #{num(result.width)} #{num(result.height)}" font-family="#{TextWidth.font_family()}" font-size="#{@font_size}">\n),
       ~s(<rect width="100%" height="100%" fill="#{Palette.background(theme)}"/>\n),
-      markers(colours, text),
+      markers(colours, text, Palette.background(theme)),
       edges
       |> Enum.sort()
+      |> Enum.filter(fn {id, _edge} -> Map.has_key?(result.edges, id) end)
       |> Enum.map(fn {id, edge} ->
-        edge_svg(edge, result.edges[id], Map.get(labels, id, []), colours, text, result.routing)
+        edge_svg(
+          edge,
+          result.edges[id],
+          Map.get(labels, id, []),
+          colours,
+          text,
+          result.routing,
+          MapSet.member?(undone, id)
+        )
       end),
       start_edge_svg(result.edges[0], text, result.routing),
       graph.nodes |> Enum.map(&node_svg(&1, graph, result.nodes[&1.id], colours, text)),
@@ -104,8 +114,8 @@ defmodule AshWorkflow.Charts.Svg do
       [%Layered.Edge{id: 0, from: @start, to: initial.id}] ++
         for {id, edge} <- Enum.sort(edges) do
           case {Map.fetch(partners, id), Map.get(labels, id, [])} do
-            {{:ok, partner}, _lines} ->
-              %Layered.Edge{id: id, from: edge.from, to: edge.to, companion: partner}
+            {{:ok, _partner}, _lines} ->
+              []
 
             {:error, lines} ->
               width = lines |> Enum.map(&TextWidth.width(&1, @font_size)) |> Enum.max()
@@ -120,7 +130,9 @@ defmodule AshWorkflow.Charts.Svg do
           end
         end
 
-    {nodes, layered_edges, edges}
+    # An undo edge with a forward partner is not laid out or drawn: the
+    # partner's start marker and label show it.
+    {nodes, List.flatten(layered_edges), edges}
   end
 
   @doc false
@@ -168,11 +180,19 @@ defmodule AshWorkflow.Charts.Svg do
     end
   end
 
-  defp markers(colours, text) do
-    for {class, colour} <- [transition: text] ++ edge_strokes(colours) do
-      ~s(<marker id="arrow-#{class}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#{colour}"/></marker>\n)
-    end
-    |> then(&["<defs>\n", &1, "</defs>\n"])
+  # An arrowhead per edge colour, and a hollow arrowhead in the undo colour
+  # for the start of a move that undo can rewind: it points back into the
+  # step the record returns to.
+  defp markers(colours, text, background) do
+    arrows =
+      for {class, colour} <- [transition: text] ++ edge_strokes(colours) do
+        ~s(<marker id="arrow-#{class}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#{colour}"/></marker>\n)
+      end
+
+    undo =
+      ~s(<marker id="undo-start" viewBox="-1 -1 12 12" refX="9" refY="5" markerWidth="11" markerHeight="11" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#{background}" stroke="#{colours[:undo][:stroke]}" stroke-width="1.5"/></marker>\n)
+
+    ["<defs>\n", arrows, undo, "</defs>\n"]
   end
 
   defp edge_strokes(colours),
@@ -182,12 +202,13 @@ defmodule AshWorkflow.Charts.Svg do
         do: {class, colours[class][:stroke]}
       )
 
-  defp edge_svg(edge, route, lines, colours, text, routing) do
+  defp edge_svg(edge, route, lines, colours, text, routing, undone?) do
     colour = if edge.kind == :transition, do: text, else: colours[edge.kind][:stroke]
 
     [
       ~s(<path d="#{draw(route.points, routing)}" fill="none" stroke="#{colour}" stroke-width="#{stroke_width(edge.kind)}" ),
       dash(edge.kind),
+      if(undone?, do: ~s|marker-start="url(#undo-start)" |, else: ""),
       ~s|stroke-linejoin="round" marker-end="url(#arrow-#{edge.kind})"/>\n|,
       label_svg(route.label, lines, text)
     ]
@@ -216,8 +237,10 @@ defmodule AshWorkflow.Charts.Svg do
           " L#{num(x2)},#{num(y2)}"
 
         {{x1, y1}, {x2, y2}} ->
-          mid = (y1 + y2) / 2
-          " C#{num(x1)},#{num(mid)} #{num(x2)},#{num(mid)} #{num(x2)},#{num(y2)}"
+          # Long vertical tangents make a deep S: the edge leaves and
+          # arrives straight, and swings in the middle of the gap.
+          reach = (y2 - y1) * 0.9
+          " C#{num(x1)},#{num(y1 + reach)} #{num(x2)},#{num(y2 - reach)} #{num(x2)},#{num(y2)}"
       end)
 
     ["M#{num(x0)},#{num(y0)}" | segments]
