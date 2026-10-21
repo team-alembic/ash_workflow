@@ -97,6 +97,7 @@ defmodule AshWorkflow.Charts.Layered do
 
     graph = Normalize.run(nodes, dag, ranks)
     {layers, crossings} = Order.run(graph, opts[:sweeps], opts)
+    graph = label_sides(graph, layers)
     {layers, pairs} = pair_companions(layers, graph, lane_companions)
     opts = Keyword.put(opts, :pairs, pairs)
     coords = Position.run(graph, layers, opts)
@@ -116,6 +117,24 @@ defmodule AshWorkflow.Charts.Layered do
   end
 
   defp flip1({x, y}), do: {y, x}
+
+  # A label sits beside its edge's lane. In a row with several labels, the
+  # left half sit left of their lanes and the rest right, so the lanes of the
+  # row gather towards its middle, under the boxes they leave, and fewer
+  # edges swing out past a box's corner.
+  defp label_sides(graph, layers) do
+    Enum.reduce(layers, graph, fn {_rank, ids}, graph ->
+      labels = Enum.filter(ids, &(graph.nodes[&1].dummy == :label))
+      left = Enum.take(labels, div(length(labels), 2))
+
+      nodes =
+        Enum.reduce(left, graph.nodes, fn id, nodes ->
+          Map.update!(nodes, id, &Map.put(&1, :side, :left))
+        end)
+
+      %{graph | nodes: nodes}
+    end)
+  end
 
   # Each lane companion's dummy goes just left of its partner's dummy in the
   # same rank, and the pairs go to x placement, which keeps the two lanes one

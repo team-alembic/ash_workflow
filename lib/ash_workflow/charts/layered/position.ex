@@ -192,8 +192,12 @@ defmodule AshWorkflow.Charts.Layered.Position do
 
   # An edge passes a label dummy along its left side, not its centre (see
   # Route), so the pulls line that side up with the neighbours.
+  defp offset(%{dummy: :label, side: :left, width: w}), do: w / 2
   defp offset(%{dummy: :label, width: w}), do: -w / 2
   defp offset(_node), do: 0
+
+  @doc false
+  def line_offset(node), do: offset(node)
 
   # Half of each width, plus the mean of the two nodes' own separations. A
   # dummy that only carries an edge needs less room than a step or a label.

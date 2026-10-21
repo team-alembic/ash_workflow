@@ -19,6 +19,7 @@ defmodule AshWorkflow.Charts.Layered.Route do
   # runs from its own source to its own target. A self-loop is a loop on the
   # right of its node.
 
+  alias AshWorkflow.Charts.Layered.Position
   alias AshWorkflow.Charts.Layered.Result
 
   @loop 24
@@ -107,8 +108,8 @@ defmodule AshWorkflow.Charts.Layered.Route do
   # from its neighbours, or closer when the side is too short for that.
   defp ports(graph, coords) do
     line = fn id ->
-      {x, _y, w, _h} = Map.fetch!(coords, id)
-      if graph.nodes[id].dummy == :label, do: x - w / 2, else: x
+      {x, _y, _w, _h} = Map.fetch!(coords, id)
+      x + Position.line_offset(graph.nodes[id])
     end
 
     out_side =
@@ -188,8 +189,14 @@ defmodule AshWorkflow.Charts.Layered.Route do
             {{rank, {px, min(top, y - h / 2 - lower_stub)}, {px, y - h / 2}, :end}, label}
 
           graph.nodes[id].dummy == :label ->
-            line = x - w / 2
-            {{rank, {line, top}, {line, bottom}, :label}, {line + @label_inset, y, w, h}}
+            line = x + Position.line_offset(graph.nodes[id])
+
+            box_left =
+              if Map.get(graph.nodes[id], :side) == :left,
+                do: line - @label_inset - w,
+                else: line + @label_inset
+
+            {{rank, {line, top}, {line, bottom}, :label}, {box_left, y, w, h}}
 
           true ->
             {{rank, {x, top}, {x, bottom}, :edge}, label}
