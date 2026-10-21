@@ -12,7 +12,14 @@ label = List.first(System.argv(), "run")
 previous_file = Path.join(dir, "scorecard.json")
 previous = if File.exists?(previous_file), do: Jason.decode!(File.read!(previous_file)), else: %{}
 
-modes = for direction <- [:down, :right], edges <- [:curved, :orthogonal], do: {direction, edges}
+# SPIKE_DIRECTIONS="down" limits the run to some directions, for a checkpoint.
+directions =
+  case System.get_env("SPIKE_DIRECTIONS") do
+    nil -> [:down, :right]
+    text -> text |> String.split(",", trim: true) |> Enum.map(&String.to_atom/1)
+  end
+
+modes = for direction <- directions, edges <- [:curved, :orthogonal], do: {direction, edges}
 soft = [:crossings, :bends, :segments, :lateral, :area_ratio]
 
 # Stage options to try, for example SPIKE_LAYOUT="[ranker: :network_simplex]".
