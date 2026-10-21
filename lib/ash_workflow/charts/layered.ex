@@ -51,7 +51,8 @@ defmodule AshWorkflow.Charts.Layered do
     heuristic: :mean_index,
     tie: :current,
     placement: :network_simplex,
-    companions: :lanes
+    companions: :lanes,
+    labels: :beside
   ]
 
   @spec layout([Node.t()], [Edge.t()], keyword()) :: Result.t()
@@ -97,7 +98,7 @@ defmodule AshWorkflow.Charts.Layered do
 
     graph = Normalize.run(nodes, dag, ranks)
     {layers, crossings} = Order.run(graph, opts[:sweeps], opts)
-    graph = label_sides(graph, layers)
+    graph = label_sides(graph, layers, opts[:labels])
     {layers, pairs} = pair_companions(layers, graph, lane_companions)
     opts = Keyword.put(opts, :pairs, pairs)
     coords = Position.run(graph, layers, opts)
@@ -122,14 +123,21 @@ defmodule AshWorkflow.Charts.Layered do
   # left half sit left of their lanes and the rest right, so the lanes of the
   # row gather towards its middle, under the boxes they leave, and fewer
   # edges swing out past a box's corner.
-  defp label_sides(graph, layers) do
+  #
+  # With labels: :over, every label sits centred over its own lane, and the
+  # lane runs behind it.
+  defp label_sides(graph, layers, mode) do
     Enum.reduce(layers, graph, fn {_rank, ids}, graph ->
       labels = Enum.filter(ids, &(graph.nodes[&1].dummy == :label))
-      left = Enum.take(labels, div(length(labels), 2))
+
+      sides =
+        if mode == :over,
+          do: Enum.map(labels, &{&1, :over}),
+          else: Enum.map(Enum.take(labels, div(length(labels), 2)), &{&1, :left})
 
       nodes =
-        Enum.reduce(left, graph.nodes, fn id, nodes ->
-          Map.update!(nodes, id, &Map.put(&1, :side, :left))
+        Enum.reduce(sides, graph.nodes, fn {id, side}, nodes ->
+          Map.update!(nodes, id, &Map.put(&1, :side, side))
         end)
 
       %{graph | nodes: nodes}

@@ -55,7 +55,8 @@ defmodule AshWorkflow.Charts.Svg do
           colours,
           text,
           {result.routing, result.direction},
-          MapSet.member?(marked, id)
+          MapSet.member?(marked, id),
+          {opts[:labels], Palette.background(theme)}
         )
       end),
       start_edge_svg(result.edges[0], text, {result.routing, result.direction}),
@@ -79,14 +80,19 @@ defmodule AshWorkflow.Charts.Svg do
         direction: :down,
         edges: :orthogonal,
         undo: :marker,
+        labels: :beside,
         layout: []
       )
 
     companions = if opts[:undo] == :lanes, do: :lanes, else: :none
 
     layout_opts =
-      [direction: opts[:direction], routing: routing(opts[:edges]), companions: companions] ++
-        opts[:layout]
+      [
+        direction: opts[:direction],
+        routing: routing(opts[:edges]),
+        companions: companions,
+        labels: opts[:labels]
+      ] ++ opts[:layout]
 
     {result, edges} = layout(graph, layout_opts)
     dropped = if opts[:undo] == :marker, do: Map.keys(partners(edges)), else: []
@@ -282,7 +288,7 @@ defmodule AshWorkflow.Charts.Svg do
         do: {class, colours[class][:stroke]}
       )
 
-  defp edge_svg(edge, route, lines, colours, text, {routing, direction}, marked?) do
+  defp edge_svg(edge, route, lines, colours, text, {routing, direction}, marked?, labels) do
     colour = if edge.kind == :transition, do: text, else: colours[edge.kind][:stroke]
 
     [
@@ -290,7 +296,7 @@ defmodule AshWorkflow.Charts.Svg do
       dash(edge.kind),
       if(marked?, do: ~s|marker-start="url(#undo-start)" |, else: ""),
       ~s|stroke-linejoin="round" marker-end="url(#arrow-#{edge.kind})"/>\n|,
-      label_svg(route.label, lines, text)
+      label_svg(route.label, lines, text, labels)
     ]
   end
 
@@ -397,9 +403,22 @@ defmodule AshWorkflow.Charts.Svg do
   defp dash(:undo), do: ~s(stroke-dasharray="2 4" )
   defp dash(_kind), do: ""
 
-  defp label_svg(nil, _lines, _text), do: []
+  defp label_svg(nil, _lines, _text, _labels), do: []
 
-  defp label_svg({x, y, _w, h}, lines, text) do
+  # A label over its edge hides the line behind it with the background
+  # colour, and centres its text on the line.
+  defp label_svg({x, y, w, h}, lines, text, {:over, background}) do
+    top = y - h / 2 + @line_height / 2
+
+    [
+      ~s(<rect x="#{num(x)}" y="#{num(y - h / 2 - 2)}" width="#{num(w)}" height="#{num(h + 4)}" rx="4" fill="#{background}"/>\n)
+      | for {line, i} <- Enum.with_index(lines) do
+          ~s(<text x="#{num(x + w / 2)}" y="#{num(top + i * @line_height)}" text-anchor="middle" dominant-baseline="central" fill="#{text}">#{escape(line)}</text>\n)
+        end
+    ]
+  end
+
+  defp label_svg({x, y, _w, h}, lines, text, _labels) do
     top = y - h / 2 + @line_height / 2
 
     for {line, i} <- Enum.with_index(lines) do

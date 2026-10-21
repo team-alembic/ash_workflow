@@ -149,6 +149,34 @@ defmodule AshWorkflow.Charts.LayeredTest do
     end
   end
 
+  test "a label over its edge is centred on the edge; an orthogonal edge turns behind it" do
+    nodes = [box(:a, 40), box(:b, 160), box(:c, 40)]
+    edges = [edge(1, :a, :b), edge(2, :a, :c, 120, 20)]
+
+    for routing <- [:polyline, :orthogonal] do
+      result = Layered.layout(nodes, edges, labels: :over, routing: routing)
+      %{points: points, label: {lx, ly, w, h}} = result.edges[2]
+
+      inside? = fn {x, y} -> x > lx and x < lx + w and y > ly - h / 2 and y < ly + h / 2 end
+
+      # Where the edge crosses the label's middle height.
+      crossing =
+        points
+        |> Enum.chunk_every(2, 1, :discard)
+        |> Enum.find_value(fn [{x1, y1}, {x2, y2}] ->
+          if min(y1, y2) <= ly and ly <= max(y1, y2) and y1 != y2,
+            do: x1 + (x2 - x1) * (ly - y1) / (y2 - y1)
+        end)
+
+      assert inside?.({crossing, ly})
+      if routing == :polyline, do: assert(crossing == lx + w / 2)
+
+      # Every turn of the orthogonal edge is behind its label or in a gap.
+      turns = points |> Enum.drop(1) |> Enum.drop(-1)
+      assert routing == :polyline or Enum.all?(turns, &(inside?.(&1) or elem(&1, 1) != ly))
+    end
+  end
+
   test "a lane companion runs in its own lane, at least 24 px left of its partner" do
     nodes = [box(:a), box(:b)]
     forward = edge(1, :a, :b, 30, 16)

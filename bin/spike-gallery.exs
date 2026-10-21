@@ -6,7 +6,9 @@ alias AshWorkflow.Charts.Layered.Metrics
 alias AshWorkflow.Charts.Svg
 alias AshWorkflowTest.LayoutScenarios
 
-dir = "tmp/spike/gallery"
+# SPIKE_LABELS="over" draws each label over its own edge, in its own gallery.
+labels = System.get_env("SPIKE_LABELS", "beside") |> String.to_atom()
+dir = if labels == :beside, do: "tmp/spike/gallery", else: "tmp/spike/gallery-#{labels}"
 File.mkdir_p!(dir)
 label = List.first(System.argv(), "run")
 previous_file = Path.join(dir, "scorecard.json")
@@ -32,9 +34,9 @@ extra =
 cards =
   for {name, graph} <- LayoutScenarios.all(), {direction, edges} <- modes, into: %{} do
     key = "#{name}-#{direction}-#{edges}"
-    svg = Svg.render_graph(graph, direction: direction, edges: edges, layout: extra)
+    svg = Svg.render_graph(graph, direction: direction, edges: edges, labels: labels, layout: extra)
     File.write!(Path.join(dir, key <> ".svg"), svg)
-    {result, _edges, _opts} = Svg.drawn_layout(graph, direction: direction, edges: edges, layout: extra)
+    {result, _edges, _opts} = Svg.drawn_layout(graph, direction: direction, edges: edges, labels: labels, layout: extra)
     {key, Metrics.scorecard(result)}
   end
 

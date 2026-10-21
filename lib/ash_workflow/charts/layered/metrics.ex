@@ -21,7 +21,7 @@ defmodule AshWorkflow.Charts.Layered.Metrics do
           not Map.has_key?(e, :curve),
           not Map.has_key?(e, :arc),
           into: %{},
-          do: {id, e.points}
+          do: {id, {e.points, Map.get(e, :label)}}
 
     widths =
       Enum.map(result.nodes, fn {_id, {_x, _y, w, h}} ->
@@ -38,7 +38,7 @@ defmodule AshWorkflow.Charts.Layered.Metrics do
       flow: flow(result, lines),
       crossings: crossings(lines),
       bends: shaped |> Map.values() |> Enum.map(&bends/1) |> Enum.sum(),
-      segments: shaped |> Map.values() |> Enum.map(&(length(&1) - 1)) |> Enum.sum(),
+      segments: shaped |> Map.values() |> Enum.map(&visible_segments/1) |> Enum.sum(),
       arrow_room: arrow_room(result, lines),
       jogs: shaped |> Map.values() |> Enum.map(&jogs/1) |> Enum.sum(),
       lateral: Float.round(lateral(result.direction, lines) / mean_width, 2),
@@ -145,8 +145,13 @@ defmodule AshWorkflow.Charts.Layered.Metrics do
     edges
     |> Enum.flat_map(fn
       {_id, %{label: {lx, ly, w, h}, points: points}} ->
+        box = {lx, ly - h / 2, lx + w, ly + h / 2}
         samples = for x <- [lx, lx + w / 2, lx + w], y <- [ly - h / 2, ly, ly + h / 2], do: {x, y}
-        [samples |> Enum.map(&distance_to_line(&1, points)) |> Enum.min()]
+
+        # A label drawn over its own edge is at distance 0.
+        if Enum.any?(segments(points), fn {p, q} -> hits?(p, q, box) end),
+          do: [0.0],
+          else: [samples |> Enum.map(&distance_to_line(&1, points)) |> Enum.min()]
 
       _no_label ->
         []
@@ -241,20 +246,32 @@ defmodule AshWorkflow.Charts.Layered.Metrics do
 
   # Segments under 10 px: the small sideways steps the checkpoint 2 feedback
   # called avoidable deviations.
-  defp jogs(points) do
+  defp jogs({points, label}) do
     points
     |> segments()
+    |> Enum.reject(&hidden?(&1, label))
     |> Enum.count(fn {{x1, y1}, {x2, y2}} -> :math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2) < 10 end)
   end
 
-  # A turn is an inner point where the route changes direction.
-  defp bends(points) do
+  defp visible_segments({points, label}),
+    do: points |> segments() |> Enum.reject(&hidden?(&1, label)) |> length()
+
+  # A turn is an inner point where the route changes direction. A turn behind
+  # the edge's own label, drawn over the edge, is not seen and does not count.
+  defp bends({points, label}) do
     points
     |> Enum.chunk_every(3, 1, :discard)
-    |> Enum.count(fn [{ax, ay}, {bx, by}, {cx, cy}] ->
-      abs((bx - ax) * (cy - by) - (by - ay) * (cx - bx)) > 1.0e-6
+    |> Enum.count(fn [{ax, ay}, {bx, by} = b, {cx, cy}] ->
+      abs((bx - ax) * (cy - by) - (by - ay) * (cx - bx)) > 1.0e-6 and not inside?(b, label)
     end)
   end
+
+  defp hidden?({a, b}, label), do: inside?(a, label) and inside?(b, label)
+
+  defp inside?(_point, nil), do: false
+
+  defp inside?({x, y}, {lx, ly, w, h}),
+    do: x > lx and x < lx + w and y > ly - h / 2 and y < ly + h / 2
 
   defp lateral(direction, lines) do
     side = if direction == :right, do: 1, else: 0

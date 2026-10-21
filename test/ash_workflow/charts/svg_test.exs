@@ -34,6 +34,15 @@ defmodule AshWorkflow.Charts.SvgTest do
     end
   end
 
+  test "labels: :over draws each label on a background box, centred on its edge" do
+    svg = Charts.render(BasicWorkflow.DocumentApproval, Svg, labels: :over)
+
+    assert well_formed?(svg)
+
+    assert svg =~
+             ~r/<rect [^>]*rx="4" fill="#FFFFFF"\/>\n<text [^>]*text-anchor="middle"[^>]*>approve</
+  end
+
   test "the same workflow gives the same bytes" do
     assert Charts.render(BasicWorkflow.Incident, Svg) ==
              Charts.render(BasicWorkflow.Incident, Svg)
