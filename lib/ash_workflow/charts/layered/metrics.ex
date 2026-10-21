@@ -64,8 +64,11 @@ defmodule AshWorkflow.Charts.Layered.Metrics do
       Enum.map(result.nodes, fn {id, {x, y, w, h}} ->
         {{:node, id}, x - w / 2, y - h / 2, w, h}
       end) ++
-        for {id, %{label: {lx, ly, w, h}}} <- result.edges,
-            do: {{:label, id}, lx, ly - h / 2, w, h}
+        for(
+          {id, %{label: {lx, ly, w, h}}} <- result.edges,
+          do: {{:label, id}, lx, ly - h / 2, w, h}
+        ) ++
+        for {id, %{tag: {lx, ly, w, h}}} <- result.edges, do: {{:tag, id}, lx, ly - h / 2, w, h}
 
     for {a, ax, ay, aw, ah} <- boxes,
         {b, bx, by, bw, bh} <- boxes,
@@ -103,9 +106,17 @@ defmodule AshWorkflow.Charts.Layered.Metrics do
   # A segment crosses another edge's label box, shrunk by 1 px. The checkpoint
   # 1 feedback named this as one of the two things that made charts rubbish.
   defp edge_through_label(edges) do
+    # An undo tag (see Svg) counts as a label that no edge may cross, not
+    # even its own, unless the tag sits over its own line.
     labels =
-      for {id, %{label: {lx, ly, w, h}}} <- edges,
-          do: {id, {lx + 1, ly - h / 2 + 1, lx + w - 1, ly + h / 2 - 1}}
+      for(
+        {id, %{label: {lx, ly, w, h}}} <- edges,
+        do: {id, {lx + 1, ly - h / 2 + 1, lx + w - 1, ly + h / 2 - 1}}
+      ) ++
+        for {id, %{tag: {lx, ly, w, h}} = e} <- edges,
+            do:
+              {if(e[:tag_over], do: id, else: {:tag, id}),
+               {lx + 1, ly - h / 2 + 1, lx + w - 1, ly + h / 2 - 1}}
 
     # One count per edge and label pair, however many segments cross.
     for {id, %{points: points}} <- edges,
@@ -121,6 +132,9 @@ defmodule AshWorkflow.Charts.Layered.Metrics do
     do:
       x >= l - @end_radius and x <= r + @end_radius and y >= t - @end_radius and
         y <= b + @end_radius
+
+  @doc false
+  def enters?(points, box), do: Enum.any?(segments(points), fn {p, q} -> hits?(p, q, box) end)
 
   # Liang–Barsky clipping: does the segment enter the box?
   defp hits?({x1, y1}, {x2, y2}, {left, top, right, bottom}) do

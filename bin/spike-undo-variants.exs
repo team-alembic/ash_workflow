@@ -1,6 +1,8 @@
 # Run: MIX_ENV=test direnv exec .. mix run bin/spike-undo-variants.exs [label]
-# Draws the workflows that have undo in each way undo can be shown, with
-# labels beside and over their edges, side by side, so a reader can choose.
+# Draws the workflows that have undo in each way undo can be shown (marker
+# or lanes, its text on the label or in a short tag), side by side, so a
+# reader can choose. SPIKE_LABELS="beside" draws labels beside their edges;
+# the default is over.
 alias AshWorkflow.Charts
 alias AshWorkflow.Charts.Layered.Metrics
 alias AshWorkflow.Charts.Svg
@@ -20,22 +22,23 @@ undos = [
   lanes: "a dotted line in its own lane"
 ]
 
-variants = for {undo, text} <- undos, labels <- [:beside, :over], do: {undo, labels, text}
+labels = System.get_env("SPIKE_LABELS", "over") |> String.to_atom()
+variants = for {undo, text} <- undos, undo_text <- [:label, :tag], do: {undo, undo_text, text}
 
-modes = [{:down, :orthogonal}, {:down, :curved}, {:right, :orthogonal}, {:right, :curved}]
+modes = for direction <- [:down, :right], edges <- [:orthogonal, :curved, :loopy], do: {direction, edges}
 
 sections =
   for {name, graph} <- scenarios, {direction, edges} <- modes do
     cells =
-      for {undo, labels, text} <- variants do
-        file = "#{name}-#{direction}-#{edges}-#{undo}-#{labels}.svg"
-        opts = [direction: direction, edges: edges, undo: undo, labels: labels]
+      for {undo, undo_text, text} <- variants do
+        file = "#{name}-#{direction}-#{edges}-#{undo}-#{undo_text}-#{labels}.svg"
+        opts = [direction: direction, edges: edges, undo: undo, undo_text: undo_text, labels: labels]
         File.write!(Path.join(dir, file), Svg.render_graph(graph, opts))
         {result, _edges, _opts} = Svg.drawn_layout(graph, opts)
         failures = result |> Metrics.scorecard() |> Metrics.hard_failures()
         note = if failures == [], do: "", else: " ⚠ " <> Enum.join(failures, ", ")
 
-        ~s(<td style="vertical-align:top;padding:8px"><div><b>undo #{undo}, labels #{labels}</b>: #{text}#{note}</div>) <>
+        ~s(<td style="vertical-align:top;padding:8px"><div><b>undo #{undo}, text on #{undo_text}</b>: #{text}#{note}</div>) <>
           ~s(<img src="#{file}?v=#{label}" style="max-width:360px"></td>)
       end
 
@@ -43,9 +46,9 @@ sections =
   end
 
 File.write!(Path.join(dir, "index.html"), """
-<!doctype html><meta charset="utf-8"><title>Undo and labels</title>
+<!doctype html><meta charset="utf-8"><title>Undo variants</title>
 <body style="font-family:sans-serif">
-<h1>Undo (marker, lanes) and labels (beside, over) (#{label})</h1>
+<h1>Undo: marker or lanes, text on the label or in a tag; labels #{labels} (#{label})</h1>
 #{sections}
 </body>
 """)

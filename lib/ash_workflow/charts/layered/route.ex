@@ -46,6 +46,7 @@ defmodule AshWorkflow.Charts.Layered.Route do
       case Keyword.get(opts, :routing, :polyline) do
         :orthogonal -> orthogonal(routes, bands)
         :spline -> splines(routes, nodes)
+        :loopy -> loopy(routes, nodes)
         _straight -> Map.new(routes, fn {id, route} -> {id, straight(route)} end)
       end
 
@@ -285,27 +286,116 @@ defmodule AshWorkflow.Charts.Layered.Route do
   # A curve that swings through a lane can clip a box or a label next to it.
   # Such an edge keeps all its lanes straight and curves only in the gaps.
   defp splines(routes, nodes) do
-    labels =
-      for {id, %{label: {lx, ly, w, h}}} <- routes, do: {id, {lx, ly - h / 2, lx + w, ly + h / 2}}
-
-    boxes =
-      Enum.map(nodes, fn {_id, {x, y, w, h}} -> {x - w / 2, y - h / 2, x + w / 2, y + h / 2} end)
+    obstacles = obstacles(routes, nodes)
 
     Map.new(routes, fn {id, route} ->
       swung = spline(route)
-      others = for {other, box} <- labels, other != id, do: box
-
-      clear? =
-        swung.points
-        |> Enum.drop(1)
-        |> Enum.drop(-1)
-        |> Enum.all?(fn {x, y} ->
-          not Enum.any?(others ++ boxes, fn {l, t, r, b} ->
-            x > l + 1 and x < r - 1 and y > t + 1 and y < b - 1
-          end)
-        end)
-
+      clear? = clip(swung.points, Map.fetch!(obstacles, id)) == nil
       {id, if(clear?, do: swung, else: spline(route, :straight_lanes))}
+    end)
+  end
+
+  # A loopy edge is one long curve with as few anchors as it can have, as
+  # spline fitting in a corridor of boxes does (Dobkin et al. 1997; Gansner
+  # et al. 1993, section 5). It starts with its stubs and its label's lane
+  # (one point of it when the label is beside the edge), and while the curve
+  # clips a box or a label, it takes the lane nearest the first clip as one
+  # more anchor. If every lane is an anchor and it still clips, it tries
+  # again with its label lane kept straight, and then falls back to the
+  # :spline curve with straight lanes.
+  defp loopy(routes, nodes) do
+    obstacles = obstacles(routes, nodes)
+
+    Map.new(routes, fn {id, route} ->
+      {id, fit(route, Map.fetch!(obstacles, id), [], :through)}
+    end)
+  end
+
+  defp fit(%{lanes: lanes} = route, obstacles, anchors, label) do
+    indexed = Enum.with_index(lanes)
+
+    optional =
+      Enum.filter(indexed, fn {{_r, _t, _b, kind}, i} -> kind == :edge and i not in anchors end)
+
+    kept =
+      for {{rank, top, bottom, kind}, i} <- indexed,
+          kind != :edge or i in anchors,
+          # A lane beside a label, as an :edge lane, is one point the curve
+          # swings through. A label drawn over its edge keeps its lane
+          # straight, so the edge enters and leaves the label on one line.
+          do: {rank, top, bottom, if(kind == :label and label == :through, do: :edge, else: kind)}
+
+    curve = spline(%{route | lanes: kept})
+
+    case {clip(curve.points, obstacles), optional, label} do
+      {nil, _, _} ->
+        curve
+
+      {_y, [], :through} ->
+        fit(route, obstacles, [], :straight)
+
+      {_y, [], :straight} ->
+        spline(route, :straight_lanes)
+
+      {y, _, _} ->
+        {_lane, i} =
+          Enum.min_by(optional, fn {{_r, {_x, top}, {_x2, bottom}, _k}, _i} ->
+            abs((top + bottom) / 2 - y)
+          end)
+
+        fit(route, obstacles, [i | anchors], label)
+    end
+  end
+
+  # The y where a sampled curve first enters a box or label, shrunk by 1 px,
+  # or nil. Segments between samples are tested, so a thin corner counts.
+  defp clip(points, obstacles) do
+    points
+    |> Enum.zip(tl(points))
+    |> Enum.find_value(fn {{_x1, y1} = p, {_x2, y2} = q} ->
+      if Enum.any?(obstacles, fn {l, t, r, b} -> enters?(p, q, {l + 1, t + 1, r - 1, b - 1}) end),
+        do: (y1 + y2) / 2
+    end)
+  end
+
+  # Liang–Barsky clipping: does the segment pass through the box's inside?
+  defp enters?({x1, y1}, {x2, y2}, {left, top, right, bottom}) do
+    {dx, dy} = {x2 - x1, y2 - y1}
+
+    [{-dx, x1 - left}, {dx, right - x1}, {-dy, y1 - top}, {dy, bottom - y1}]
+    |> Enum.reduce_while({0.0, 1.0}, fn {p, q}, {t0, t1} ->
+      cond do
+        p == 0 and q < 0 -> {:halt, nil}
+        p == 0 -> {:cont, {t0, t1}}
+        p < 0 -> {:cont, {max(t0, q / p), t1}}
+        true -> {:cont, {t0, min(t1, q / p)}}
+      end
+    end)
+    |> case do
+      {t0, t1} -> t0 < t1
+      nil -> false
+    end
+  end
+
+  # %{edge id => boxes its curve must not enter}: every step, every other
+  # edge's label, and its own label when the label sits beside the edge. A
+  # label counts 4 px larger: a label drawn over an edge has a background box
+  # 2 px larger than its text, and a curve should not touch it.
+  @clearance 4
+
+  defp obstacles(routes, nodes) do
+    boxes =
+      Enum.map(nodes, fn {_id, {x, y, w, h}} -> {x - w / 2, y - h / 2, x + w / 2, y + h / 2} end)
+
+    labels =
+      for {id, %{label: {lx, ly, w, h}, lanes: lanes}} <- routes,
+          do:
+            {id,
+             {lx - @clearance, ly - h / 2 - @clearance, lx + w + @clearance,
+              ly + h / 2 + @clearance}, Enum.any?(lanes, &(elem(&1, 3) == :over))}
+
+    Map.new(routes, fn {id, _route} ->
+      {id, boxes ++ for({other, box, over?} <- labels, other != id or not over?, do: box)}
     end)
   end
 

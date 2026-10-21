@@ -2,6 +2,7 @@ defmodule AshWorkflow.Charts.SvgTest do
   use ExUnit.Case, async: true
 
   alias AshWorkflow.Charts
+  alias AshWorkflow.Charts.Layered
   alias AshWorkflow.Charts.Svg
 
   # :xmerl is not on the code path of this project, so load it here, and call
@@ -41,6 +42,26 @@ defmodule AshWorkflow.Charts.SvgTest do
 
     assert svg =~
              ~r/<rect [^>]*rx="4" fill="#FFFFFF"\/>\n<text [^>]*text-anchor="middle"[^>]*>approve</
+  end
+
+  test "undo_text: :tag puts the undo window in a short tag, not on the label" do
+    svg = Charts.render(BasicWorkflow.Incident, Svg, undo_text: :tag)
+
+    assert well_formed?(svg)
+    assert svg =~ ">↶ 1h</text>"
+    refute svg =~ "undo within 1 hour"
+    assert Charts.render(BasicWorkflow.Incident, Svg) =~ "undo within 1 hour"
+  end
+
+  test "edges: :loopy draws curves that pass the hard rules" do
+    graph = Charts.graph(BasicWorkflow.Incident)
+
+    for direction <- [:down, :right], labels <- [:beside, :over] do
+      opts = [edges: :loopy, direction: direction, labels: labels]
+      assert well_formed?(Svg.render_graph(graph, opts))
+      {result, _edges, _opts} = Svg.drawn_layout(graph, opts)
+      assert result |> Layered.Metrics.scorecard() |> Layered.Metrics.hard_failures() == []
+    end
   end
 
   test "the same workflow gives the same bytes" do

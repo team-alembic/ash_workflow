@@ -19,6 +19,8 @@ defmodule AshWorkflow.Charts.Svg do
   @pad_y 8
   @label_max 180
   @label_max_right 140
+  @tag_size 11
+  @tag_height 14
   @start :__start__
 
   @impl true
@@ -35,7 +37,7 @@ defmodule AshWorkflow.Charts.Svg do
     theme = opts[:theme]
     marked = if opts[:undo] == :marker, do: edges_with_undo(graph), else: MapSet.new()
 
-    labels = label_text(edges, label_max(opts[:direction]))
+    labels = label_text(edges, label_max(opts[:direction]), opts[:undo_text])
     colours = Palette.colours(theme)
     text = Palette.edge_label_colour(theme)
 
@@ -60,6 +62,16 @@ defmodule AshWorkflow.Charts.Svg do
         )
       end),
       start_edge_svg(result.edges[0], text, {result.routing, result.direction}),
+      for {_id, %{tag: {lx, ly, w, h}, tag_text: tag} = route} <- Enum.sort(result.edges) do
+        [
+          if(route.tag_over,
+            do:
+              ~s(<rect x="#{num(lx)}" y="#{num(ly - h / 2)}" width="#{num(w)}" height="#{num(h)}" rx="3" fill="#{Palette.background(theme)}"/>\n),
+            else: []
+          ),
+          ~s(<text x="#{num(lx + 2)}" y="#{num(ly)}" dominant-baseline="central" font-size="#{@tag_size}" fill="#{colours[:undo][:stroke]}">#{escape(tag)}</text>\n)
+        ]
+      end,
       graph.nodes |> Enum.map(&node_svg(&1, graph, result.nodes[&1.id], colours, text)),
       start_svg(result.nodes[@start], text),
       "</svg>\n"
@@ -81,6 +93,7 @@ defmodule AshWorkflow.Charts.Svg do
         edges: :orthogonal,
         undo: :marker,
         labels: :beside,
+        undo_text: :label,
         layout: []
       )
 
@@ -91,30 +104,143 @@ defmodule AshWorkflow.Charts.Svg do
         direction: opts[:direction],
         routing: routing(opts[:edges]),
         companions: companions,
-        labels: opts[:labels]
+        labels: opts[:labels],
+        undo_text: opts[:undo_text]
       ] ++ opts[:layout]
 
     {result, edges} = layout(graph, layout_opts)
     dropped = if opts[:undo] == :marker, do: Map.keys(partners(edges)), else: []
-    {%{result | edges: Map.drop(result.edges, dropped)}, edges, opts}
+    result = %{result | edges: Map.drop(result.edges, dropped)}
+    result = if opts[:undo_text] == :tag, do: place_tags(result, edges, opts), else: result
+    {result, edges, opts}
+  end
+
+  # undo_text: :tag puts the undo window as a short tag, such as "↶ 1h",
+  # beside the end the undo returns to: the hollow marker, or the arrowhead
+  # of the undo line. It takes the first free place beside the line, nearest
+  # the box.
+  defp place_tags(result, edges, opts) do
+    edges
+    |> partners()
+    |> Enum.sort()
+    |> Enum.reduce(result, fn {undo, partner}, result ->
+      with text when is_binary(text) <- short_window(Map.fetch!(edges, undo).label),
+           {id, [_p, _q | _] = points} <- tag_anchor(result, undo, partner, opts[:undo]) do
+        {box, over?} = tag_box(result, id, points, text, opts[:direction])
+
+        %{
+          result
+          | edges:
+              Map.update!(
+                result.edges,
+                id,
+                &Map.merge(&1, %{tag: box, tag_text: text, tag_over: over?})
+              )
+        }
+      else
+        _none -> result
+      end
+    end)
+  end
+
+  defp short_window(label) do
+    case Regex.run(~r/within (\d+) (\w)/u, label) do
+      [_, n, unit] -> "↶ #{n}#{unit}"
+      nil -> nil
+    end
+  end
+
+  defp tag_anchor(result, _undo, partner, :marker) do
+    case result.edges[partner] do
+      %{points: points} -> {partner, points}
+      nil -> nil
+    end
+  end
+
+  defp tag_anchor(result, undo, _partner, :lanes) do
+    case result.edges[undo] do
+      %{points: points} -> {undo, Enum.reverse(points)}
+      nil -> nil
+    end
+  end
+
+  defp tag_box(result, id, [{px, py}, {qx, qy} | _] = points, text, direction) do
+    w = Float.ceil(TextWidth.width(text, @tag_size) + 4)
+    h = @tag_height
+
+    # Beside the line on either side, first just outside the box, then
+    # further along the edge, where crowded edges have spread apart.
+    corners =
+      for k <- 0..9, gap <- [4, 20], side <- [1, -1] do
+        along = 3 + k * (h + 2)
+
+        if direction == :right do
+          x = if qx >= px, do: px + along, else: px - along - w
+          {x, if(side > 0, do: py - gap - h, else: py + gap)}
+        else
+          y = if qy >= py, do: py + along, else: py - along - h
+          {if(side > 0, do: px + gap, else: px - gap - w), y}
+        end
+      end
+
+    # If no place beside it is free, the tag sits over its own line, as a
+    # label drawn over its edge does.
+    over =
+      for {{ax, ay}, {bx, by}} <- Enum.zip(points, tl(points)),
+          do: {(ax + bx) / 2 - w / 2, (ay + by) / 2 - h / 2}
+
+    case Enum.find(corners, &tag_free?(result, &1, w, h, nil)) do
+      {left, top} ->
+        {{left, top + h / 2, w, h}, false}
+
+      nil ->
+        {left, top} = Enum.find(over, hd(corners), &tag_free?(result, &1, w, h, id))
+        {{left, top + h / 2, w, h}, true}
+    end
+  end
+
+  # Free of every step, label, tag and edge line, except the line of edge
+  # `own` when the tag sits over it.
+  defp tag_free?(result, {left, top}, w, h, own) do
+    box = {left, top, left + w, top + h}
+
+    boxes =
+      Enum.map(result.nodes, fn {_id, {x, y, bw, bh}} -> {x - bw / 2, y - bh / 2, bw, bh} end) ++
+        for({_id, %{label: {lx, ly, lw, lh}}} <- result.edges, do: {lx, ly - lh / 2, lw, lh}) ++
+        for {_id, %{tag: {lx, ly, lw, lh}}} <- result.edges, do: {lx, ly - lh / 2, lw, lh}
+
+    not Enum.any?(result.edges, fn {id, %{points: points}} ->
+      id != own and
+        Layered.Metrics.enters?(points, box)
+    end) and
+      not Enum.any?(boxes, fn {bx, by, bw, bh} ->
+        bx < left + w and left < bx + bw and by < top + h and top < by + bh
+      end)
   end
 
   defp routing(:polyline), do: :polyline
   defp routing(:curved), do: :spline
+  defp routing(:loopy), do: :loopy
   defp routing(:orthogonal), do: :orthogonal
 
   @doc false
   # The layout and the graph edges by layout edge id. `opts` go to
   # Layered.layout/3.
   def layout(%Graph{} = graph, opts \\ []) do
-    {nodes, layered_edges, edges} = layered_input(graph, Keyword.get(opts, :direction, :down))
+    {nodes, layered_edges, edges} =
+      layered_input(
+        graph,
+        Keyword.get(opts, :direction, :down),
+        Keyword.get(opts, :undo_text, :label)
+      )
+
     {Layered.layout(nodes, layered_edges, opts), edges}
   end
 
   @doc false
   # The engine's input: the boxes for the start circle, the steps and the edge
   # labels, and the graph edges by layout edge id.
-  def layered_input(%Graph{} = graph, direction \\ :down) do
+  def layered_input(%Graph{} = graph, direction \\ :down, undo_text \\ :label) do
     initial = Enum.find(graph.nodes, & &1.initial?)
 
     nodes =
@@ -148,7 +274,7 @@ defmodule AshWorkflow.Charts.Svg do
 
     edges = graph.edges |> Enum.with_index(1) |> Map.new(fn {edge, i} -> {i, edge} end)
     partners = partners(edges)
-    labels = label_text(edges, label_max(direction))
+    labels = label_text(edges, label_max(direction), undo_text)
 
     layered_edges =
       [%Layered.Edge{id: 0, from: @start, to: initial.id}] ++
@@ -240,9 +366,14 @@ defmodule AshWorkflow.Charts.Svg do
 
   # %{edge id => label lines}. A forward edge with an undo partner gets the
   # undo's text as its last line; the undo edge itself has no label.
-  defp label_text(edges, max) do
+  # With undo_text: :tag the undo's text goes in a tag instead.
+  defp label_text(edges, max, undo_text) do
     partners = partners(edges)
-    undo_of = Map.new(partners, fn {undo, partner} -> {partner, undo} end)
+
+    undo_of =
+      if undo_text == :tag,
+        do: %{},
+        else: Map.new(partners, fn {undo, partner} -> {partner, undo} end)
 
     for {id, edge} <- edges, not Map.has_key?(partners, id), into: %{} do
       extra =
@@ -411,7 +542,7 @@ defmodule AshWorkflow.Charts.Svg do
     top = y - h / 2 + @line_height / 2
 
     [
-      ~s(<rect x="#{num(x)}" y="#{num(y - h / 2 - 2)}" width="#{num(w)}" height="#{num(h + 4)}" rx="4" fill="#{background}"/>\n)
+      ~s(<rect x="#{num(x)}" y="#{num(y - h / 2)}" width="#{num(w)}" height="#{num(h)}" rx="4" fill="#{background}"/>\n)
       | for {line, i} <- Enum.with_index(lines) do
           ~s(<text x="#{num(x + w / 2)}" y="#{num(top + i * @line_height)}" text-anchor="middle" dominant-baseline="central" fill="#{text}">#{escape(line)}</text>\n)
         end

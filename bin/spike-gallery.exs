@@ -21,7 +21,7 @@ directions =
     text -> text |> String.split(",", trim: true) |> Enum.map(&String.to_atom/1)
   end
 
-modes = for direction <- directions, edges <- [:curved, :orthogonal], do: {direction, edges}
+modes = for direction <- directions, edges <- [:curved, :loopy, :orthogonal], do: {direction, edges}
 soft = [:crossings, :bends, :jogs, :segments, :lateral, :area_ratio]
 
 # Stage options to try, for example SPIKE_LAYOUT="[ranker: :network_simplex]".
