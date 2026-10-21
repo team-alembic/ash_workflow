@@ -202,17 +202,22 @@ defmodule AshWorkflow.Charts.Svg do
   defp draw(points, :orthogonal), do: rounded(points)
   defp draw(points, _polyline), do: path(points)
 
-  # Catmull-Rom through the points, as cubic Bézier segments. The ends are
-  # repeated, so the curve starts and ends at the first and last points.
+  # A vertical segment stays straight: it is a lane through a band, beside a
+  # label or a box. Any other segment is a gap crossing, drawn as a cubic
+  # curve that leaves and arrives vertically. So the curve joins its lanes
+  # without a kink, never swings wider than its two ends, and cannot bulge
+  # into a label beside a lane.
   defp curve([{x0, y0} | _] = points) do
-    padded = [hd(points) | points] ++ [List.last(points)]
-
     segments =
-      padded
-      |> Enum.chunk_every(4, 1, :discard)
-      |> Enum.map(fn [{ax, ay}, {bx, by}, {cx, cy}, {dx, dy}] ->
-        " C#{num(bx + (cx - ax) / 6)},#{num(by + (cy - ay) / 6)} " <>
-          "#{num(cx - (dx - bx) / 6)},#{num(cy - (dy - by) / 6)} #{num(cx)},#{num(cy)}"
+      points
+      |> Enum.zip(tl(points))
+      |> Enum.map(fn
+        {{x1, _y1}, {x2, y2}} when abs(x1 - x2) < 0.5 ->
+          " L#{num(x2)},#{num(y2)}"
+
+        {{x1, y1}, {x2, y2}} ->
+          mid = (y1 + y2) / 2
+          " C#{num(x1)},#{num(mid)} #{num(x2)},#{num(mid)} #{num(x2)},#{num(y2)}"
       end)
 
     ["M#{num(x0)},#{num(y0)}" | segments]
