@@ -46,8 +46,10 @@ defmodule AshWorkflow.Charts.Svg do
       markers(colours, text),
       edges
       |> Enum.sort()
-      |> Enum.map(fn {id, edge} -> edge_svg(edge, result.edges[id], colours, text) end),
-      start_edge_svg(result.edges[0], text),
+      |> Enum.map(fn {id, edge} ->
+        edge_svg(edge, result.edges[id], colours, text, result.routing)
+      end),
+      start_edge_svg(result.edges[0], text, result.routing),
       graph.nodes |> Enum.map(&node_svg(&1, graph, result.nodes[&1.id], colours, text)),
       start_svg(result.nodes[@start], text),
       "</svg>\n"
@@ -138,11 +140,11 @@ defmodule AshWorkflow.Charts.Svg do
         do: {class, colours[class][:stroke]}
       )
 
-  defp edge_svg(edge, route, colours, text) do
+  defp edge_svg(edge, route, colours, text, routing) do
     colour = if edge.kind == :transition, do: text, else: colours[edge.kind][:stroke]
 
     [
-      ~s(<path d="#{path(route.points)}" fill="none" stroke="#{colour}" stroke-width="#{stroke_width(edge.kind)}" ),
+      ~s(<path d="#{draw(route.points, routing)}" fill="none" stroke="#{colour}" stroke-width="#{stroke_width(edge.kind)}" ),
       dash(edge.kind),
       ~s|stroke-linejoin="round" marker-end="url(#arrow-#{edge.kind})"/>\n|,
       label_svg(route.label, label_lines(edge), text)
@@ -150,9 +152,53 @@ defmodule AshWorkflow.Charts.Svg do
   end
 
   # The edge from the start circle to the initial step has no Graph.Edge.
-  defp start_edge_svg(route, text),
+  defp start_edge_svg(route, text, routing),
     do:
-      ~s|<path d="#{path(route.points)}" fill="none" stroke="#{text}" stroke-width="1.5" marker-end="url(#arrow-transition)"/>\n|
+      ~s|<path d="#{draw(route.points, routing)}" fill="none" stroke="#{text}" stroke-width="1.5" marker-end="url(#arrow-transition)"/>\n|
+
+  defp draw(points, :spline), do: curve(points)
+  defp draw(points, :orthogonal), do: rounded(points)
+  defp draw(points, _polyline), do: path(points)
+
+  # Catmull-Rom through the points, as cubic Bézier segments. The ends are
+  # repeated, so the curve starts and ends at the first and last points.
+  defp curve([{x0, y0} | _] = points) do
+    padded = [hd(points) | points] ++ [List.last(points)]
+
+    segments =
+      padded
+      |> Enum.chunk_every(4, 1, :discard)
+      |> Enum.map(fn [{ax, ay}, {bx, by}, {cx, cy}, {dx, dy}] ->
+        " C#{num(bx + (cx - ax) / 6)},#{num(by + (cy - ay) / 6)} " <>
+          "#{num(cx - (dx - bx) / 6)},#{num(cy - (dy - by) / 6)} #{num(cx)},#{num(cy)}"
+      end)
+
+    ["M#{num(x0)},#{num(y0)}" | segments]
+  end
+
+  # Straight segments with each corner cut by a quadratic curve of radius 6,
+  # or less on a short segment.
+  defp rounded([{x0, y0} | _] = points) do
+    corners =
+      points
+      |> Enum.chunk_every(3, 1, :discard)
+      |> Enum.map(fn [{px, py}, {qx, qy}, {rx, ry}] ->
+        l1 = :math.sqrt((qx - px) ** 2 + (qy - py) ** 2)
+        l2 = :math.sqrt((rx - qx) ** 2 + (ry - qy) ** 2)
+
+        if l1 == 0 or l2 == 0 do
+          " L#{num(qx)},#{num(qy)}"
+        else
+          r = Enum.min([6, l1 / 2, l2 / 2])
+          {ax, ay} = {qx - (qx - px) / l1 * r, qy - (qy - py) / l1 * r}
+          {bx, by} = {qx + (rx - qx) / l2 * r, qy + (ry - qy) / l2 * r}
+          " L#{num(ax)},#{num(ay)} Q#{num(qx)},#{num(qy)} #{num(bx)},#{num(by)}"
+        end
+      end)
+
+    {xn, yn} = List.last(points)
+    ["M#{num(x0)},#{num(y0)}", corners, " L#{num(xn)},#{num(yn)}"]
+  end
 
   defp path([{x0, y0} | rest]),
     do: ["M#{num(x0)},#{num(y0)}" | Enum.map(rest, fn {x, y} -> " L#{num(x)},#{num(y)}" end)]

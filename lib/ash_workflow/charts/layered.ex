@@ -48,7 +48,8 @@ defmodule AshWorkflow.Charts.Layered do
     ranker: :network_simplex,
     acyclic: :dfs,
     heuristic: :mean_index,
-    tie: :current
+    tie: :current,
+    placement: :network_simplex
   ]
 
   @spec layout([Node.t()], [Edge.t()], keyword()) :: Result.t()

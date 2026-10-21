@@ -30,6 +30,21 @@ defmodule AshWorkflow.Charts.Layered.Position do
   end
 
   defp xs(graph, layers, opts) do
+    raw =
+      case opts[:placement] do
+        :network_simplex -> simplex_xs(graph, layers, opts)
+        _pull -> pull_xs(graph, layers, opts)
+      end
+
+    left =
+      graph.nodes
+      |> Enum.map(fn {id, node} -> Map.fetch!(raw, id) - node.width / 2 end)
+      |> Enum.min()
+
+    Map.new(raw, fn {id, x} -> {id, x - left + opts[:margin]} end)
+  end
+
+  defp pull_xs(graph, layers, opts) do
     preds = Enum.group_by(graph.segments, &elem(&1, 1), &elem(&1, 0))
     succs = Enum.group_by(graph.segments, &elem(&1, 0), &elem(&1, 1))
     ranks = layers |> Map.keys() |> Enum.sort()
@@ -39,20 +54,49 @@ defmodule AshWorkflow.Charts.Layered.Position do
         place(Map.fetch!(layers, rank), xs, graph, opts, fn _id -> 0 end)
       end)
 
-    pulled =
-      Enum.reduce(1..opts[:passes]//1, packed, fn _pass, xs ->
-        xs
-        |> pull(ranks, layers, preds, graph, opts)
-        |> pull(Enum.reverse(ranks), layers, succs, graph, opts)
+    Enum.reduce(1..opts[:passes]//1, packed, fn _pass, xs ->
+      xs
+      |> pull(ranks, layers, preds, graph, opts)
+      |> pull(Enum.reverse(ranks), layers, succs, graph, opts)
+    end)
+  end
+
+  # Gansner et al. (1993), section 4.2, solved for the x of each edge's line:
+  # a node's centre, or a label dummy's left side. For each segment u -> v, a
+  # new node n gets edges n -> u and n -> v with minlen 0 and weight omega, so
+  # the optimum pays omega * |line(u) - line(v)|. omega is 1 between two
+  # steps, 2 next to a dummy and 8 between two dummies, which keeps long edges
+  # straight. Neighbours in a rank get an edge left -> right with the gap as
+  # minlen and weight 0. The solved ranks of this graph are the lines.
+  defp simplex_xs(graph, layers, opts) do
+    off = fn id -> offset(graph.nodes[id]) end
+
+    separations =
+      for {_rank, ids} <- Enum.sort(layers),
+          [a, b] <- Enum.chunk_every(ids, 2, 1, :discard),
+          do: {a, b, ceil(gap(graph.nodes[a], graph.nodes[b], opts) + off.(b) - off.(a)), 0}
+
+    {aux, pulls} =
+      graph.segments
+      |> Enum.with_index()
+      |> Enum.reduce({[], []}, fn {{u, v}, i}, {aux, pulls} ->
+        n = {:aux, i}
+        w = omega(graph.nodes[u], graph.nodes[v])
+        {[n | aux], [{n, v, 0, w}, {n, u, 0, w} | pulls]}
       end)
 
-    left =
-      graph.nodes
-      |> Enum.map(fn {id, node} -> Map.fetch!(pulled, id) - node.width / 2 end)
-      |> Enum.min()
+    ids = Enum.flat_map(Enum.sort(layers), &elem(&1, 1)) ++ Enum.reverse(aux)
 
-    Map.new(pulled, fn {id, x} -> {id, x - left + opts[:margin]} end)
+    ids
+    |> AshWorkflow.Charts.Layered.NetworkSimplex.run(separations ++ Enum.reverse(pulls))
+    |> Map.take(Map.keys(graph.nodes))
+    |> Map.new(fn {id, line} -> {id, line - off.(id)} end)
   end
+
+  defp omega(%{dummy: nil}, %{dummy: nil}), do: 1
+  defp omega(%{dummy: nil}, _), do: 2
+  defp omega(_, %{dummy: nil}), do: 2
+  defp omega(_, _), do: 8
 
   defp pull(xs, ranks, layers, neighbours, graph, opts) do
     Enum.reduce(ranks, xs, fn rank, xs ->
