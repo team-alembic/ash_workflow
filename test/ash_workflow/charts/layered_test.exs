@@ -1,0 +1,109 @@
+defmodule AshWorkflow.Charts.LayeredTest do
+  use ExUnit.Case, async: true
+
+  alias AshWorkflow.Charts.Layered
+  alias AshWorkflow.Charts.Layered.Acyclic
+  alias AshWorkflow.Charts.Layered.Edge
+  alias AshWorkflow.Charts.Layered.Node
+  alias AshWorkflow.Charts.Layered.Normalize
+  alias AshWorkflow.Charts.Layered.Order
+  alias AshWorkflow.Charts.Layered.Rank
+
+  defp box(id, w \\ 40, h \\ 20), do: %Node{id: id, width: w, height: h}
+
+  defp edge(id, from, to, lw \\ 0, lh \\ 0),
+    do: %Edge{id: id, from: from, to: to, label_width: lw, label_height: lh}
+
+  test "Acyclic reverses the edge that closes a cycle, and only that edge" do
+    nodes = [box(:a), box(:b), box(:c)]
+    edges = [edge(1, :a, :b), edge(2, :b, :c), edge(3, :c, :a)]
+
+    {dag, reversed} = Acyclic.run(nodes, edges)
+
+    assert reversed == MapSet.new([3])
+    assert Enum.find(dag, &(&1.id == 3)) |> Map.take([:from, :to]) == %{from: :a, to: :c}
+  end
+
+  test "Rank puts each node two ranks below its furthest predecessor" do
+    nodes = [box(:a), box(:b), box(:c)]
+    edges = [edge(1, :a, :b), edge(2, :b, :c), edge(3, :a, :c)]
+
+    assert Rank.run(nodes, edges) == %{a: 0, b: 2, c: 4}
+  end
+
+  test "Normalize puts one dummy on each rank an edge crosses, and the label on the middle one" do
+    nodes = [box(:a), box(:b)]
+    edges = [edge(1, :a, :b, 30, 16)]
+    graph = Normalize.run(nodes, edges, %{a: 0, b: 4})
+
+    assert graph.chains[1] == [:a, {:dummy, 1, 1}, {:dummy, 1, 2}, {:dummy, 1, 3}, :b]
+    assert graph.nodes[{:dummy, 1, 2}] == %{width: 30, height: 16, dummy: :label}
+    assert graph.nodes[{:dummy, 1, 1}] == %{width: 0, height: 0, dummy: :edge}
+  end
+
+  test "Order removes the crossing of two edges drawn in the wrong order" do
+    # The depth-first start visits c and d first, so rank 2 is [c, d] while
+    # rank 0 is [a, b]: a -> d and b -> c cross once.
+    nodes = [box(:c), box(:d), box(:a), box(:b)]
+    edges = [edge(1, :a, :d), edge(2, :b, :c)]
+    ranks = %{a: 0, b: 0, c: 2, d: 2}
+    graph = Normalize.run(nodes, edges, ranks)
+
+    assert {_layers, 1} = Order.run(graph, 0)
+    assert {_layers, 0} = Order.run(graph, 4)
+  end
+
+  test "layout gives a chain one column, top to bottom, with no overlap" do
+    nodes = [box(:a), box(:b), box(:c)]
+    edges = [edge(1, :a, :b, 30, 16), edge(2, :b, :c, 30, 16)]
+
+    result = Layered.layout(nodes, edges)
+
+    {ax, ay, _, _} = result.nodes[:a]
+    {bx, by, _, _} = result.nodes[:b]
+    {cx, cy, _, _} = result.nodes[:c]
+    assert ay < by and by < cy
+    assert_in_delta ax, bx, 20
+    assert_in_delta bx, cx, 20
+    assert result.crossings == 0
+  end
+
+  test "a reversed edge still runs from its source to its target" do
+    nodes = [box(:a), box(:b)]
+    edges = [edge(1, :a, :b), edge(2, :b, :a)]
+
+    result = Layered.layout(nodes, edges)
+
+    {_, ay, _, ah} = result.nodes[:a]
+    {_, by, _, bh} = result.nodes[:b]
+    [{_, first_y} | _] = result.edges[2].points
+    {_, last_y} = List.last(result.edges[2].points)
+    assert first_y == by - bh / 2
+    assert last_y == ay + ah / 2
+  end
+
+  test "a self-loop gets a loop on the right of its node and a label" do
+    nodes = [box(:a)]
+    edges = [edge(1, :a, :a, 30, 16)]
+
+    result = Layered.layout(nodes, edges)
+
+    {ax, _, aw, _} = result.nodes[:a]
+    assert Enum.all?(result.edges[1].points, fn {x, _} -> x >= ax + aw / 2 end)
+    assert {_, _, 30, 16} = result.edges[1].label
+  end
+
+  test "the same input gives the same result" do
+    nodes = [box(:a), box(:b), box(:c), box(:d)]
+
+    edges = [
+      edge(1, :a, :b, 20, 10),
+      edge(2, :a, :c),
+      edge(3, :b, :d),
+      edge(4, :c, :d),
+      edge(5, :d, :a)
+    ]
+
+    assert Layered.layout(nodes, edges) == Layered.layout(nodes, edges)
+  end
+end
