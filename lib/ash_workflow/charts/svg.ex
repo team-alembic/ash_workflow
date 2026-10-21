@@ -17,7 +17,7 @@ defmodule AshWorkflow.Charts.Svg do
   @line_height 18
   @pad_x 12
   @pad_y 8
-  @label_max 260
+  @label_max 180
   @start :__start__
 
   @impl true
