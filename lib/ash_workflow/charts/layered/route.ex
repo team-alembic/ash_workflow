@@ -165,11 +165,14 @@ defmodule AshWorkflow.Charts.Layered.Route do
       {_x, _y, w, _h} = Map.fetch!(coords, node)
       sorted = Enum.sort_by(ends, fn {id, other} -> {elem(Map.fetch!(coords, other), 0), id} end)
       k = length(sorted)
+      # The middle 60% of the side, widened up to 90% so ports keep 16 px
+      # apart: room for an undo line beside each one.
+      spread = ((k + 1) * 16 / w) |> max(@port_spread) |> min(0.9)
 
       sorted
       |> Enum.with_index()
       |> Enum.map(fn {{id, _other}, i} ->
-        {{kind, id}, ((i + 1) / (k + 1) - 0.5) * w * @port_spread}
+        {{kind, id}, ((i + 1) / (k + 1) - 0.5) * w * spread}
       end)
     end)
   end

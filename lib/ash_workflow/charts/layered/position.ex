@@ -8,8 +8,8 @@ defmodule AshWorkflow.Charts.Layered.Position do
   # pass, and both passes keep the gaps, so their mean keeps them too.
 
   def run(graph, layers, opts) do
-    ys = ys(graph, layers, opts)
     xs = xs(graph, layers, opts)
+    ys = ys(graph, layers, xs, opts)
 
     Map.new(graph.nodes, fn {id, node} ->
       {id,
@@ -17,13 +17,32 @@ defmodule AshWorkflow.Charts.Layered.Position do
     end)
   end
 
-  defp ys(graph, layers, opts) do
+  # The gap under a rank grows with the sideways travel of the edges that
+  # cross it, so no diagonal is flatter than 1 in 4, and with the number of
+  # edges that travel sideways, so orthogonal tracks keep 8 px apart. It is
+  # never under half of rank_sep and never over twice rank_sep.
+  defp ys(graph, layers, xs, opts) do
+    line = fn id -> Map.fetch!(xs, id) + offset(graph.nodes[id]) end
+
+    travel =
+      Enum.group_by(graph.segments, fn {u, _v} -> Map.fetch!(graph.ranks, u) end, fn {u, v} ->
+        abs(line.(u) - line.(v))
+      end)
+
     {ys, _bottom} =
       layers
       |> Enum.sort()
       |> Enum.reduce({%{}, opts[:margin]}, fn {rank, ids}, {ys, top} ->
         height = ids |> Enum.map(&graph.nodes[&1].height) |> Enum.max(fn -> 0 end)
-        {Map.put(ys, rank, top + height / 2), top + height + opts[:rank_sep] / 2}
+        moves = Map.get(travel, rank, [])
+        sideways = Enum.count(moves, &(&1 >= 0.5))
+
+        gap =
+          [opts[:rank_sep] / 2, Enum.max(moves, fn -> 0 end) / 4, (sideways + 1) * 8]
+          |> Enum.max()
+          |> min(opts[:rank_sep] * 2)
+
+        {Map.put(ys, rank, top + height / 2), top + height + gap}
       end)
 
     ys
