@@ -46,7 +46,7 @@ defmodule AshWorkflow.Charts.Layered.Route do
       case Keyword.get(opts, :routing, :polyline) do
         :orthogonal -> orthogonal(routes, bands)
         :spline -> splines(routes, nodes)
-        :loopy -> loopy(routes, nodes)
+        :loopy -> loopy(routes, nodes, graph.chains)
         _straight -> Map.new(routes, fn {id, route} -> {id, straight(route)} end)
       end
 
@@ -295,20 +295,193 @@ defmodule AshWorkflow.Charts.Layered.Route do
     end)
   end
 
-  # A loopy edge is one long curve with as few anchors as it can have, as
-  # spline fitting in a corridor of boxes does (Dobkin et al. 1997; Gansner
-  # et al. 1993, section 5). It starts with its stubs and its label's lane
-  # (one point of it when the label is beside the edge), and while the curve
-  # clips a box or a label, it takes the lane nearest the first clip as one
-  # more anchor. If every lane is an anchor and it still clips, it tries
-  # again with its label lane kept straight, and then falls back to the
-  # :spline curve with straight lanes.
-  defp loopy(routes, nodes) do
+  # A loopy edge is one smooth curve through as few points as it can have,
+  # as spline fitting in a corridor of boxes does (Dobkin et al. 1997;
+  # Gansner et al. 1993, section 5): its two ends and its label, joined by a
+  # Catmull-Rom curve, with no straight stubs or lanes. Each end sits where
+  # the line from its box's centre to the point it aims at (its label, or
+  # the other box) crosses the box side, spread from its neighbours, and
+  # heads along the line to that point, so edges fan out of a box and run
+  # in at a slant. While the curve clips a box or a label, it takes the lane
+  # nearest the first clip as one more point. If every lane is a point and
+  # it still clips, it falls back to fit/4: a curve that keeps its stubs
+  # straight.
+  defp loopy(routes, nodes, chains) do
     obstacles = obstacles(routes, nodes)
+    ports = loopy_ports(routes, nodes, chains)
 
     Map.new(routes, fn {id, route} ->
-      {id, fit(route, Map.fetch!(obstacles, id), [], :through)}
+      {{start, aim_out}, {finish, aim_in}} =
+        {Map.fetch!(ports, {:out, id}), Map.fetch!(ports, {:in, id})}
+
+      ends = {{start, heading(start, aim_out, :out)}, {finish, heading(finish, aim_in, :in)}}
+
+      obstacles = Map.fetch!(obstacles, id)
+      {id, swoop(route, obstacles, [], ends) || fit(route, obstacles, [], :through)}
     end)
+  end
+
+  # How far, as a share of the distance to the next point, an end of a
+  # loopy curve runs on its first heading; at least the 24 px an arrowhead
+  # needs.
+  @reach 0.6
+  # Loopy ends use the middle 80% of a box side.
+  @side_share 0.8
+
+  # %{{:out | :in, edge id} => {x, y}}: each end where the line from its
+  # box's centre towards the edge's first point (its label, or the other
+  # box) crosses the box's bottom (:out) or top (:in) side. The ends on one
+  # side are then spread 16 px apart, in their order.
+  defp loopy_ports(routes, nodes, chains) do
+    wanted =
+      Enum.flat_map(routes, fn {id, %{lanes: lanes}} ->
+        chain = Map.fetch!(chains, id)
+        {from, to} = {hd(chain), List.last(chain)}
+        {f, t} = {Map.fetch!(nodes, from), Map.fetch!(nodes, to)}
+
+        labels =
+          for {_r, {x, top}, {_x, bottom}, kind} <- lanes,
+              kind in [:label, :over],
+              do: {x, (top + bottom) / 2}
+
+        {aim_out, aim_in} = {List.first(labels, centre(t)), List.last(labels, centre(f))}
+
+        [
+          {{from, 1}, {:out, id}, {side_x(f, aim_out), aim_out}},
+          {{to, -1}, {:in, id}, {side_x(t, aim_in), aim_in}}
+        ]
+      end)
+
+    wanted
+    |> Enum.group_by(&elem(&1, 0), &Tuple.delete_at(&1, 0))
+    |> Enum.flat_map(fn {{node, side}, ends} ->
+      {cx, cy, w, h} = Map.fetch!(nodes, node)
+      {low, high} = {cx - w * @side_share / 2, cx + w * @side_share / 2}
+      # In the order of the points they aim at, so ends that the side
+      # clamps to one place keep the order of their curves.
+      sorted = Enum.sort_by(ends, fn {key, {x, {aim, _y}}} -> {x, aim, key} end)
+      xs = space(Enum.map(sorted, fn {_key, {x, _aim}} -> x end), low, high, @port_gap)
+
+      Enum.zip_with(sorted, xs, fn {key, {_x, aim}}, x -> {key, {{x, cy + side * h / 2}, aim}} end)
+    end)
+    |> Map.new()
+  end
+
+  defp side_x({cx, cy, w, h}, {tx, ty}) do
+    dy = max(abs(ty - cy), 1.0e-6)
+
+    (cx + (tx - cx) * (h / 2) / dy)
+    |> max(cx - w * @side_share / 2)
+    |> min(cx + w * @side_share / 2)
+  end
+
+  # Positions in order, at least `gap` apart where the range allows, each
+  # moved as little as it can: the mean of a left-to-right and a
+  # right-to-left pass, kept within the range.
+  defp space([], _low, _high, _gap), do: []
+
+  defp space(xs, low, high, gap) do
+    k = length(xs)
+    gap = if k > 1, do: min(gap, (high - low) / (k - 1)), else: 0
+    xs = Enum.map(xs, &(&1 |> max(low) |> min(high)))
+
+    left =
+      xs
+      |> tl()
+      |> Enum.reduce([hd(xs)], fn x, [prev | _] = acc -> [max(x, prev + gap) | acc] end)
+      |> Enum.reverse()
+
+    [last | rest] = Enum.reverse(xs)
+    right = Enum.reduce(rest, [last], fn x, [next | _] = acc -> [min(x, next - gap) | acc] end)
+
+    Enum.zip_with(left, right, fn l, r -> ((l + r) / 2) |> max(low) |> min(high) end)
+  end
+
+  defp centre({x, y, _w, _h}), do: {x, y}
+
+  # The unit heading of a loopy end, travelling down: along the line from
+  # the port to the point it aims at (:out), or from that point to the port
+  # (:in), turned to at most 55 degrees from the main direction, so an
+  # arrowhead never lies flat on its box.
+  defp heading({px, py}, {ax, ay}, kind) do
+    dy = abs(ay - py)
+    dx = if kind == :out, do: ax - px, else: px - ax
+    limit = :math.tan(55 * :math.pi() / 180) * dy
+    dx = dx |> max(-limit) |> min(limit)
+    length = :math.sqrt(dx * dx + dy * dy)
+    if length == 0, do: {0.0, 1.0}, else: {dx / length, dy / length}
+  end
+
+  defp swoop(
+         %{lanes: lanes, label: label} = route,
+         obstacles,
+         anchors,
+         {{start, out}, {finish, into}} = ends
+       ) do
+    indexed = Enum.with_index(lanes)
+
+    inner =
+      for {{_r, {x, top}, {_x, bottom}, kind}, i} <- indexed,
+          kind in [:label, :over] or (kind == :edge and i in anchors),
+          do: {x, (top + bottom) / 2}
+
+    curve = catmull([start | inner] ++ [finish], out, into)
+    points = sample(curve)
+
+    case clip(points, obstacles) do
+      nil ->
+        %{curve: curve, points: points, label: label}
+
+      y ->
+        indexed
+        |> Enum.filter(fn {{_r, _t, _b, kind}, i} -> kind == :edge and i not in anchors end)
+        |> Enum.min_by(
+          fn {{_r, {_x, top}, {_x2, bottom}, _k}, _i} -> abs((top + bottom) / 2 - y) end,
+          fn -> nil end
+        )
+        |> case do
+          nil -> nil
+          {_lane, i} -> swoop(route, obstacles, [i | anchors], ends)
+        end
+    end
+  end
+
+  # Cubic pieces through the points. An inner point's tangent runs along the
+  # step from the point before it to the point after it (Catmull-Rom), split
+  # between its two pieces in proportion to their lengths, so a long piece
+  # does not overshoot into a short one. The two ends follow their headings.
+  defp catmull(points, {ox, oy}, {ix, iy}) do
+    n = length(points)
+    at = &Enum.at(points, &1)
+    dist = fn {ax, ay}, {bx, by} -> :math.sqrt((bx - ax) ** 2 + (by - ay) ** 2) end
+    reach = fn a, b -> max(@reach * dist.(a, b), min(@arrow_stub, dist.(a, b))) end
+
+    # The offset of the control point after point i (towards point i + 1)
+    # and before it (from point i - 1).
+    inner = fn i, share ->
+      {{px, py}, {nx, ny}} = {at.(i - 1), at.(i + 1)}
+      {d0, d1} = {dist.(at.(i - 1), at.(i)), dist.(at.(i), at.(i + 1))}
+      f = share.(d0, d1) / max(d0 + d1, 1.0e-6) / 3
+      {(nx - px) * f, (ny - py) * f}
+    end
+
+    after_point = fn
+      0 -> {ox * reach.(at.(0), at.(1)), oy * reach.(at.(0), at.(1))}
+      i -> inner.(i, fn _d0, d1 -> d1 end)
+    end
+
+    before_point = fn
+      i when i == n - 1 -> {ix * reach.(at.(i - 1), at.(i)), iy * reach.(at.(i - 1), at.(i))}
+      i -> inner.(i, fn d0, _d1 -> d0 end)
+    end
+
+    for i <- 0..(n - 2) do
+      {x0, y0} = a = at.(i)
+      {x1, y1} = b = at.(i + 1)
+      {ax, ay} = after_point.(i)
+      {bx, by} = before_point.(i + 1)
+      {:cubic, a, {x0 + ax, y0 + ay}, {x1 - bx, y1 - by}, b}
+    end
   end
 
   defp fit(%{lanes: lanes} = route, obstacles, anchors, label) do
