@@ -25,6 +25,8 @@ defmodule AshWorkflow.Charts.Layered.Route do
   @track_gap 4
   @label_inset 6
   @stub 12
+  # The stub before an arrowhead: the 10 px head plus 14 px of straight line.
+  @arrow_stub 24
 
   def run(graph, coords, reversed, loops, opts) do
     nodes = for {id, %{dummy: nil}} <- graph.nodes, into: %{}, do: {id, Map.fetch!(coords, id)}
@@ -33,20 +35,25 @@ defmodule AshWorkflow.Charts.Layered.Route do
 
     routes =
       Map.new(graph.chains, fn {id, chain} ->
-        {id, lanes(id, chain, graph, coords, bands, ports)}
+        {id, lanes(id, chain, graph, coords, bands, ports, MapSet.member?(reversed, id))}
       end)
 
     routed =
       case Keyword.get(opts, :routing, :polyline) do
         :orthogonal -> orthogonal(routes, bands)
+        :spline -> splines(routes, nodes)
         _straight -> Map.new(routes, fn {id, route} -> {id, straight(route)} end)
       end
 
     chained =
       Map.new(routed, fn {id, route} ->
-        points = simplify(route.points)
-        points = if MapSet.member?(reversed, id), do: Enum.reverse(points), else: points
-        {id, %{route | points: points}}
+        reversed? = MapSet.member?(reversed, id)
+
+        {id,
+         if(Map.has_key?(route, :curve),
+           do: orient_curve(route, reversed?),
+           else: orient(route, reversed?)
+         )}
       end)
 
     looped =
@@ -69,68 +76,64 @@ defmodule AshWorkflow.Charts.Layered.Route do
     }
   end
 
-  @companion_gap 5
+  # A companion edge, such as the undo of a move, is not laid out. It is a
+  # return arc: it leaves its partner's target 16 px beside the partner's
+  # arrow, on the side away from the partner's label, and swings back to the
+  # partner's source in one smooth curve, bowing outwards. So it has its own
+  # shape, never on top of or parallel to its partner. Both ends have a
+  # straight 24 px stub in line with the partner's ends, so its arrowhead
+  # sits straight. :arc holds the six points of the drawing (two stubs and a
+  # cubic); :points holds the same curve sampled, for the scorecard.
+  @arc_shift 16
+  @arc_bow 48
 
-  # A companion edge, such as the undo of a transition, is not laid out. It
-  # runs beside its partner's route, the other way, 5 px to the side away from
-  # the partner's label. It has no label of its own.
-  def companions(%Result{} = result, companions, routing) do
+  def arcs(%Result{} = result, companions) do
     edges =
-      Enum.reduce(companions, result.edges, fn edge, edges ->
-        partner = Map.fetch!(result.edges, edge.companion)
-
-        Map.put(edges, edge.id, %{
-          points: partner.points |> beside(routing) |> Enum.reverse(),
-          label: nil
-        })
+      Enum.reduce(companions, result.edges, fn c, edges ->
+        Map.put(edges, c.id, arc(Map.fetch!(result.edges, c.companion).points))
       end)
 
-    # A companion runs against its partner, so it counts as a back edge.
     reversed = Enum.reduce(companions, result.reversed, &MapSet.put(&2, &1.id))
     %{result | edges: edges, reversed: reversed}
   end
 
-  # The route moved sideways by the gap, to the west. A straight route moves
-  # only in x, so its diagonals stay inside their gaps and its lanes stay
-  # vertical. An orthogonal route moves along its normals, to the west of a
-  # line that runs down, whichever way the partner points; at a corner, the
-  # point moves along the mean of the two normals, far enough to keep the gap
-  # on both segments.
-  defp beside(points, routing) when routing != :orthogonal,
-    do: Enum.map(points, fn {x, y} -> {x - @companion_gap, y} end)
+  defp arc(points) do
+    [first, second | _] = points
+    [last, before | _] = Enum.reverse(points)
+    into = unit(sub(last, before))
+    out = unit(sub(second, first))
 
-  defp beside(points, :orthogonal) do
-    {_x0, y0} = hd(points)
-    {_xn, yn} = List.last(points)
-    d = if y0 > yn, do: -@companion_gap, else: @companion_gap
+    start = add(last, {-@arc_shift, 0})
+    finish = add(first, {-@arc_shift, 0})
+    a = add(start, scale(into, -@arrow_stub))
+    b = add(finish, scale(out, @arrow_stub))
+    span = norm(sub(b, a))
+    bow = min(@arc_bow, span * 0.35)
+    c1 = add(add(a, scale(into, -span / 3)), {-bow, 0})
+    c2 = add(add(b, scale(out, span / 3)), {-bow, 0})
 
-    normals =
-      points
-      |> Enum.zip(tl(points))
-      |> Enum.map(fn {{x1, y1}, {x2, y2}} ->
-        length = :math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
-        if length == 0, do: {0.0, 0.0}, else: {-(y2 - y1) / length, (x2 - x1) / length}
-      end)
-
-    at_points =
-      [hd(normals)] ++ Enum.map(Enum.zip(normals, tl(normals)), &corner/1) ++ [List.last(normals)]
-
-    points
-    |> Enum.zip(at_points)
-    |> Enum.map(fn {{x, y}, {nx, ny}} -> {x + nx * d, y + ny * d} end)
+    sampled = for t <- Enum.map(0..10, &(&1 / 10)), do: bezier(a, c1, c2, b, t)
+    %{points: [start | sampled] ++ [finish], label: nil, arc: [start, a, c1, c2, b, finish]}
   end
 
-  defp corner({{ax, ay}, {bx, by}}) do
-    {mx, my} = {ax + bx, ay + by}
-    length = :math.sqrt(mx * mx + my * my)
+  defp bezier({x0, y0}, {x1, y1}, {x2, y2}, {x3, y3}, t) do
+    u = 1 - t
 
-    if length < 1.0e-9 do
-      {ax, ay}
-    else
-      {mx, my} = {mx / length, my / length}
-      scale = 1 / max(mx * ax + my * ay, 0.5)
-      {mx * scale, my * scale}
+    f = fn p0, p1, p2, p3 ->
+      u * u * u * p0 + 3 * u * u * t * p1 + 3 * u * t * t * p2 + t * t * t * p3
     end
+
+    {f.(x0, x1, x2, x3), f.(y0, y1, y2, y3)}
+  end
+
+  defp add({ax, ay}, {bx, by}), do: {ax + bx, ay + by}
+  defp sub({ax, ay}, {bx, by}), do: {ax - bx, ay - by}
+  defp scale({x, y}, k), do: {x * k, y * k}
+  defp norm({x, y}), do: :math.sqrt(x * x + y * y)
+
+  defp unit(v) do
+    l = norm(v)
+    if l == 0, do: {0.0, 1.0}, else: scale(v, 1 / l)
   end
 
   # %{rank => {top, bottom}}: the band that the rank's boxes fill.
@@ -207,8 +210,11 @@ defmodule AshWorkflow.Charts.Layered.Route do
 
   # The vertical lane pieces of one edge, from its upper end to its lower end:
   # [{rank, top_point, bottom_point}], and its label box.
-  defp lanes(edge_id, chain, graph, coords, bands, ports) do
+  defp lanes(edge_id, chain, graph, coords, bands, ports, reversed?) do
     last = length(chain) - 1
+    # The arrowhead is at the lower end, or at the upper end of a reversed
+    # edge; that end gets the longer stub.
+    {upper_stub, lower_stub} = if reversed?, do: {@arrow_stub, @stub}, else: {@stub, @arrow_stub}
 
     {lanes, label} =
       chain
@@ -225,26 +231,126 @@ defmodule AshWorkflow.Charts.Layered.Route do
           # (or undo marker) sits on a straight segment.
           i == 0 ->
             px = x + Map.get(ports, {:out, edge_id}, 0)
-            {{rank, {px, y + h / 2}, {px, max(bottom, y + h / 2 + @stub)}}, label}
+            {{rank, {px, y + h / 2}, {px, max(bottom, y + h / 2 + upper_stub)}, :end}, label}
 
           i == last ->
             px = x + Map.get(ports, {:in, edge_id}, 0)
-            {{rank, {px, min(top, y - h / 2 - @stub)}, {px, y - h / 2}}, label}
+            {{rank, {px, min(top, y - h / 2 - lower_stub)}, {px, y - h / 2}, :end}, label}
 
           graph.nodes[id].dummy == :label ->
             line = x - w / 2
-            {{rank, {line, top}, {line, bottom}}, {line + @label_inset, y, w, h}}
+            {{rank, {line, top}, {line, bottom}, :label}, {line + @label_inset, y, w, h}}
 
           true ->
-            {{rank, {x, top}, {x, bottom}}, label}
+            {{rank, {x, top}, {x, bottom}, :edge}, label}
         end
       end)
 
     %{lanes: lanes, label: label}
   end
 
+  defp orient(route, reversed?) do
+    points = simplify(route.points)
+    %{route | points: if(reversed?, do: Enum.reverse(points), else: points)}
+  end
+
+  defp orient_curve(route, false), do: route
+
+  defp orient_curve(%{curve: curve} = route, true) do
+    curve =
+      curve
+      |> Enum.reverse()
+      |> Enum.map(fn
+        {:line, a, b} -> {:line, b, a}
+        {:cubic, a, c1, c2, b} -> {:cubic, b, c2, c1, a}
+      end)
+
+    %{route | curve: curve, points: Enum.reverse(route.points)}
+  end
+
+  # A curve that swings through a lane can clip a box or a label next to it.
+  # Such an edge keeps all its lanes straight and curves only in the gaps.
+  defp splines(routes, nodes) do
+    labels =
+      for {id, %{label: {lx, ly, w, h}}} <- routes, do: {id, {lx, ly - h / 2, lx + w, ly + h / 2}}
+
+    boxes =
+      Enum.map(nodes, fn {_id, {x, y, w, h}} -> {x - w / 2, y - h / 2, x + w / 2, y + h / 2} end)
+
+    Map.new(routes, fn {id, route} ->
+      swung = spline(route)
+      others = for {other, box} <- labels, other != id, do: box
+
+      clear? =
+        swung.points
+        |> Enum.drop(1)
+        |> Enum.drop(-1)
+        |> Enum.all?(fn {x, y} ->
+          not Enum.any?(others ++ boxes, fn {l, t, r, b} ->
+            x > l + 1 and x < r - 1 and y > t + 1 and y < b - 1
+          end)
+        end)
+
+      {id, if(clear?, do: swung, else: spline(route, :straight_lanes))}
+    end)
+  end
+
+  # A curved edge keeps its stubs and the lanes beside its labels straight.
+  # Every other lane shrinks to its middle point, and the edge swings through
+  # it, so a long edge is one smooth curve, not a straight line with bends.
+  # Between those pieces: cubics with vertical tangents. :curve holds the
+  # drawing; :points holds it sampled, so the scorecard checks what is drawn.
+  defp spline(route, lanes \\ :swing)
+
+  defp spline(%{lanes: lanes, label: label}, mode) do
+    pieces =
+      Enum.map(lanes, fn
+        {_rank, {x, top}, {_x, bottom}, :edge} when mode == :swing ->
+          {:through, {x, (top + bottom) / 2}}
+
+        {_rank, a, b, _kind} ->
+          {:straight, a, b}
+      end)
+
+    [{:straight, first, _} | _] = pieces
+
+    {curve, _at} =
+      Enum.reduce(pieces, {[], first}, fn
+        {:straight, a, b}, {acc, at} -> {[{:line, a, b} | swing(at, a, acc)], b}
+        {:through, p}, {acc, at} -> {swing(at, p, acc), p}
+      end)
+
+    curve = Enum.reverse(curve)
+    %{curve: curve, points: sample(curve), label: label}
+  end
+
+  @swing 0.5
+
+  defp swing(from, to, acc) when from == to, do: acc
+
+  defp swing({x1, y1} = from, {x2, y2} = to, acc) do
+    reach = (y2 - y1) * @swing
+    [{:cubic, from, {x1, y1 + reach}, {x2, y2 - reach}, to} | acc]
+  end
+
+  defp sample(curve) do
+    points =
+      Enum.flat_map(curve, fn
+        {:line, a, _b} -> [a]
+        {:cubic, a, c1, c2, b} -> for t <- Enum.map(0..7, &(&1 / 8)), do: bezier(a, c1, c2, b, t)
+      end)
+
+    last =
+      case List.last(curve) do
+        {:line, _a, b} -> b
+        {:cubic, _a, _c1, _c2, b} -> b
+      end
+
+    Enum.dedup(points ++ [last])
+  end
+
   defp straight(%{lanes: lanes, label: label}) do
-    %{points: Enum.flat_map(lanes, fn {_rank, a, b} -> [a, b] end), label: label}
+    %{points: Enum.flat_map(lanes, fn {_rank, a, b, _kind} -> [a, b] end), label: label}
   end
 
   # In each gap, an edge that changes x goes down to its own track, across,
@@ -252,7 +358,7 @@ defmodule AshWorkflow.Charts.Layered.Route do
   defp orthogonal(routes, bands) do
     spans =
       for {id, %{lanes: lanes}} <- Enum.sort(routes),
-          {{{rank, _top, {x1, _y1}}, {_rank2, {x2, _y2}, _bottom}}, i} <-
+          {{{rank, _top, {x1, _y1}, _k1}, {_rank2, {x2, _y2}, _bottom, _k2}}, i} <-
             Enum.with_index(Enum.zip(lanes, tl(lanes))),
           abs(x1 - x2) >= 0.5,
           do: {rank, {id, i}, x1, x2}
@@ -264,14 +370,14 @@ defmodule AshWorkflow.Charts.Layered.Route do
         lanes
         |> Enum.zip(tl(lanes))
         |> Enum.with_index()
-        |> Enum.flat_map(fn {{{_r1, top, {x1, y1}}, {_r2, {x2, _y2}, _bottom}}, i} ->
+        |> Enum.flat_map(fn {{{_r1, top, {x1, y1}, _k1}, {_r2, {x2, _y2}, _bottom, _k2}}, i} ->
           case Map.fetch(tracks, {id, i}) do
             {:ok, y} -> [top, {x1, y1}, {x1, y}, {x2, y}]
             :error -> [top, {x1, y1}]
           end
         end)
 
-      {_rank, top, bottom} = List.last(lanes)
+      {_rank, top, bottom, _kind} = List.last(lanes)
       {id, %{points: gaps ++ [top, bottom], label: label}}
     end)
   end
@@ -293,7 +399,7 @@ defmodule AshWorkflow.Charts.Layered.Route do
       # Tracks stay clear of the stubs at both ends of the gap.
       {_top, band_bottom} = Map.fetch!(bands, rank)
       {band_top, _bottom} = Map.fetch!(bands, rank + 1)
-      {gap_top, gap_bottom} = {band_bottom + @stub, band_top - @stub}
+      {gap_top, gap_bottom} = {band_bottom + @arrow_stub, band_top - @arrow_stub}
 
       Enum.map(levels, fn {key, level} ->
         {key, gap_top + (gap_bottom - gap_top) * (level + 1) / (k + 1)}

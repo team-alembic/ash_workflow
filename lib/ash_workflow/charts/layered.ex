@@ -50,7 +50,8 @@ defmodule AshWorkflow.Charts.Layered do
     acyclic: :dfs,
     heuristic: :mean_index,
     tie: :current,
-    placement: :network_simplex
+    placement: :network_simplex,
+    companions: :lanes
   ]
 
   @spec layout([Node.t()], [Edge.t()], keyword()) :: Result.t()
@@ -69,6 +70,23 @@ defmodule AshWorkflow.Charts.Layered do
     {loops, edges} = Enum.split_with(edges, &(&1.from == &1.to))
     {dag, reversed} = Acyclic.run(nodes, edges, opts[:acyclic])
 
+    # Companion edges (an undo beside the move it rewinds) are drawn one of
+    # two ways. :lanes lays each out in its own lane, one gap beside its
+    # partner's; :arcs leaves them out of the layout and draws a return arc.
+    {lane_companions, arc_companions} =
+      if opts[:companions] == :lanes, do: {companions, []}, else: {[], companions}
+
+    # A lane companion runs the same way as its partner in the layered graph,
+    # so it covers the same ranks.
+    partner_dag = Map.new(dag, &{&1.id, &1})
+
+    {dag, reversed} =
+      Enum.reduce(lane_companions, {dag, reversed}, fn c, {dag, reversed} ->
+        p = Map.fetch!(partner_dag, c.companion)
+        reversed = if c.from != p.from, do: MapSet.put(reversed, c.id), else: reversed
+        {dag ++ [%{c | from: p.from, to: p.to}], reversed}
+      end)
+
     ranks =
       case opts[:ranker] do
         :network_simplex ->
@@ -80,12 +98,14 @@ defmodule AshWorkflow.Charts.Layered do
 
     graph = Normalize.run(nodes, dag, ranks)
     {layers, crossings} = Order.run(graph, opts[:sweeps], opts)
+    {layers, pairs} = pair_companions(layers, graph, lane_companions)
+    opts = Keyword.put(opts, :pairs, pairs)
     coords = Position.run(graph, layers, opts)
 
     result =
       graph
       |> Route.run(coords, reversed, loops, opts)
-      |> Route.companions(companions, opts[:routing])
+      |> Route.arcs(arc_companions)
 
     result = if right?, do: transpose(result), else: result
 
@@ -95,6 +115,25 @@ defmodule AshWorkflow.Charts.Layered do
         direction: Keyword.get(opts, :direction, :down),
         routing: Keyword.get(opts, :routing, :polyline)
     }
+  end
+
+  defp flip1({x, y}), do: {y, x}
+
+  # Each lane companion's dummy goes just left of its partner's dummy in the
+  # same rank, and the pairs go to x placement, which keeps the two lanes one
+  # gap apart.
+  defp pair_companions(layers, graph, companions) do
+    Enum.reduce(companions, {layers, []}, fn c, {layers, pairs} ->
+      graph.chains
+      |> Map.fetch!(c.id)
+      |> Enum.slice(1..-2//1)
+      |> Enum.reduce({layers, pairs}, fn {:dummy, _id, rank} = dummy, {layers, pairs} ->
+        partner = {:dummy, c.companion, rank}
+        layer = List.delete(Map.fetch!(layers, rank), dummy)
+        at = Enum.find_index(layer, &(&1 == partner))
+        {Map.put(layers, rank, List.insert_at(layer, at, dummy)), [{dummy, partner} | pairs]}
+      end)
+    end)
   end
 
   defp swap_node(node), do: %{node | width: node.height, height: node.width}
@@ -119,7 +158,22 @@ defmodule AshWorkflow.Charts.Layered do
                 {lx, ly, w, h} -> {ly - h / 2, lx + w / 2, h, w}
               end
 
-            {id, %{e | points: Enum.map(e.points, fn {x, y} -> {y, x} end), label: label}}
+            flip = fn points -> Enum.map(points, fn {x, y} -> {y, x} end) end
+            e = if Map.has_key?(e, :arc), do: %{e | arc: flip.(e.arc)}, else: e
+
+            e =
+              if Map.has_key?(e, :curve),
+                do: %{
+                  e
+                  | curve:
+                      Enum.map(e.curve, fn
+                        {kind, a, b} -> {kind, flip1(a), flip1(b)}
+                        {kind, a, c1, c2, b} -> {kind, flip1(a), flip1(c1), flip1(c2), flip1(b)}
+                      end)
+                },
+                else: e
+
+            {id, %{e | points: flip.(e.points), label: label}}
           end)
     }
   end

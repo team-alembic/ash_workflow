@@ -34,8 +34,7 @@ cards =
     key = "#{name}-#{direction}-#{edges}"
     svg = Svg.render_graph(graph, direction: direction, edges: edges, layout: extra)
     File.write!(Path.join(dir, key <> ".svg"), svg)
-    routing = if edges == :curved, do: :spline, else: edges
-    {result, _edges} = Svg.layout(graph, [direction: direction, routing: routing] ++ extra)
+    {result, _edges, _opts} = Svg.drawn_layout(graph, direction: direction, edges: edges, layout: extra)
     {key, Metrics.scorecard(result)}
   end
 
@@ -78,7 +77,7 @@ rows =
         flag = if Metrics.hard_failures(card) == [], do: "", else: " ⚠"
 
         ~s(<td style="vertical-align:top;padding:8px"><div><b>#{direction} / #{edges}</b>#{flag}</div>) <>
-          ~s(<img src="#{key}.svg" style="max-width:420px"><div style="font-size:12px">) <>
+          ~s(<img src="#{key}.svg?v=#{label}" style="max-width:420px"><div style="font-size:12px">) <>
           "crossings #{card.crossings}, bends #{card.bends}, jogs #{card.jogs}, segments #{card.segments}, lateral #{card.lateral}, area #{card.area_ratio}</div></td>"
       end
 

@@ -11,14 +11,14 @@ defmodule AshWorkflow.Charts.Layered.MetricsTest do
       height: 90,
       direction: :down,
       reversed: MapSet.new(),
-      nodes: %{a: {50, 10, 20, 10}, b: {20, 60, 20, 10}, c: {80, 61, 20, 10}},
+      nodes: %{a: {50, 10, 20, 10}, b: {20, 70, 20, 10}, c: {80, 71, 20, 10}},
       edges: edges
     }
   end
 
   @good %{
-    1 => %{points: [{50, 15}, {50, 35}, {20, 40}, {20, 55}], label: {20, 30, 24, 10}},
-    2 => %{points: [{50, 15}, {80, 40}, {80, 56}], label: nil}
+    1 => %{points: [{50, 15}, {50, 35}, {20, 40}, {20, 65}], label: {20, 30, 24, 10}},
+    2 => %{points: [{50, 15}, {80, 40}, {80, 66}], label: nil}
   }
 
   test "a clean layout has no hard failures" do
@@ -43,24 +43,24 @@ defmodule AshWorkflow.Charts.Layered.MetricsTest do
   end
 
   test "an edge through another node is a hard failure" do
-    through = Map.put(@good, 3, %{points: [{20, 65}, {20, 40}, {80, 40}, {80, 66}], label: nil})
+    through = Map.put(@good, 3, %{points: [{20, 75}, {20, 40}, {80, 40}, {80, 76}], label: nil})
     card = Metrics.scorecard(result(through))
 
     assert card.edge_through_node == 0
-    through_c = Map.put(@good, 3, %{points: [{0, 61}, {120, 61}], label: nil})
+    through_c = Map.put(@good, 3, %{points: [{0, 71}, {120, 71}], label: nil})
     assert Metrics.scorecard(result(through_c)).edge_through_node == 2
   end
 
   test "an arrow on a short or slanted last segment is a hard failure" do
-    slanted = put_in(@good, [2, :points], [{50, 15}, {80, 56}])
-    short = put_in(@good, [2, :points], [{50, 15}, {80, 50}, {80, 56}])
+    slanted = put_in(@good, [2, :points], [{50, 15}, {80, 66}])
+    short = put_in(@good, [2, :points], [{50, 15}, {80, 60}, {80, 66}])
 
     assert Metrics.scorecard(result(slanted)).arrow_room == 1
     assert Metrics.scorecard(result(short)).arrow_room == 1
   end
 
   test "an edge that runs against the flow lowers flow" do
-    upward = Map.put(@good, 2, %{points: [{80, 56}, {50, 15}], label: nil})
+    upward = Map.put(@good, 2, %{points: [{80, 66}, {50, 15}], label: nil})
 
     assert Metrics.scorecard(result(upward)).flow == 0.5
 

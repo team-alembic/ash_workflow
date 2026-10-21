@@ -13,6 +13,16 @@ defmodule AshWorkflow.Charts.Layered.Metrics do
   def scorecard(%Result{} = result) do
     lines = Map.new(result.edges, fn {id, e} -> {id, e.points} end)
 
+    # Bends, jogs and segments count the corners of polyline routes. A curve
+    # or a return arc is sampled for the other checks, and its samples are
+    # not corners, so it does not count here.
+    shaped =
+      for {id, e} <- result.edges,
+          not Map.has_key?(e, :curve),
+          not Map.has_key?(e, :arc),
+          into: %{},
+          do: {id, e.points}
+
     widths =
       Enum.map(result.nodes, fn {_id, {_x, _y, w, h}} ->
         if result.direction == :right, do: h, else: w
@@ -27,10 +37,10 @@ defmodule AshWorkflow.Charts.Layered.Metrics do
       label_distance: label_distance(result.edges),
       flow: flow(result, lines),
       crossings: crossings(lines),
-      bends: lines |> Map.values() |> Enum.map(&bends/1) |> Enum.sum(),
-      segments: lines |> Map.values() |> Enum.map(&(length(&1) - 1)) |> Enum.sum(),
+      bends: shaped |> Map.values() |> Enum.map(&bends/1) |> Enum.sum(),
+      segments: shaped |> Map.values() |> Enum.map(&(length(&1) - 1)) |> Enum.sum(),
       arrow_room: arrow_room(result, lines),
-      jogs: lines |> Map.values() |> Enum.map(&jogs/1) |> Enum.sum(),
+      jogs: shaped |> Map.values() |> Enum.map(&jogs/1) |> Enum.sum(),
       lateral: Float.round(lateral(result.direction, lines) / mean_width, 2),
       area_ratio: Float.round(area_ratio(result), 2),
       aspect: Float.round(result.width / max(result.height, 1), 2)
@@ -214,7 +224,7 @@ defmodule AshWorkflow.Charts.Layered.Metrics do
   # segment look broken. An arrow needs a last segment in the main direction,
   # at least 12 px long. Counts the edges without one; self-loops enter from
   # the side and do not count.
-  @arrow_room 12
+  @arrow_room 20
 
   defp arrow_room(result, lines) do
     main = if result.direction == :right, do: 0, else: 1

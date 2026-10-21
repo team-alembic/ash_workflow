@@ -108,19 +108,20 @@ defmodule AshWorkflow.Charts.LayeredTest do
     assert Order.median_value([0, 4]) == 2.0
   end
 
-  test "a companion edge runs beside its partner, the other way, and takes no room" do
+  test "a companion edge is a return arc beside its partner, the other way, and takes no room" do
     nodes = [box(:a), box(:b)]
     forward = edge(1, :a, :b, 30, 16)
     undo = %{edge(2, :b, :a) | companion: 1}
 
     alone = Layered.layout(nodes, [forward])
-    paired = Layered.layout(nodes, [forward, undo])
+    paired = Layered.layout(nodes, [forward, undo], companions: :arcs)
+    [{fx0, fy0} | _] = alone.edges[1].points
+    {fxn, fyn} = List.last(alone.edges[1].points)
 
     assert paired.nodes == alone.nodes
-
-    assert paired.edges[2].points ==
-             alone.edges[1].points |> Enum.map(fn {x, y} -> {x - 5, y} end) |> Enum.reverse()
-
+    assert hd(paired.edges[2].points) == {fxn - 16, fyn}
+    assert List.last(paired.edges[2].points) == {fx0 - 16, fy0}
+    assert Enum.all?(paired.edges[2].points, fn {x, _y} -> x < fx0 end)
     assert paired.edges[2].label == nil
     assert MapSet.member?(paired.reversed, 2)
   end
@@ -138,6 +139,27 @@ defmodule AshWorkflow.Charts.LayeredTest do
     assert_in_delta ay, by, 1
     assert {_lx, _ly, 30, 16} = right.edges[1].label
     assert Enum.all?(right.edges[1].points, fn {_x, y} -> abs(y - ay) < 1 end)
+  end
+
+  test "a lane companion runs in its own lane, at least 24 px left of its partner" do
+    nodes = [box(:a), box(:b)]
+    forward = edge(1, :a, :b, 30, 16)
+    undo = %{edge(2, :b, :a) | companion: 1}
+
+    paired = Layered.layout(nodes, [forward, undo], companions: :lanes)
+    {_, ay, _, ah} = paired.nodes[:a]
+    {_, by, _, bh} = paired.nodes[:b]
+
+    # The lane in the label rank, between the two boxes and their stubs.
+    lane = fn id ->
+      paired.edges[id].points
+      |> Enum.filter(fn {_x, y} -> y > ay + ah / 2 + 24 and y < by - bh / 2 - 24 end)
+      |> Enum.map(&elem(&1, 0))
+      |> Enum.min()
+    end
+
+    assert lane.(1) - lane.(2) >= 24
+    assert MapSet.member?(paired.reversed, 2)
   end
 
   test "the same input gives the same result" do

@@ -37,9 +37,10 @@ defmodule AshWorkflow.Charts.Layered.Position do
         moves = Map.get(travel, rank, [])
         sideways = Enum.count(moves, &(&1 >= 0.5))
 
-        # Orthogonal tracks keep 12 px apart, and clear of the 12 px stubs
-        # at both ends of the gap.
-        tracks = if sideways > 0, do: (sideways + 1) * 12 + 24, else: 0
+        # Orthogonal tracks keep 12 px apart, and clear of the stubs at both
+        # ends of the gap, up to 24 px each (an arrowhead can be at either
+        # end, as back edges point up).
+        tracks = if sideways > 0, do: (sideways + 1) * 12 + 48, else: 0
 
         gap =
           [opts[:rank_sep] / 2, Enum.max(moves, fn -> 0 end) / 4, tracks]
@@ -94,10 +95,17 @@ defmodule AshWorkflow.Charts.Layered.Position do
   defp simplex_xs(graph, layers, opts) do
     off = fn id -> offset(graph.nodes[id]) end
 
+    # A companion lane keeps at least 24 px from its partner's lane, so the
+    # two read as separate lines.
+    paired = opts |> Keyword.get(:pairs, []) |> MapSet.new()
+
     separations =
       for {_rank, ids} <- Enum.sort(layers),
-          [a, b] <- Enum.chunk_every(ids, 2, 1, :discard),
-          do: {a, b, ceil(gap(graph.nodes[a], graph.nodes[b], opts) + off.(b) - off.(a)), 0}
+          [a, b] <- Enum.chunk_every(ids, 2, 1, :discard) do
+        minlen = ceil(gap(graph.nodes[a], graph.nodes[b], opts) + off.(b) - off.(a))
+        minlen = if MapSet.member?(paired, {a, b}), do: max(minlen, 24), else: minlen
+        {a, b, minlen, 0}
+      end
 
     {aux, pulls} =
       graph.segments
@@ -106,6 +114,17 @@ defmodule AshWorkflow.Charts.Layered.Position do
         n = {:aux, i}
         w = omega(graph.nodes[u], graph.nodes[v])
         {[n | aux], [{n, v, 0, w}, {n, u, 0, w} | pulls]}
+      end)
+
+    # A companion lane and its partner's lane pull together hard, so they
+    # end exactly their minimum distance apart.
+    {aux, pulls} =
+      opts
+      |> Keyword.get(:pairs, [])
+      |> Enum.with_index()
+      |> Enum.reduce({aux, pulls}, fn {{a, b}, i}, {aux, pulls} ->
+        n = {:pair, i}
+        {[n | aux], [{n, b, 0, 16}, {n, a, 0, 16} | pulls]}
       end)
 
     ids = Enum.flat_map(Enum.sort(layers), &elem(&1, 1)) ++ Enum.reverse(aux)
