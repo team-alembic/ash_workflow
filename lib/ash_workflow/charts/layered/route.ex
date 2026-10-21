@@ -25,7 +25,8 @@ defmodule AshWorkflow.Charts.Layered.Route do
   @loop 24
   @track_gap 4
   @label_inset 6
-  # A turn behind a label stays this far inside the label's sides.
+  @port_inset 6
+  # An edge through a label drawn over it stays this far inside the label's sides.
   @corner_pad 8
   @stub 12
   # The stub before an arrowhead: the 10 px head plus 14 px of straight line.
@@ -110,18 +111,17 @@ defmodule AshWorkflow.Charts.Layered.Route do
   # from its neighbours, or closer when the side is too short for that. A
   # lane past a corner moves its port in to the middle part of the side.
   #
-  # An orthogonal edge can cross the column of a label drawn over it anywhere
-  # (see corner/1), so its port aims at the point of that column nearest the
-  # box's centre.
+  # An orthogonal edge can run straight down a label drawn over it at any x
+  # in the label's column (see corner/1), so both its ports aim at one x of
+  # that column: one that both ends can reach if there is one.
   defp ports(graph, coords, routing) do
-    line = fn id, box ->
+    line = fn id, chain ->
       {x, _y, w, _h} = Map.fetch!(coords, id)
       node = graph.nodes[id]
 
       if routing == :orthogonal and Map.get(node, :side) == :over do
-        {bx, _by, _bw, _bh} = Map.fetch!(coords, box)
-        reach = w / 2 - min(@corner_pad, w / 2)
-        bx |> max(x - reach) |> min(x + reach)
+        i = Enum.find_index(chain, &(&1 == id))
+        through(graph, coords, {x, w}, Enum.at(chain, i - 1), Enum.at(chain, i + 1))
       else
         x + Position.line_offset(node)
       end
@@ -129,18 +129,42 @@ defmodule AshWorkflow.Charts.Layered.Route do
 
     out_side =
       Enum.group_by(graph.chains, fn {_id, chain} -> hd(chain) end, fn {id, chain} ->
-        {id, line.(Enum.at(chain, 1), hd(chain))}
+        {id, line.(Enum.at(chain, 1), chain)}
       end)
 
     in_side =
       Enum.group_by(graph.chains, fn {_id, chain} -> List.last(chain) end, fn {id, chain} ->
-        {id, line.(Enum.at(chain, -2), List.last(chain))}
+        {id, line.(Enum.at(chain, -2), chain)}
       end)
 
     Map.new(spread(out_side, :out, coords) ++ spread(in_side, :in, coords))
   end
 
-  @port_inset 6
+  # The x where an orthogonal edge runs down a label drawn over it: within
+  # the label's column and, when it can be, within reach of the ends above
+  # and below, so the edge passes the label as one straight line.
+  defp through(graph, coords, {x, w}, above, below) do
+    pad = min(@corner_pad, w / 2)
+    column = {x - w / 2 + pad, x + w / 2 - pad}
+    reach = fn id -> reach(graph.nodes[id], Map.fetch!(coords, id)) end
+    {a_low, a_high} = reach.(above)
+    {b_low, b_high} = reach.(below)
+    {low, high} = column
+    {both_low, both_high} = {Enum.max([low, a_low, b_low]), Enum.min([high, a_high, b_high])}
+
+    if both_low <= both_high do
+      (both_low + both_high) / 2
+    else
+      ((a_low + a_high + b_low + b_high) / 4) |> max(low) |> min(high)
+    end
+  end
+
+  defp reach(%{dummy: nil}, {x, _y, w, _h}),
+    do: {x - w / 2 + min(@port_inset, w / 4), x + w / 2 - min(@port_inset, w / 4)}
+
+  defp reach(node, {x, _y, _w, _h}),
+    do: {x + Position.line_offset(node), x + Position.line_offset(node)}
+
   @port_gap 16
   # Ports whose lanes are past a corner line up inside the middle 60% of the side.
   @port_slots 0.6
@@ -362,25 +386,26 @@ defmodule AshWorkflow.Charts.Layered.Route do
         lanes
         |> Enum.zip(tl(lanes))
         |> Enum.with_index()
-        |> Enum.flat_map(fn {{{_r1, _top, {x1, _y1}, _k1} = piece,
-                              {_r2, {x2, _y2}, _bottom, _k2}}, i} ->
+        |> Enum.flat_map(fn {{{_r1, top, {x1, y1}, _k1}, {_r2, {x2, _y2}, _bottom, _k2}}, i} ->
           case Map.fetch(tracks, {id, i}) do
-            {:ok, y} -> piece_points(piece, label) ++ [{x1, y}, {x2, y}]
-            :error -> piece_points(piece, label)
+            {:ok, y} -> [top, {x1, y1}, {x1, y}, {x2, y}]
+            :error -> [top, {x1, y1}]
           end
         end)
 
-      {id, %{points: gaps ++ piece_points(List.last(lanes), label), label: label}}
+      {_rank, top, bottom, _kind} = List.last(lanes)
+      {id, %{points: gaps ++ [top, bottom], label: label}}
     end)
   end
 
-  # An orthogonal edge under a label drawn over it enters the label's column
-  # where it comes from, crosses behind the label, and leaves where it goes
-  # on. So its turns are in the label's corners, hidden by the label, and the
-  # gaps above and below need no sideways step when the edge's ends lie
-  # within the label's width.
+  # An orthogonal edge under a label drawn over it runs straight down the
+  # label's column, so the label never hides a turn: a reader sees the line
+  # enter and leave the label on one axis. It keeps the x it comes in on when
+  # that lies in the column, or else the x it goes on at; any other step is
+  # in a gap, in sight.
   defp corner(%{lanes: lanes, label: {lx, _ly, w, _h}} = route) do
     {low, high} = {lx + min(@corner_pad, w / 2), lx + w - min(@corner_pad, w / 2)}
+    within? = &(&1 >= low - 0.5 and &1 <= high + 0.5)
 
     lanes =
       [nil | lanes]
@@ -389,7 +414,14 @@ defmodule AshWorkflow.Charts.Layered.Route do
       |> Enum.map(fn
         {{{_r0, _t0, {a, _}, _k0}, {rank, {_l, top}, {_l2, bottom}, :over}},
          {_r2, {c, _}, _b2, _k2}} ->
-          {rank, {a |> max(low) |> min(high), top}, {c |> max(low) |> min(high), bottom}, :over}
+          x =
+            cond do
+              within?.(a) -> a
+              within?.(c) -> c
+              true -> a |> max(low) |> min(high)
+            end
+
+          {rank, {x, top}, {x, bottom}, :over}
 
         {{_prev, piece}, _next} ->
           piece
@@ -399,12 +431,6 @@ defmodule AshWorkflow.Charts.Layered.Route do
   end
 
   defp corner(route), do: route
-
-  defp piece_points({_rank, {x1, _} = top, {x2, _} = bottom, :over}, {_lx, ly, _w, _h})
-       when abs(x1 - x2) >= 0.5,
-       do: [top, {x1, ly}, {x2, ly}, bottom]
-
-  defp piece_points({_rank, top, bottom, _kind}, _label), do: [top, bottom]
 
   # Track order in one gap, after Sander (1996): a segment whose upper
   # vertical (at x1) falls inside another segment's horizontal span must run
