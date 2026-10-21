@@ -53,8 +53,12 @@ for {key, failures} <- hard, do: IO.puts("- #{key}: #{Enum.join(failures, ", ")}
 IO.puts("\n### Soft regressions against the previous run (#{length(regressions)})")
 for line <- regressions, do: IO.puts("- " <> line)
 
-totals = for metric <- soft, into: %{}, do: {metric, cards |> Map.values() |> Enum.map(&Map.fetch!(&1, metric)) |> Enum.sum()}
-IO.puts("\n### Totals\n" <> Enum.map_join(totals, "\n", fn {k, v} -> "- #{k}: #{Float.round(v * 1.0, 1)}" end))
+for {direction, _edges} <- Enum.uniq_by(modes, &elem(&1, 0)) do
+  mine = for {key, card} <- cards, String.contains?(key, "-#{direction}-"), do: card
+  hard_count = Enum.count(mine, &(Metrics.hard_failures(&1) != []))
+  totals = for metric <- soft, do: "#{metric} #{Float.round(Enum.sum(Enum.map(mine, &Map.fetch!(&1, metric))) * 1.0, 1)}"
+  IO.puts("\n### Totals, #{direction}: #{hard_count} charts with hard failures; " <> Enum.join(totals, ", "))
+end
 
 File.write!(previous_file, Jason.encode!(cards, pretty: true))
 

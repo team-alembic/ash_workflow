@@ -36,16 +36,33 @@ defmodule AshWorkflow.Charts.Layered do
     @type t :: %__MODULE__{}
   end
 
-  alias __MODULE__.{Acyclic, Normalize, Order, Position, Rank, Route}
+  alias __MODULE__.{Acyclic, NetworkSimplex, Normalize, Order, Position, Rank, Route}
 
-  @defaults [rank_sep: 48, node_sep: 32, edge_sep: 12, margin: 16, sweeps: 8, passes: 8]
+  @defaults [
+    rank_sep: 48,
+    node_sep: 32,
+    edge_sep: 12,
+    margin: 16,
+    sweeps: 8,
+    passes: 8,
+    ranker: :network_simplex
+  ]
 
   @spec layout([Node.t()], [Edge.t()], keyword()) :: Result.t()
   def layout(nodes, edges, opts \\ []) do
     opts = Keyword.merge(@defaults, opts)
     {loops, edges} = Enum.split_with(edges, &(&1.from == &1.to))
     {dag, reversed} = Acyclic.run(nodes, edges)
-    ranks = Rank.run(nodes, dag)
+
+    ranks =
+      case opts[:ranker] do
+        :network_simplex ->
+          NetworkSimplex.run(Enum.map(nodes, & &1.id), Enum.map(dag, &{&1.from, &1.to, 2, 1}))
+
+        _longest_path ->
+          Rank.run(nodes, dag)
+      end
+
     graph = Normalize.run(nodes, dag, ranks)
     {layers, crossings} = Order.run(graph, opts[:sweeps])
     coords = Position.run(graph, layers, opts)
