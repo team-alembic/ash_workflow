@@ -45,14 +45,17 @@ defmodule AshWorkflow.Charts.Layered do
     margin: 16,
     sweeps: 8,
     passes: 8,
-    ranker: :network_simplex
+    ranker: :network_simplex,
+    acyclic: :dfs,
+    heuristic: :mean_index,
+    tie: :current
   ]
 
   @spec layout([Node.t()], [Edge.t()], keyword()) :: Result.t()
   def layout(nodes, edges, opts \\ []) do
     opts = Keyword.merge(@defaults, opts)
     {loops, edges} = Enum.split_with(edges, &(&1.from == &1.to))
-    {dag, reversed} = Acyclic.run(nodes, edges)
+    {dag, reversed} = Acyclic.run(nodes, edges, opts[:acyclic])
 
     ranks =
       case opts[:ranker] do
@@ -64,7 +67,7 @@ defmodule AshWorkflow.Charts.Layered do
       end
 
     graph = Normalize.run(nodes, dag, ranks)
-    {layers, crossings} = Order.run(graph, opts[:sweeps])
+    {layers, crossings} = Order.run(graph, opts[:sweeps], opts)
     coords = Position.run(graph, layers, opts)
 
     %{

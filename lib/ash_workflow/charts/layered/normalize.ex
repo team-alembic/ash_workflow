@@ -9,7 +9,7 @@ defmodule AshWorkflow.Charts.Layered.Normalize do
   # segments: [{upper_id, lower_id}], each one rank long, in edge order
   # chains:   %{edge_id => [node ids from the upper end to the lower end]}
 
-  defstruct nodes: %{}, ids: [], ranks: %{}, segments: [], chains: %{}
+  defstruct nodes: %{}, ids: [], edge_ids: [], ranks: %{}, segments: [], chains: %{}
 
   def run(nodes, edges, ranks) do
     base = %__MODULE__{
@@ -47,7 +47,8 @@ defmodule AshWorkflow.Charts.Layered.Normalize do
     %{
       graph
       | segments: graph.segments ++ Enum.zip(chain, tl(chain)),
-        chains: Map.put(graph.chains, edge.id, chain)
+        chains: Map.put(graph.chains, edge.id, chain),
+        edge_ids: graph.edge_ids ++ [edge.id]
     }
   end
 end

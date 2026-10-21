@@ -93,6 +93,21 @@ defmodule AshWorkflow.Charts.LayeredTest do
     assert {_, _, 30, 16} = result.edges[1].label
   end
 
+  test "greedy cycle breaking reverses one edge of a two-cycle, the later one in the input" do
+    nodes = [box(:a), box(:b)]
+    edges = [edge(1, :a, :b), edge(2, :b, :a)]
+
+    assert {_dag, reversed} = Acyclic.run(nodes, edges, :greedy)
+    assert reversed == MapSet.new([2])
+  end
+
+  test "the weighted median ignores an outlier that the mean follows" do
+    assert Order.median_value([0, 1, 9]) == 1
+    assert Order.median_value([2]) == 2
+    assert Order.median_value([]) == nil
+    assert Order.median_value([0, 4]) == 2.0
+  end
+
   test "the same input gives the same result" do
     nodes = [box(:a), box(:b), box(:c), box(:d)]
 

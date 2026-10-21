@@ -5,7 +5,10 @@ defmodule AshWorkflow.Charts.Layered.Order do
   # adjacent swaps. Keeps the best order it sees. The graphs are small, so the
   # crossing count is a plain pairwise count.
 
-  def run(graph, sweeps) do
+  def run(graph, sweeps, opts \\ []) do
+    heuristic = Keyword.get(opts, :heuristic, :mean_index)
+    tie = Keyword.get(opts, :tie, :current)
+    model = model_order(graph)
     max_rank = graph.ranks |> Map.values() |> Enum.max(fn -> 0 end)
     preds = Enum.group_by(graph.segments, &elem(&1, 1), &elem(&1, 0))
     succs = Enum.group_by(graph.segments, &elem(&1, 0), &elem(&1, 1))
@@ -15,8 +18,8 @@ defmodule AshWorkflow.Charts.Layered.Order do
       Enum.reduce(1..sweeps//1, {start, {start, crossings(start, succs)}}, fn i, {layers, best} ->
         layers =
           if rem(i, 2) == 1,
-            do: sweep(layers, 1..max_rank//1, preds, -1),
-            else: sweep(layers, (max_rank - 1)..0//-1, succs, 1)
+            do: sweep(layers, 1..max_rank//1, preds, -1, heuristic, tie, model),
+            else: sweep(layers, (max_rank - 1)..0//-1, succs, 1, heuristic, tie, model)
 
         layers = transpose(layers, succs)
         count = crossings(layers, succs)
@@ -67,6 +70,92 @@ defmodule AshWorkflow.Charts.Layered.Order do
         |> Enum.map(&elem(&1, 2))
 
       Map.put(layers, rank, sorted)
+    end)
+  end
+
+  defp sweep(layers, ranks, neighbours, step, :mean_index, _tie, _model),
+    do: sweep(layers, ranks, neighbours, step)
+
+  # A node with no neighbour in the fixed rank keeps its slot; the others
+  # fill the remaining slots in order of their value (Gansner et al. 1993,
+  # section 3). Ties go to the current order or to the input order.
+  defp sweep(layers, ranks, neighbours, step, heuristic, tie, model) do
+    Enum.reduce(ranks, layers, fn rank, layers ->
+      fixed = index(Map.fetch!(layers, rank + step))
+      layer = Map.fetch!(layers, rank)
+      current = index(layer)
+
+      values =
+        Map.new(layer, fn id ->
+          positions =
+            for(n <- Map.get(neighbours, id, []), Map.has_key?(fixed, n), do: fixed[n])
+            |> Enum.sort()
+
+          {id, value(heuristic, positions)}
+        end)
+
+      tie_key = if tie == :model, do: &Map.fetch!(model, &1), else: &Map.fetch!(current, &1)
+      Map.put(layers, rank, arrange(layer, values, tie_key))
+    end)
+  end
+
+  defp value(_heuristic, []), do: nil
+  defp value(:barycenter, positions), do: Enum.sum(positions) / length(positions)
+  defp value(:median, positions), do: median_value(positions)
+
+  @doc false
+  # Gansner et al. (1993), section 3: the median of the sorted neighbour
+  # positions; for an even count, interpolated towards the side where the
+  # neighbours are packed closer.
+  def median_value([]), do: nil
+
+  def median_value(positions) do
+    m = length(positions)
+    mid = div(m, 2)
+    at = &Enum.at(positions, &1)
+
+    cond do
+      rem(m, 2) == 1 ->
+        at.(mid)
+
+      m == 2 ->
+        (at.(0) + at.(1)) / 2
+
+      true ->
+        left = at.(mid - 1) - at.(0)
+        right = at.(m - 1) - at.(mid)
+
+        if left + right == 0,
+          do: (at.(mid - 1) + at.(mid)) / 2,
+          else: (at.(mid - 1) * right + at.(mid) * left) / (left + right)
+    end
+  end
+
+  defp arrange(layer, values, tie_key) do
+    movable =
+      layer |> Enum.reject(&is_nil(values[&1])) |> Enum.sort_by(&{values[&1], tie_key.(&1)})
+
+    {arranged, []} =
+      Enum.map_reduce(layer, movable, fn id, rest ->
+        if is_nil(values[id]), do: {id, rest}, else: {hd(rest), tl(rest)}
+      end)
+
+    arranged
+  end
+
+  # Real nodes by input position; dummies after them, by their edge's input
+  # position, then by rank.
+  defp model_order(graph) do
+    real = graph.ids |> Enum.with_index() |> Map.new()
+    edges = graph.edge_ids |> Enum.with_index() |> Map.new()
+    base = length(graph.ids)
+
+    Map.new(graph.nodes, fn
+      {{:dummy, edge_id, rank} = id, _node} ->
+        {id, base + Map.fetch!(edges, edge_id) + rank / 10_000}
+
+      {id, _node} ->
+        {id, Map.fetch!(real, id)}
     end)
   end
 
