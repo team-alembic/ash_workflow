@@ -108,22 +108,16 @@ defmodule AshWorkflow.Charts.LayeredTest do
     assert Order.median_value([0, 4]) == 2.0
   end
 
-  test "a companion edge is a return arc beside its partner, the other way, and takes no room" do
+  test "without lanes, a companion edge is left out and takes no room" do
     nodes = [box(:a), box(:b)]
     forward = edge(1, :a, :b, 30, 16)
     undo = %{edge(2, :b, :a) | companion: 1}
 
     alone = Layered.layout(nodes, [forward])
-    paired = Layered.layout(nodes, [forward, undo], companions: :arcs)
-    [{fx0, fy0} | _] = alone.edges[1].points
-    {fxn, fyn} = List.last(alone.edges[1].points)
+    paired = Layered.layout(nodes, [forward, undo], companions: :none)
 
     assert paired.nodes == alone.nodes
-    assert hd(paired.edges[2].points) == {fxn - 16, fyn}
-    assert List.last(paired.edges[2].points) == {fx0 - 16, fy0}
-    assert Enum.all?(paired.edges[2].points, fn {x, _y} -> x < fx0 end)
-    assert paired.edges[2].label == nil
-    assert MapSet.member?(paired.reversed, 2)
+    refute Map.has_key?(paired.edges, 2)
   end
 
   test "the right direction runs a chain left to right, and keeps box and label sizes" do

@@ -76,46 +76,6 @@ defmodule AshWorkflow.Charts.Layered.Route do
     }
   end
 
-  # A companion edge, such as the undo of a move, is not laid out. It is a
-  # return arc: it leaves its partner's target 16 px beside the partner's
-  # arrow, on the side away from the partner's label, and swings back to the
-  # partner's source in one smooth curve, bowing outwards. So it has its own
-  # shape, never on top of or parallel to its partner. Both ends have a
-  # straight 24 px stub in line with the partner's ends, so its arrowhead
-  # sits straight. :arc holds the six points of the drawing (two stubs and a
-  # cubic); :points holds the same curve sampled, for the scorecard.
-  @arc_shift 16
-  @arc_bow 48
-
-  def arcs(%Result{} = result, companions) do
-    edges =
-      Enum.reduce(companions, result.edges, fn c, edges ->
-        Map.put(edges, c.id, arc(Map.fetch!(result.edges, c.companion).points))
-      end)
-
-    reversed = Enum.reduce(companions, result.reversed, &MapSet.put(&2, &1.id))
-    %{result | edges: edges, reversed: reversed}
-  end
-
-  defp arc(points) do
-    [first, second | _] = points
-    [last, before | _] = Enum.reverse(points)
-    into = unit(sub(last, before))
-    out = unit(sub(second, first))
-
-    start = add(last, {-@arc_shift, 0})
-    finish = add(first, {-@arc_shift, 0})
-    a = add(start, scale(into, -@arrow_stub))
-    b = add(finish, scale(out, @arrow_stub))
-    span = norm(sub(b, a))
-    bow = min(@arc_bow, span * 0.35)
-    c1 = add(add(a, scale(into, -span / 3)), {-bow, 0})
-    c2 = add(add(b, scale(out, span / 3)), {-bow, 0})
-
-    sampled = for t <- Enum.map(0..10, &(&1 / 10)), do: bezier(a, c1, c2, b, t)
-    %{points: [start | sampled] ++ [finish], label: nil, arc: [start, a, c1, c2, b, finish]}
-  end
-
   defp bezier({x0, y0}, {x1, y1}, {x2, y2}, {x3, y3}, t) do
     u = 1 - t
 
@@ -124,16 +84,6 @@ defmodule AshWorkflow.Charts.Layered.Route do
     end
 
     {f.(x0, x1, x2, x3), f.(y0, y1, y2, y3)}
-  end
-
-  defp add({ax, ay}, {bx, by}), do: {ax + bx, ay + by}
-  defp sub({ax, ay}, {bx, by}), do: {ax - bx, ay - by}
-  defp scale({x, y}, k), do: {x * k, y * k}
-  defp norm({x, y}), do: :math.sqrt(x * x + y * y)
-
-  defp unit(v) do
-    l = norm(v)
-    if l == 0, do: {0.0, 1.0}, else: scale(v, 1 / l)
   end
 
   # %{rank => {top, bottom}}: the band that the rank's boxes fill.

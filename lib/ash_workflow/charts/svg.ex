@@ -71,7 +71,7 @@ defmodule AshWorkflow.Charts.Svg do
   # so the gallery scores what a reader sees.
   #
   # undo: :marker draws no undo line: the move it rewinds gets a hollow
-  # arrowhead at its start. :lanes and :arcs draw a dotted return line.
+  # arrowhead at its start. :lanes draws a dotted return line in its own lane.
   def drawn_layout(%Graph{} = graph, opts) do
     opts =
       Keyword.validate!(opts,
@@ -82,7 +82,7 @@ defmodule AshWorkflow.Charts.Svg do
         layout: []
       )
 
-    companions = if opts[:undo] == :lanes, do: :lanes, else: :arcs
+    companions = if opts[:undo] == :lanes, do: :lanes, else: :none
 
     layout_opts =
       [direction: opts[:direction], routing: routing(opts[:edges]), companions: companions] ++
@@ -298,12 +298,6 @@ defmodule AshWorkflow.Charts.Svg do
   defp start_edge_svg(route, text, {routing, direction}),
     do:
       ~s|<path d="#{draw(route.points, routing, direction)}" fill="none" stroke="#{text}" stroke-width="1.5" marker-end="url(#arrow-transition)"/>\n|
-
-  # A return arc is drawn from its own points: a stub, a cubic, a stub.
-  defp draw_route(%{arc: [start, a, c1, c2, b, finish]}, _routing, _direction) do
-    xy = fn {x, y} -> "#{num(x)},#{num(y)}" end
-    "M#{xy.(start)} L#{xy.(a)} C#{xy.(c1)} #{xy.(c2)} #{xy.(b)} L#{xy.(finish)}"
-  end
 
   defp draw_route(%{curve: [first | _] = curve}, _routing, _direction) do
     xy = fn {x, y} -> "#{num(x)},#{num(y)}" end

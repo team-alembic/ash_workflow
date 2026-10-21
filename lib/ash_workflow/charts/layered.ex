@@ -70,11 +70,10 @@ defmodule AshWorkflow.Charts.Layered do
     {loops, edges} = Enum.split_with(edges, &(&1.from == &1.to))
     {dag, reversed} = Acyclic.run(nodes, edges, opts[:acyclic])
 
-    # Companion edges (an undo beside the move it rewinds) are drawn one of
-    # two ways. :lanes lays each out in its own lane, one gap beside its
-    # partner's; :arcs leaves them out of the layout and draws a return arc.
-    {lane_companions, arc_companions} =
-      if opts[:companions] == :lanes, do: {companions, []}, else: {[], companions}
+    # Companion edges (an undo beside the move it rewinds): with :lanes, each
+    # gets its own lane, one gap beside its partner's; otherwise they are
+    # left out, and the caller marks the partner instead.
+    lane_companions = if opts[:companions] == :lanes, do: companions, else: []
 
     # A lane companion runs the same way as its partner in the layered graph,
     # so it covers the same ranks.
@@ -105,7 +104,6 @@ defmodule AshWorkflow.Charts.Layered do
     result =
       graph
       |> Route.run(coords, reversed, loops, opts)
-      |> Route.arcs(arc_companions)
 
     result = if right?, do: transpose(result), else: result
 
@@ -159,7 +157,6 @@ defmodule AshWorkflow.Charts.Layered do
               end
 
             flip = fn points -> Enum.map(points, fn {x, y} -> {y, x} end) end
-            e = if Map.has_key?(e, :arc), do: %{e | arc: flip.(e.arc)}, else: e
 
             e =
               if Map.has_key?(e, :curve),

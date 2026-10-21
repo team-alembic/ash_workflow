@@ -17,8 +17,7 @@ scenarios =
 
 variants = [
   marker: "No line: a hollow arrowhead at the start of the move",
-  lanes: "A dotted line in its own lane, 24 px or more beside the move",
-  arcs: "A dotted arc that swings back beside the move"
+  lanes: "A dotted line in its own lane, 24 px or more beside the move"
 ]
 
 modes = [{:down, :orthogonal}, {:down, :curved}, {:right, :orthogonal}]
