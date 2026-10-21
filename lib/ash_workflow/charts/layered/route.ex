@@ -68,6 +68,70 @@ defmodule AshWorkflow.Charts.Layered.Route do
     }
   end
 
+  @companion_gap 5
+
+  # A companion edge, such as the undo of a transition, is not laid out. It
+  # runs beside its partner's route, the other way, 5 px to the side away from
+  # the partner's label. It has no label of its own.
+  def companions(%Result{} = result, companions, routing) do
+    edges =
+      Enum.reduce(companions, result.edges, fn edge, edges ->
+        partner = Map.fetch!(result.edges, edge.companion)
+
+        Map.put(edges, edge.id, %{
+          points: partner.points |> beside(routing) |> Enum.reverse(),
+          label: nil
+        })
+      end)
+
+    # A companion runs against its partner, so it counts as a back edge.
+    reversed = Enum.reduce(companions, result.reversed, &MapSet.put(&2, &1.id))
+    %{result | edges: edges, reversed: reversed}
+  end
+
+  # The route moved sideways by the gap, to the west. A straight route moves
+  # only in x, so its diagonals stay inside their gaps and its lanes stay
+  # vertical. An orthogonal route moves along its normals, to the west of a
+  # line that runs down, whichever way the partner points; at a corner, the
+  # point moves along the mean of the two normals, far enough to keep the gap
+  # on both segments.
+  defp beside(points, routing) when routing != :orthogonal,
+    do: Enum.map(points, fn {x, y} -> {x - @companion_gap, y} end)
+
+  defp beside(points, :orthogonal) do
+    {_x0, y0} = hd(points)
+    {_xn, yn} = List.last(points)
+    d = if y0 > yn, do: -@companion_gap, else: @companion_gap
+
+    normals =
+      points
+      |> Enum.zip(tl(points))
+      |> Enum.map(fn {{x1, y1}, {x2, y2}} ->
+        length = :math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+        if length == 0, do: {0.0, 0.0}, else: {-(y2 - y1) / length, (x2 - x1) / length}
+      end)
+
+    at_points =
+      [hd(normals)] ++ Enum.map(Enum.zip(normals, tl(normals)), &corner/1) ++ [List.last(normals)]
+
+    points
+    |> Enum.zip(at_points)
+    |> Enum.map(fn {{x, y}, {nx, ny}} -> {x + nx * d, y + ny * d} end)
+  end
+
+  defp corner({{ax, ay}, {bx, by}}) do
+    {mx, my} = {ax + bx, ay + by}
+    length = :math.sqrt(mx * mx + my * my)
+
+    if length < 1.0e-9 do
+      {ax, ay}
+    else
+      {mx, my} = {mx / length, my / length}
+      scale = 1 / max(mx * ax + my * ay, 0.5)
+      {mx * scale, my * scale}
+    end
+  end
+
   # %{rank => {top, bottom}}: the band that the rank's boxes fill.
   defp bands(graph, coords) do
     coords

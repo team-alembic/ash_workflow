@@ -36,6 +36,7 @@ defmodule AshWorkflow.Charts.Svg do
     theme = opts[:theme]
     layout_opts = [direction: opts[:direction], routing: routing(opts[:edges])] ++ opts[:layout]
     {result, edges} = layout(graph, layout_opts)
+    labels = label_text(edges)
     colours = Palette.colours(theme)
     text = Palette.edge_label_colour(theme)
 
@@ -47,7 +48,7 @@ defmodule AshWorkflow.Charts.Svg do
       edges
       |> Enum.sort()
       |> Enum.map(fn {id, edge} ->
-        edge_svg(edge, result.edges[id], colours, text, result.routing)
+        edge_svg(edge, result.edges[id], Map.get(labels, id, []), colours, text, result.routing)
       end),
       start_edge_svg(result.edges[0], text, result.routing),
       graph.nodes |> Enum.map(&node_svg(&1, graph, result.nodes[&1.id], colours, text)),
@@ -96,20 +97,27 @@ defmodule AshWorkflow.Charts.Svg do
         end)
 
     edges = graph.edges |> Enum.with_index(1) |> Map.new(fn {edge, i} -> {i, edge} end)
+    partners = partners(edges)
+    labels = label_text(edges)
 
     layered_edges =
       [%Layered.Edge{id: 0, from: @start, to: initial.id}] ++
         for {id, edge} <- Enum.sort(edges) do
-          lines = label_lines(edge)
-          width = lines |> Enum.map(&TextWidth.width(&1, @font_size)) |> Enum.max()
+          case {Map.fetch(partners, id), Map.get(labels, id, [])} do
+            {{:ok, partner}, _lines} ->
+              %Layered.Edge{id: id, from: edge.from, to: edge.to, companion: partner}
 
-          %Layered.Edge{
-            id: id,
-            from: edge.from,
-            to: edge.to,
-            label_width: Float.ceil(width + 8),
-            label_height: length(lines) * @line_height
-          }
+            {:error, lines} ->
+              width = lines |> Enum.map(&TextWidth.width(&1, @font_size)) |> Enum.max()
+
+              %Layered.Edge{
+                id: id,
+                from: edge.from,
+                to: edge.to,
+                label_width: Float.ceil(width + 8),
+                label_height: length(lines) * @line_height
+              }
+          end
         end
 
     {nodes, layered_edges, edges}
@@ -126,6 +134,40 @@ defmodule AshWorkflow.Charts.Svg do
 
   defp label_lines(edge), do: TextWidth.wrap(Format.edge_text(edge), @label_max, @font_size)
 
+  # %{undo edge id => the forward edge it rewinds}. An undo edge with a
+  # forward partner is drawn beside it, and its text joins the partner's
+  # label, so one move and its undo read as one thing.
+  defp partners(edges) do
+    for {id, %{kind: :undo} = undo} <- edges,
+        undo.from != undo.to,
+        partner =
+          edges
+          |> Enum.sort()
+          |> Enum.find_value(fn {pid, e} ->
+            e.kind != :undo and e.from == undo.to and e.to == undo.from and pid
+          end),
+        partner,
+        into: %{},
+        do: {id, partner}
+  end
+
+  # %{edge id => label lines}. A forward edge with an undo partner gets the
+  # undo's text as its last line; the undo edge itself has no label.
+  defp label_text(edges) do
+    partners = partners(edges)
+    undo_of = Map.new(partners, fn {undo, partner} -> {partner, undo} end)
+
+    for {id, edge} <- edges, not Map.has_key?(partners, id), into: %{} do
+      extra =
+        case Map.fetch(undo_of, id) do
+          {:ok, undo} -> label_lines(Map.fetch!(edges, undo))
+          :error -> []
+        end
+
+      {id, label_lines(edge) ++ extra}
+    end
+  end
+
   defp markers(colours, text) do
     for {class, colour} <- [transition: text] ++ edge_strokes(colours) do
       ~s(<marker id="arrow-#{class}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#{colour}"/></marker>\n)
@@ -140,14 +182,14 @@ defmodule AshWorkflow.Charts.Svg do
         do: {class, colours[class][:stroke]}
       )
 
-  defp edge_svg(edge, route, colours, text, routing) do
+  defp edge_svg(edge, route, lines, colours, text, routing) do
     colour = if edge.kind == :transition, do: text, else: colours[edge.kind][:stroke]
 
     [
       ~s(<path d="#{draw(route.points, routing)}" fill="none" stroke="#{colour}" stroke-width="#{stroke_width(edge.kind)}" ),
       dash(edge.kind),
       ~s|stroke-linejoin="round" marker-end="url(#arrow-#{edge.kind})"/>\n|,
-      label_svg(route.label, label_lines(edge), text)
+      label_svg(route.label, lines, text)
     ]
   end
 

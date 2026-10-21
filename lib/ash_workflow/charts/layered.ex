@@ -11,7 +11,7 @@ defmodule AshWorkflow.Charts.Layered do
 
   defmodule Edge do
     @moduledoc false
-    defstruct [:id, :from, :to, label_width: 0, label_height: 0]
+    defstruct [:id, :from, :to, label_width: 0, label_height: 0, companion: nil]
 
     @type t :: %__MODULE__{
             id: term(),
@@ -55,6 +55,7 @@ defmodule AshWorkflow.Charts.Layered do
   @spec layout([Node.t()], [Edge.t()], keyword()) :: Result.t()
   def layout(nodes, edges, opts \\ []) do
     opts = Keyword.merge(@defaults, opts)
+    {companions, edges} = Enum.split_with(edges, &(&1.companion != nil))
     {loops, edges} = Enum.split_with(edges, &(&1.from == &1.to))
     {dag, reversed} = Acyclic.run(nodes, edges, opts[:acyclic])
 
@@ -72,7 +73,9 @@ defmodule AshWorkflow.Charts.Layered do
     coords = Position.run(graph, layers, opts)
 
     %{
-      Route.run(graph, coords, reversed, loops, opts)
+      (graph
+       |> Route.run(coords, reversed, loops, opts)
+       |> Route.companions(companions, opts[:routing]))
       | crossings: crossings,
         direction: Keyword.get(opts, :direction, :down),
         routing: Keyword.get(opts, :routing, :polyline)
