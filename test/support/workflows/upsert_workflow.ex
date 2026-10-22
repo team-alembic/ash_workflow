@@ -34,6 +34,14 @@ defmodule AshWorkflowTest.UpsertWorkflow do
       upsert_fields []
     end
 
+    create :open_while_open do
+      accept [:code]
+      upsert? true
+      upsert_identity :unique_code
+      upsert_fields [:code]
+      upsert_condition expr(state == :open)
+    end
+
     # The identity's `pre_check_with` adds a `before_action` hook, which an
     # atomic update cannot run.
     update :close do

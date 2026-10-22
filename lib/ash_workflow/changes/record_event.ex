@@ -205,9 +205,15 @@ defmodule AshWorkflow.Changes.RecordEvent do
     record
   end
 
-  # A create that upserts onto an existing row leaves it in the step it was in.
+  # A create that upserts onto an existing row leaves it in the step it was in,
+  # whether the row was updated or the `upsert_condition` skipped the update.
   defp upserted_onto_existing_row?(%{action_type: :create}, %{
          __metadata__: %{upsert_action: :update}
+       }),
+       do: true
+
+  defp upserted_onto_existing_row?(%{action_type: :create}, %{
+         __metadata__: %{upsert_skipped: true}
        }),
        do: true
 
