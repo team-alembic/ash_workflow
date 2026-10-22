@@ -159,7 +159,9 @@ defmodule Mix.Tasks.AshWorkflow.Gen.SyncTest do
     Timeline.deadline_changed(sync, works, timeline)
   end
 
-  defp await_state(sync, state, timeout_ms \\ 5_000) do
+  # A wait spans real backoffs of whole seconds, the smallest `--backoff` takes.
+  # Two waits of 25s stay inside ExUnit's 60s test timeout on a slow runner.
+  defp await_state(sync, state, timeout_ms \\ 25_000) do
     deadline = System.monotonic_time(:millisecond) + timeout_ms
 
     Stream.repeatedly(fn ->
