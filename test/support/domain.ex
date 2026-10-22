@@ -16,6 +16,7 @@ defmodule AshWorkflowTest.Domain do
     resource AshWorkflowTest.SharedTransitionWorkflow
     resource AshWorkflowTest.SharedConditionalWorkflow
     resource AshWorkflowTest.AggregateRouteWorkflow
+    resource AshWorkflowTest.SharedRoutedWorkflow
     resource AshWorkflowTest.AcceptWorkflow
     resource AshWorkflowTest.AcceptedRouteWorkflow
     resource AshWorkflowTest.InitialFlagWorkflow
