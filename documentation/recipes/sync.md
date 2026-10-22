@@ -113,11 +113,53 @@ end
 
 ### Resync
 
-Call `resync/2` after the subject changes, or from an admin screen listing failed syncs:
+Call `resync/2` on a sync in `:synced` or `:failed`, for example from an admin screen listing failed syncs:
 
 ```elixir
 MyApp.Sales.CustomerSync.resync(sync, actor: current_user)
 ```
+
+A sync in `:syncing` refuses `resync`, because only `:synced` and `:failed` declare it. A push that is already running or waiting for its next attempt sends the subject as it was when that attempt started.
+
+### Resync after the subject changes
+
+A change to the subject during a sync must wait until the sync settles. Record the change on the sync, and resync once the sync reaches `:synced` or `:failed`. Add a flag and an action that sets it from any state:
+
+```elixir
+attributes do
+  attribute :needs_resync?, :boolean, default: false, allow_nil?: false, public?: true
+end
+
+actions do
+  update :request_resync do
+    change set_attribute(:needs_resync?, true)
+  end
+end
+```
+
+Clear the flag when the sync resyncs, by adding the change to the `:resync` action:
+
+```elixir
+update :resync do
+  require_atomic? false
+  change set_attribute(:needs_resync?, false)
+end
+```
+
+Call `request_resync` from each subject action that changes data the external system holds. Then resync every settled sync that has the flag, for example with an ash_oban trigger on the sync:
+
+```elixir
+oban do
+  triggers do
+    trigger :resync_changed do
+      action :resync
+      where expr(needs_resync? and state in [:synced, :failed])
+    end
+  end
+end
+```
+
+`:push` does not touch the flag, so a change that lands during a push stays recorded and is sent by the next resync.
 
 ### Use the outcome
 
@@ -137,4 +179,6 @@ On AshPostgres, run `mix ash.codegen add_customer_sync` to create the sync and t
 
 A push that hangs keeps the sync in `:syncing`. The workflow has no timeout to move it on. Add a `timeout` with `transition_to :failed` to the `:syncing` step if your application needs one.
 
-A change to the subject does not resync it. Call `resync/2` from the subject's actions yourself.
+A change to the subject does not resync it. A sync in `:syncing` cannot be resynced, so a change during a push waits for the sync to settle. See [Resync after the subject changes](#resync-after-the-subject-changes).
+
+`:syncing` does not declare `resync`, because the scheduler would not restart the push. On the default `AshWorkflow.Scheduler.Oban`, a failed attempt leaves its Oban job waiting to retry. That job is unique per record, so a resync could neither replace it nor reset its attempt count, and the old job would still run `:push` on its backoff.
