@@ -44,6 +44,11 @@ defmodule AshWorkflow.Changes.RecordEvent do
       those sites pass a human-facing name explicitly. An undo takes the name
       of the row it reverses, so the pair reads as one decision and its
       reversal rather than as two unrelated events.
+    * `:emits` (optional, defaults to `[]`) — the workflow signals this change
+      may emit, set by `AshWorkflow.Transformers.AddActions` when the workflow
+      names a `signals` module. Each entry is a map with `:signal`, `:fields`,
+      `:values` and `:when`, where `:when` is `:state_change`, `{:enter, step}`,
+      `{:exit, step}`, `{:from, step}` or `:always`.
 
   ## Undo
 
@@ -60,6 +65,15 @@ defmodule AshWorkflow.Changes.RecordEvent do
   action AshWorkflow generates, so one place covers a manual transition, an
   automatic step, a timeout, an error path, an undo and the initial create. See
   `AshWorkflow.Telemetry` for the events and their metadata.
+
+  ## Signals
+
+  When the workflow names a `signals` module, this change emits the `:emits`
+  entries that match the event with `Ash.Signals.emit/5`, in the same
+  `after_action` hook as the log append. A listener error fails the action and
+  rolls it back. On an atomic update of an action with several `from` states
+  and no transition log, the from state is unknown, so `on: :exit`,
+  transition, timeout and `every` emits do not fire.
 
   ## Telling the scheduler
 
@@ -113,9 +127,7 @@ defmodule AshWorkflow.Changes.RecordEvent do
     |> touch_state_entered_at(opts)
     |> touch_fired_fields(opts)
     |> emit_start(opts)
-    |> Ash.Changeset.after_action(fn changeset, record ->
-      {:ok, finish(changeset, record, opts, context)}
-    end)
+    |> Ash.Changeset.after_action(&finish(&1, &2, opts, context))
   end
 
   @impl true
@@ -123,9 +135,7 @@ defmodule AshWorkflow.Changes.RecordEvent do
     changeset =
       changeset
       |> emit_start(opts)
-      |> Ash.Changeset.after_action(fn changeset, record ->
-        {:ok, finish(changeset, record, opts, context)}
-      end)
+      |> Ash.Changeset.after_action(&finish(&1, &2, opts, context))
 
     {:atomic, changeset, atomic_touched_attrs(changeset, opts)}
   end
@@ -183,13 +193,100 @@ defmodule AshWorkflow.Changes.RecordEvent do
 
   defp every_field(opts), do: Keyword.get(opts, :every_field)
 
+  # Signals go out after the log row so a listener that reads history sees this
+  # event, and before the span closes so a failing listener's error is what the
+  # span and the scheduler see: neither runs for an event that rolls back.
   defp finish(changeset, record, opts, context) do
-    record = append_log(changeset, record, opts, context)
+    log = Info.transition_log(changeset.resource)
+    plan = Keyword.get(opts, :emits, [])
+    from_state = event_from_state(changeset, record, log, plan, opts)
 
-    emit_stop(changeset, record)
-    Scheduler.notify_state_change(record)
+    append_log(changeset, record, log, from_state, opts, context)
 
-    record
+    case emit_signals(changeset, record, plan, from_state, opts) do
+      :ok ->
+        emit_stop(changeset, record)
+        Scheduler.notify_state_change(record)
+
+        {:ok, record}
+
+      {:error, error} ->
+        rollback(changeset.resource, error)
+    end
+  end
+
+  # Ash's atomic upgrade of a single update returns an `after_action` error
+  # without rolling back its transaction, so the state change would commit.
+  defp rollback(resource, error) do
+    if Ash.DataLayer.in_transaction?(resource) do
+      Ash.DataLayer.rollback(resource, error)
+    else
+      {:error, error}
+    end
+  end
+
+  defp emit_signals(_changeset, _record, [], _from_state, _opts), do: :ok
+
+  defp emit_signals(changeset, record, plan, from_state, opts) do
+    signals = Info.signals(changeset.resource)
+    to_state = record_state(record)
+
+    workflow_fields = %{
+      from_state: from_state,
+      to_state: to_state,
+      transition_name: transition_name(undone_row(changeset), opts, changeset),
+      triggered_by: opts[:triggered_by],
+      occurred_at: DateTime.utc_now()
+    }
+
+    plan
+    |> Enum.filter(&emit?(&1.when, from_state, to_state))
+    |> Enum.reduce_while(:ok, fn entry, :ok ->
+      payload = signal_payload(signals, entry, record, workflow_fields)
+
+      case Ash.Signals.emit(changeset, signals, entry.signal, payload) do
+        :ok -> {:cont, :ok}
+        {:error, error} -> {:halt, {:error, error}}
+      end
+    end)
+  end
+
+  defp emit?(:always, _from_state, _to_state), do: true
+  defp emit?(:state_change, _from_state, _to_state), do: true
+  defp emit?({:enter, step}, _from_state, to_state), do: to_state == step
+  defp emit?({:exit, step}, from_state, _to_state), do: from_state == step
+  defp emit?({:from, step}, from_state, _to_state), do: from_state == step
+
+  defp signal_payload(signals, entry, record, workflow_fields) do
+    names =
+      signals
+      |> Ash.Signals.Info.signal(entry.signal)
+      |> Map.get(:arguments)
+      |> Enum.map(& &1.name)
+
+    attributes = record.__struct__ |> Ash.Resource.Info.attributes() |> MapSet.new(& &1.name)
+
+    workflow = Map.take(workflow_fields, names)
+
+    same_name =
+      for name <- names, MapSet.member?(attributes, name), into: %{} do
+        {name, Map.get(record, name)}
+      end
+
+    mapped =
+      Map.new(entry.fields, fn {signal_field, attribute} ->
+        {signal_field, Map.get(record, attribute)}
+      end)
+
+    workflow
+    |> Map.merge(same_name)
+    |> Map.merge(mapped)
+    |> Map.merge(Map.new(entry.values))
+    |> Map.take(names)
+  end
+
+  defp record_state(record) do
+    Map.get(record, AshStateMachine.Info.state_machine_state_attribute!(record.__struct__))
   end
 
   # The span opens here rather than in the after_action hook because this is
@@ -284,23 +381,19 @@ defmodule AshWorkflow.Changes.RecordEvent do
     end
   end
 
-  defp append_log(changeset, record, opts, context) do
-    case Info.transition_log(changeset.resource) do
-      nil ->
-        record
+  defp append_log(_changeset, _record, nil, _from_state, _opts, _context), do: :ok
 
-      log ->
-        attrs = build_log_attrs(changeset, record, log, opts, context)
+  defp append_log(changeset, record, log, from_state, opts, context) do
+    attrs = build_log_attrs(changeset, record, log, from_state, opts, context)
 
-        log.resource
-        |> Ash.Changeset.for_create(:create, attrs, actor: context.actor, authorize?: false)
-        |> Ash.create!()
+    log.resource
+    |> Ash.Changeset.for_create(:create, attrs, actor: context.actor, authorize?: false)
+    |> Ash.create!()
 
-        record
-    end
+    :ok
   end
 
-  defp build_log_attrs(changeset, record, log, opts, context) do
+  defp build_log_attrs(changeset, record, log, from_state, opts, context) do
     workflow_resource = changeset.resource
     foreign_key = TransitionLogHelpers.foreign_key!(log.resource, workflow_resource)
     state_attribute = AshStateMachine.Info.state_machine_state_attribute!(workflow_resource)
@@ -309,7 +402,7 @@ defmodule AshWorkflow.Changes.RecordEvent do
 
     attrs = %{
       foreign_key => TransitionLogHelpers.primary_key_value!(record),
-      from_state: from_state(changeset, state_attribute, log, foreign_key, record),
+      from_state: from_state,
       to_state: Map.get(record, state_attribute),
       transition_name: transition_name(undone_row, opts, changeset),
       occurred_at: DateTime.utc_now(),
@@ -354,23 +447,42 @@ defmodule AshWorkflow.Changes.RecordEvent do
     end
   end
 
-  defp from_state(%{action_type: :create}, _state_attribute, _log, _foreign_key, _record), do: nil
+  defp event_from_state(_changeset, _record, nil, [], _opts), do: nil
+  defp event_from_state(%{action_type: :create}, _record, _log, _plan, _opts), do: nil
 
-  defp from_state(changeset, state_attribute, log, foreign_key, record) do
-    # An atomic update has no `data` to read the pre-update state from — it acts
-    # on a query, not a loaded record — and a partially selected record has the
-    # attribute unloaded. Both are the normal case for AshOban-driven steps and
-    # timeouts, which is most events on a busy workflow. Fall back to the state
-    # the last logged row landed in: every event is logged, so that is the state
-    # this transition is leaving.
-    case Map.get(changeset.data, state_attribute) do
-      nil -> last_logged_state(log, foreign_key, record)
-      %Ash.NotLoaded{} -> last_logged_state(log, foreign_key, record)
-      state -> state
+  defp event_from_state(changeset, record, log, _plan, opts) do
+    state_attribute = AshStateMachine.Info.state_machine_state_attribute!(changeset.resource)
+
+    # An event that does not change state, such as an action timeout or an
+    # `every` firing, left the record in the state it started in.
+    if touch_state_entered_at?(opts) do
+      data_attribute(changeset, state_attribute) || declared_from_state(changeset) ||
+        last_logged_state(log, record)
+    else
+      Map.get(record, state_attribute)
     end
   end
 
-  defp last_logged_state(log, foreign_key, record) do
+  # An atomic update has no `data` to read the pre-update state from, and a
+  # partially selected record has the attribute unloaded. Both are the normal
+  # case for AshOban-driven steps and timeouts. An action with a single `from`
+  # state names it; otherwise the last logged row landed in the state this
+  # transition is leaving.
+  defp declared_from_state(changeset) do
+    changeset.resource
+    |> AshStateMachine.Info.state_machine_transitions()
+    |> Enum.filter(&(&1.action == changeset.action.name))
+    |> case do
+      [%{from: [from]}] when from != :* -> from
+      _many_or_none -> nil
+    end
+  end
+
+  defp last_logged_state(nil, _record), do: nil
+
+  defp last_logged_state(log, record) do
+    foreign_key = TransitionLogHelpers.foreign_key!(log.resource, record.__struct__)
+
     log.resource
     |> Ash.Query.do_filter([{foreign_key, TransitionLogHelpers.primary_key_value!(record)}])
     |> Ash.Query.sort(occurred_at: :desc)

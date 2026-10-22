@@ -68,7 +68,8 @@ defmodule AshWorkflow.Entities.Every do
     :last_fired_field,
     self_scheduled?: false,
     __spark_metadata__: nil,
-    retry: nil
+    retry: nil,
+    emits: []
   ]
 
   @type duration_unit :: AshWorkflow.Duration.unit()
@@ -80,7 +81,8 @@ defmodule AshWorkflow.Entities.Every do
           check_interval: String.t() | nil,
           last_fired_field: atom() | nil,
           self_scheduled?: boolean(),
-          retry: AshWorkflow.Entities.Retry.t() | nil
+          retry: AshWorkflow.Entities.Retry.t() | nil,
+          emits: [AshWorkflow.Entities.Emit.t()]
         }
 
   @schema [
