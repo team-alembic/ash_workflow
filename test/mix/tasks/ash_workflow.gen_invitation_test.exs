@@ -30,7 +30,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.InvitationTest do
   # What an application does once it has generated the recipe: fill in
   # CanAccept. Here an actor proves they are the invitee by their email.
   defp allow_invitees(recipe) do
-    update_in(recipe.changed[@can_accept], fn source ->
+    edit_source(recipe, @can_accept, fn source ->
       String.replace(
         source,
         "def match?(_actor, _context, _opts), do: false",
@@ -44,8 +44,15 @@ defmodule Mix.Tasks.AshWorkflow.Gen.InvitationTest do
     end)
   end
 
-  defp user(email) do
-    User
+  # `compile/2` reads every file from the project, not only the changed ones.
+  defp edit_source(recipe, path, fun) do
+    recipe
+    |> update_in([Access.key!(:changed), path], fun)
+    |> update_in([Access.key!(:igniter), Access.key!(:assigns), :test_files, path], fun)
+  end
+
+  defp user(recipe, email) do
+    recipe.modules[User]
     |> Ash.Changeset.for_create(:create, %{email: email})
     |> Ash.create!()
   end
@@ -104,7 +111,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.InvitationTest do
     test "lists its invitations, newest as the latest", %{tmp_dir: tmp_dir} do
       recipe = invitation_for_teams(tmp_dir)
       team = team(recipe)
-      inviter = user("owner@example.com")
+      inviter = user(recipe, "owner@example.com")
 
       {:ok, first} = invite(recipe, team, inviter, "ada@example.com")
       {:ok, second} = invite(recipe, team, inviter, "grace@example.com")
@@ -132,7 +139,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.InvitationTest do
     invitation =
       invitation_module
       |> Ash.Changeset.for_create(:invite, %{subject_id: event.id, email: "ada@example.com"},
-        actor: user("host@example.com")
+        actor: user(recipe, "host@example.com")
       )
       |> Ash.create!()
 
@@ -146,6 +153,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.InvitationTest do
     second = run_task(first.igniter, "ash_workflow.gen.invitation", argv)
 
     assert second.changed == %{}
+    assert second.warnings == []
   end
 
   describe "CanAccept" do
@@ -155,8 +163,10 @@ defmodule Mix.Tasks.AshWorkflow.Gen.InvitationTest do
         |> generate()
         |> compile(tmp_dir)
 
-      invitee = user("ada@example.com")
-      {:ok, invitation} = invite(recipe, team(recipe), user("owner@example.com"), invitee.email)
+      invitee = user(recipe, "ada@example.com")
+
+      {:ok, invitation} =
+        invite(recipe, team(recipe), user(recipe, "owner@example.com"), invitee.email)
 
       assert {:error, %Ash.Error.Forbidden{}} = act(invitation, :accept, invitee)
       assert {:error, %Ash.Error.Forbidden{}} = act(invitation, :decline, invitee)
@@ -170,13 +180,13 @@ defmodule Mix.Tasks.AshWorkflow.Gen.InvitationTest do
 
     test "lets the invitee accept once the application permits them", %{tmp_dir: tmp_dir} do
       recipe = invitation_for_teams(tmp_dir)
-      invitee = user("ada@example.com")
+      invitee = user(recipe, "ada@example.com")
 
       {:ok, invitation} =
-        invite(recipe, team(recipe), user("owner@example.com"), "Ada@Example.com")
+        invite(recipe, team(recipe), user(recipe, "owner@example.com"), "Ada@Example.com")
 
       assert {:error, %Ash.Error.Forbidden{}} =
-               act(invitation, :accept, user("grace@example.com"))
+               act(invitation, :accept, user(recipe, "grace@example.com"))
 
       assert {:ok, %{state: :accepted} = accepted} = act(invitation, :accept, invitee)
       assert accepted.invitee_id == invitee.id
@@ -184,11 +194,13 @@ defmodule Mix.Tasks.AshWorkflow.Gen.InvitationTest do
 
     test "lets the invitee decline once the application permits them", %{tmp_dir: tmp_dir} do
       recipe = invitation_for_teams(tmp_dir)
-      invitee = user("ada@example.com")
-      {:ok, invitation} = invite(recipe, team(recipe), user("owner@example.com"), invitee.email)
+      invitee = user(recipe, "ada@example.com")
+
+      {:ok, invitation} =
+        invite(recipe, team(recipe), user(recipe, "owner@example.com"), invitee.email)
 
       assert {:error, %Ash.Error.Forbidden{}} =
-               act(invitation, :decline, user("grace@example.com"))
+               act(invitation, :decline, user(recipe, "grace@example.com"))
 
       assert {:ok, %{state: :declined, invitee_id: nil}} = act(invitation, :decline, invitee)
     end
@@ -197,8 +209,8 @@ defmodule Mix.Tasks.AshWorkflow.Gen.InvitationTest do
   describe "the inviter" do
     test "is the only one who can revoke", %{tmp_dir: tmp_dir} do
       recipe = invitation_for_teams(tmp_dir)
-      inviter = user("owner@example.com")
-      invitee = user("ada@example.com")
+      inviter = user(recipe, "owner@example.com")
+      invitee = user(recipe, "ada@example.com")
       {:ok, invitation} = invite(recipe, team(recipe), inviter, invitee.email)
 
       assert {:error, %Ash.Error.Forbidden{}} = act(invitation, :revoke, invitee)
@@ -207,8 +219,8 @@ defmodule Mix.Tasks.AshWorkflow.Gen.InvitationTest do
 
     test "is the only one who can resend", %{tmp_dir: tmp_dir} do
       recipe = invitation_for_teams(tmp_dir)
-      inviter = user("owner@example.com")
-      invitee = user("ada@example.com")
+      inviter = user(recipe, "owner@example.com")
+      invitee = user(recipe, "ada@example.com")
       {:ok, invitation} = invite(recipe, team(recipe), inviter, invitee.email)
 
       assert {:error, %Ash.Error.Forbidden{}} = act(invitation, :resend, invitee)
@@ -220,7 +232,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.InvitationTest do
     test "expires an invitation nobody answered once expires_at passes", %{tmp_dir: tmp_dir} do
       recipe = invitation_for_teams(tmp_dir)
       team = team(recipe)
-      inviter = user("owner@example.com")
+      inviter = user(recipe, "owner@example.com")
 
       {:ok, fresh} = invite(recipe, team, inviter, "ada@example.com")
       lapsed = invited_days_ago(recipe, team, inviter, "grace@example.com", 8)
@@ -239,7 +251,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.InvitationTest do
       tmp_dir: tmp_dir
     } do
       recipe = invitation_for_teams(tmp_dir)
-      inviter = user("owner@example.com")
+      inviter = user(recipe, "owner@example.com")
       invitation = invited_days_ago(recipe, team(recipe), inviter, "ada@example.com", 8)
 
       assert {:ok, %{state: :sent} = resent} = act(invitation, :resend, inviter)
@@ -253,10 +265,16 @@ defmodule Mix.Tasks.AshWorkflow.Gen.InvitationTest do
       tmp_dir: tmp_dir
     } do
       recipe = invitation_for_teams(tmp_dir)
-      invitee = user("ada@example.com")
+      invitee = user(recipe, "ada@example.com")
 
       invitation =
-        invited_days_ago(recipe, team(recipe), user("owner@example.com"), invitee.email, 8)
+        invited_days_ago(
+          recipe,
+          team(recipe),
+          user(recipe, "owner@example.com"),
+          invitee.email,
+          8
+        )
 
       assert {:error, %Ash.Error.Invalid{}} = act(invitation, :accept, invitee)
       assert reload(invitation).state == :sent
@@ -264,8 +282,8 @@ defmodule Mix.Tasks.AshWorkflow.Gen.InvitationTest do
 
     test "an expired invitation is final", %{tmp_dir: tmp_dir} do
       recipe = invitation_for_teams(tmp_dir)
-      inviter = user("owner@example.com")
-      invitee = user("ada@example.com")
+      inviter = user(recipe, "owner@example.com")
+      invitee = user(recipe, "ada@example.com")
       invitation = invited_days_ago(recipe, team(recipe), inviter, invitee.email, 8)
 
       Timeline.run_due(recipe.modules[TeamInvitation])
@@ -277,6 +295,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.InvitationTest do
     end
 
     for {flag, seconds} <- [
+          {"10s", 10},
           {"30m", 30 * 60},
           {"12h", 12 * 3600},
           {"2d", 2 * @day},
@@ -285,7 +304,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.InvitationTest do
       test "--expires-after #{flag} sets expires_at #{seconds} seconds after invite and resend",
            %{tmp_dir: tmp_dir} do
         recipe = invitation_for_teams(tmp_dir, ["--expires-after", unquote(flag)])
-        inviter = user("owner@example.com")
+        inviter = user(recipe, "owner@example.com")
         {:ok, invitation} = invite(recipe, team(recipe), inviter, "ada@example.com")
 
         assert_in_delta seconds_until(invitation.expires_at), unquote(seconds), 5
@@ -297,7 +316,9 @@ defmodule Mix.Tasks.AshWorkflow.Gen.InvitationTest do
 
     test "without --expires-after an invitation is open for 7 days", %{tmp_dir: tmp_dir} do
       recipe = invitation_for_teams(tmp_dir)
-      {:ok, invitation} = invite(recipe, team(recipe), user("owner@example.com"), "a@example.com")
+
+      {:ok, invitation} =
+        invite(recipe, team(recipe), user(recipe, "owner@example.com"), "a@example.com")
 
       assert_in_delta seconds_until(invitation.expires_at), 7 * @day, 5
     end
@@ -322,7 +343,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.InvitationTest do
     test "refuses a second open invitation to the same email in any case", %{tmp_dir: tmp_dir} do
       recipe = invitation_for_teams(tmp_dir)
       team = team(recipe)
-      inviter = user("owner@example.com")
+      inviter = user(recipe, "owner@example.com")
 
       assert {:ok, _invitation} = invite(recipe, team, inviter, "ada@example.com")
       assert {:error, %Ash.Error.Invalid{}} = invite(recipe, team, inviter, "ADA@example.com")
@@ -332,7 +353,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.InvitationTest do
     test "allows a new invitation once the open one is closed", %{tmp_dir: tmp_dir} do
       recipe = invitation_for_teams(tmp_dir)
       team = team(recipe)
-      inviter = user("owner@example.com")
+      inviter = user(recipe, "owner@example.com")
 
       {:ok, invitation} = invite(recipe, team, inviter, "ada@example.com")
       {:ok, _revoked} = act(invitation, :revoke, inviter)

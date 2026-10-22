@@ -34,7 +34,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.Invitation.Docs do
     * `--invitee` - required. The actor resource. The inviter and the invitee
       who accepts belong to it.
     * `--expires-after` - how long an invitation stays open after it is sent
-      or resent, given as `30m`, `12h`, `2d` or `2w`. Defaults to `7d`.
+      or resent, given as `10s`, `30m`, `12h`, `2d` or `2w`. Defaults to `7d`.
     * `--module` - the invitation resource's module name. Defaults to the
       subject's name with `Invitation` appended.
     * `--domain` - the domain for a subject the task creates. Required only
@@ -105,7 +105,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
                  "invitation",
                  [invitee]
                ) do
-            {:ok, igniter, storage} -> generate(igniter, config, storage)
+            {:ok, igniter, storage} -> generate_with_key_types(igniter, config, storage)
             {:error, igniter} -> igniter
           end
 
@@ -116,6 +116,18 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
 
     defp invitation_module(subject, nil), do: Module.concat([inspect(subject) <> "Invitation"])
     defp invitation_module(_subject, module), do: ProjectModule.parse(module)
+
+    # A subject created in this run does not compile yet and gets
+    # ash.gen.resource's uuid_v7 key.
+    defp generate_with_key_types(igniter, config, storage) do
+      with {:ok, subject_type} <- Recipe.key_type(config.subject, "invitation", :uuid_v7),
+           {:ok, invitee_type} <- Recipe.key_type(config.invitee, "invitation", nil) do
+        key_types = %{subject: subject_type, invitee: invitee_type}
+        generate(igniter, Map.put(config, :key_types, key_types), storage)
+      else
+        {:error, message} -> Igniter.add_issue(igniter, message)
+      end
+    end
 
     defp generate(igniter, config, storage) do
       {exists?, igniter} = ProjectModule.module_exists(igniter, config.invitation)
@@ -249,13 +261,20 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       end
 
       relationships do
-        belongs_to :subject, #{inspect(config.subject)}, allow_nil?: false, public?: true
-        belongs_to :invited_by, #{inspect(config.invitee)}, allow_nil?: false, public?: true
-        belongs_to :invitee, #{inspect(config.invitee)}, public?: true
+        #{Recipe.belongs_to(:subject, config.subject, config.key_types.subject)}
+        #{Recipe.belongs_to(:invited_by, config.invitee, config.key_types.invitee)}
+        #{optional_belongs_to(:invitee, config.invitee, config.key_types.invitee)}
       end
 
       #{postgres_identities(storage)}
       """
+    end
+
+    # The invitee is only known once someone accepts.
+    defp optional_belongs_to(name, destination, key_type) do
+      name
+      |> Recipe.belongs_to(destination, key_type)
+      |> String.replace("allow_nil?: false, ", "")
     end
 
     defp set_expires_at_contents(%{expires_after: {count, unit}} = config) do
@@ -272,6 +291,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       """
     end
 
+    defp time_unit(:seconds), do: :second
     defp time_unit(:minutes), do: :minute
     defp time_unit(:hours), do: :hour
     defp time_unit(:days), do: :day

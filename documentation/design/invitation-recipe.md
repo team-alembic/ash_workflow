@@ -30,7 +30,7 @@ mix ash_workflow.gen.invitation MyApp.Teams.Team \
 | Option | Default | Effect |
 |---|---|---|
 | `--invitee` | required | The actor resource. The inviter and the accepting invitee both `belong_to` it. |
-| `--expires-after` | `7d` | How long an invitation stays open after `invite` or `resend`. Accepts `30m`, `12h`, `2d` and `2w`. |
+| `--expires-after` | `7d` | How long an invitation stays open after `invite` or `resend`. Accepts `10s`, `30m`, `12h`, `2d` and `2w`. |
 | `--module` | `<Subject>Invitation` | Name of the generated invitation resource. |
 | `--domain` | the subject's domain | Domain for a subject the generator creates. Required only when the subject does not exist. |
 | `--transition-log` | `true` | Composes `ash_workflow.gen.transition_log` with `--actor` set to the invitee resource. `--no-transition-log` skips it. |
