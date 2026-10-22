@@ -107,7 +107,7 @@ No step is terminal. An unpublished record can be republished.
 Call `create/2` wherever a draft starts, such as the subject's create action:
 
 ```elixir
-MyApp.Blog.PostPublication.create(post.id)
+MyApp.Blog.PostPublication.create(post.id, actor: editor)
 ```
 
 A second publication for the same post fails on the `:unique_subject` identity.
