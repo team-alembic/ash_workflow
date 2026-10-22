@@ -13,7 +13,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.DeletionTest do
   @fixtures "test/support/recipe_fixtures/deletion"
   @files ["#{@fixtures}/domain.ex", "#{@fixtures}/account.ex"]
   @checks "lib/ash_workflow_test/recipe_fixtures/deletion/account_deletion/checks"
-  @can_request_deletion "#{@checks}/can_request_deletion.ex"
+  @can_request "#{@checks}/can_request.ex"
   @can_restore "#{@checks}/can_restore.ex"
   @purge "lib/ash_workflow_test/recipe_fixtures/deletion/account_deletion/changes/purge.ex"
   @owner %{id: "owner", role: :owner}
@@ -36,7 +36,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.DeletionTest do
   # What an application does once it has generated the recipe: fill in both
   # checks. Here an actor with the :owner role may request and restore.
   defp allow_owners(recipe) do
-    Enum.reduce([@can_request_deletion, @can_restore], recipe, fn path, recipe ->
+    Enum.reduce([@can_request, @can_restore], recipe, fn path, recipe ->
       edit_source(recipe, path, fn source ->
         String.replace(
           source,
@@ -201,25 +201,34 @@ defmodule Mix.Tasks.AshWorkflow.Gen.DeletionTest do
     assert {:error, %Ash.Error.Invalid{}} = request(recipe, account)
   end
 
-  test "the request action has no policy, so the application decides who may request", %{
-    tmp_dir: tmp_dir
-  } do
-    recipe =
-      [inspect(Account), "--grace-period", "30d"]
-      |> generate()
-      |> compile(tmp_dir)
-
-    assert {:ok, %{state: :requested}} = request(recipe, account(recipe), actor: nil)
-  end
-
-  describe "CanRequestDeletion" do
-    test "denies everyone as generated", %{tmp_dir: tmp_dir} do
+  describe "CanRequest" do
+    test "refuses every request as generated, including one with no actor", %{
+      tmp_dir: tmp_dir
+    } do
       recipe =
         [inspect(Account), "--grace-period", "30d"]
         |> generate()
         |> compile(tmp_dir)
 
-      {:ok, deletion} = request(recipe, account(recipe))
+      account = account(recipe)
+
+      assert {:error, %Ash.Error.Forbidden{}} = request(recipe, account)
+      assert {:error, %Ash.Error.Forbidden{}} = request(recipe, account, actor: nil)
+      assert Ash.read!(recipe.modules[AccountDeletion]) == []
+
+      assert Enum.any?(
+               recipe.notices,
+               &String.contains?(&1, "Nobody can request or restore a deletion yet")
+             )
+    end
+
+    test "refuses request_again as generated", %{tmp_dir: tmp_dir} do
+      recipe =
+        [inspect(Account), "--grace-period", "30d"]
+        |> generate()
+        |> compile(tmp_dir)
+
+      {:ok, deletion} = request(recipe, account(recipe), authorize?: false)
 
       {:ok, restored} =
         deletion
@@ -228,11 +237,18 @@ defmodule Mix.Tasks.AshWorkflow.Gen.DeletionTest do
 
       assert {:error, %Ash.Error.Forbidden{}} = transition(restored, :request_again)
       assert reload(restored).state == :restored
+    end
 
-      assert Enum.any?(
-               recipe.notices,
-               &String.contains?(&1, "Nobody can request a deletion again or restore one yet")
-             )
+    test "lets an owner request once the application permits them", %{tmp_dir: tmp_dir} do
+      recipe = deletion_for_accounts(tmp_dir)
+      account = account(recipe)
+
+      assert {:error, %Ash.Error.Forbidden{}} = request(recipe, account, actor: nil)
+
+      assert {:error, %Ash.Error.Forbidden{}} =
+               request(recipe, account, actor: %{id: "other", role: :member})
+
+      assert {:ok, %{state: :requested}} = request(recipe, account)
     end
 
     test "lets an owner request again once the application permits them", %{tmp_dir: tmp_dir} do
@@ -245,6 +261,16 @@ defmodule Mix.Tasks.AshWorkflow.Gen.DeletionTest do
 
       assert {:ok, %{state: :requested}} = transition(restored, :request_again)
     end
+
+    test "leaves reads open to every actor", %{tmp_dir: tmp_dir} do
+      recipe = deletion_for_accounts(tmp_dir)
+      {:ok, deletion} = request(recipe, account(recipe))
+
+      for actor <- [nil, %{id: "other", role: :member}] do
+        assert [%{id: id}] = Ash.read!(recipe.modules[AccountDeletion], actor: actor)
+        assert id == deletion.id
+      end
+    end
   end
 
   describe "CanRestore" do
@@ -254,7 +280,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.DeletionTest do
         |> generate()
         |> compile(tmp_dir)
 
-      {:ok, deletion} = request(recipe, account(recipe))
+      {:ok, deletion} = request(recipe, account(recipe), authorize?: false)
 
       assert {:error, %Ash.Error.Forbidden{}} = transition(deletion, :restore)
       assert reload(deletion).state == :requested

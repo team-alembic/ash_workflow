@@ -14,8 +14,8 @@ The generator owns the deletion lifecycle: the states, the grace period, the pur
 
 The application owns four things:
 
-- When a deletion is requested, and who may request it. The application calls `AccountDeletion.request/2` with the subject from wherever that makes sense: a settings page, a support tool, a data-subject request import. The `:request` action has no policy.
-- Who may request a deletion again, retry a purge, or restore a deletion. These are two `Ash.Policy.Check` modules, each generated to deny everyone.
+- When a deletion is requested, and who may request it. The application calls `AccountDeletion.request/2` with the subject from wherever that makes sense: a settings page, a support tool, a data-subject request import.
+- Who may request a deletion, request it again, retry a purge, or restore a deletion. These are two `Ash.Policy.Check` modules, each generated to deny everyone.
 - What a purge erases. The generator writes a `:purge` update action whose change, `Changes.Purge`, fails until the application fills it in, whether that destroys the subject, anonymises its fields, or removes files from a store.
 - What happens on entering `:purge_failed`, such as paging an operator. The generator adds no notifier for it.
 
@@ -182,15 +182,19 @@ end
 
 ## Who may act
 
-The generator writes two check modules, each denying everyone, mirroring approval's `CanApprove` and expiry's `CanRenew`. The generator's notice says so.
+The generator writes two check modules, each denying everyone, mirroring approval's `CanRequest` and expiry's `CanCreate`. The generator's notice says so.
 
-- `MyApp.Accounts.AccountDeletion.Checks.CanRequestDeletion` decides who may call `request_again` and `retry_purge`.
+- `MyApp.Accounts.AccountDeletion.Checks.CanRequest` decides who may call `request`, `request_again` and `retry_purge`.
 - `MyApp.Accounts.AccountDeletion.Checks.CanRestore` decides who may call `restore`.
 
 ```elixir
 policies do
+  policy action(:request) do
+    authorize_if MyApp.Accounts.AccountDeletion.Checks.CanRequest
+  end
+
   policy action([:request_again, :retry_purge]) do
-    authorize_if MyApp.Accounts.AccountDeletion.Checks.CanRequestDeletion
+    authorize_if MyApp.Accounts.AccountDeletion.Checks.CanRequest
   end
 
   policy action(:restore) do
@@ -199,13 +203,11 @@ policies do
 end
 ```
 
-`retry_purge` shares `CanRequestDeletion` because retrying a purge carries out a deletion someone already had the right to ask for. A third check module for one operator action would be one more module to fill in before the workflow can be used. An application that wants a separate rule splits the policy.
+`request_again` and `retry_purge` share `CanRequest` with `request`. Requesting again starts a deletion as `request` does, and retrying a purge carries out a deletion someone already had the right to ask for. A third check module for one operator action would be one more module to fill in before the workflow can be used. An application that wants a separate rule splits the policy.
 
-The `:request` create action has no policy, like approval's `request` and expiry's `create`. Under the split in [`approval-recipe.md`](approval-recipe.md), the application decides when a workflow record is created, and who may create one is part of that decision. `AshWorkflow.Transformers.AddPolicies` allows `create` actions, so a deletion can be requested as soon as it is generated. An application that lets end users request a deletion adds a policy on `:request`.
+The `:request` create action is gated as approval's `request` and expiry's `create` are. `AshWorkflow.Transformers.AddPolicies` allows `create` actions, but every policy that applies must pass, so the `:request` policy still refuses an actor `CanRequest` does not match, including `nil`. An open `:request` would let any caller, including one with no actor, start the clock on erasing a subject. Code that requests a deletion on the application's behalf passes `authorize?: false`.
 
-`request_again` is gated even though it starts a grace period as `request` does. It is an update on an existing deletion, not the creation of a workflow record, so it falls under the generator's deny-by-default rule for human transitions.
-
-`AshWorkflow.Transformers.AddPolicies` also allows `read`, the grace-period timeout and the purge step's actions, so a requested deletion runs to `:deleted` without an actor.
+`AshWorkflow.Transformers.AddPolicies` also allows `read`, the grace-period timeout and the purge step's actions, so a requested deletion runs to `:deleted` without an actor. Reads stay open by default.
 
 ## Code shared with the other recipes
 

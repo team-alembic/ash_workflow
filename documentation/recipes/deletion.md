@@ -24,7 +24,7 @@ For the command above, the task writes four modules and edits the subject:
 
 - `MyApp.Accounts.AccountDeletion` runs the workflow. It belongs to the account and holds `requested_at`. An identity on `subject_id` allows one deletion per account.
 - `MyApp.Accounts.AccountDeletion.Changes.Purge` is the `:purge` action's change. It fails every purge as generated.
-- `MyApp.Accounts.AccountDeletion.Checks.CanRequestDeletion` decides who may request a deletion again and who may retry a failed purge. It denies everyone as generated.
+- `MyApp.Accounts.AccountDeletion.Checks.CanRequest` decides who may request a deletion, request it again and retry a failed purge. It denies everyone as generated.
 - `MyApp.Accounts.AccountDeletion.Checks.CanRestore` decides who may restore a deletion. It denies everyone as generated.
 - `MyApp.Accounts.Account` gains `has_one :deletion` and a `pending_deletion?` calculation. The task adds no change, argument or policy to the subject's actions.
 
@@ -90,7 +90,7 @@ Call `request/2` wherever a deletion starts, such as a settings page or a suppor
 MyApp.Accounts.AccountDeletion.request(account.id, actor: current_user)
 ```
 
-The `:request` create action has no policy, so anyone who can call it can request a deletion. Add a policy on `:request` if your application needs one. A second request for the same account fails on the `:unique_subject` identity.
+`CanRequest` refuses every request until you change it, as [Decide who may act](#decide-who-may-act) describes. Code that requests a deletion on the application's behalf, such as a data-subject request import, can pass `authorize?: false` instead. A second request for the same account fails on the `:unique_subject` identity.
 
 ### Fill in the purge
 
@@ -116,10 +116,14 @@ A purge is retried up to `--max-attempts` times, and `retry_purge` runs it again
 
 ### Decide who may act
 
-`CanRequestDeletion` and `CanRestore` deny everyone, so nobody can call `request_again`, `retry_purge` or `restore` until you change them. Replace their `match?/3`, or replace the `authorize_if` lines in the deletion's policies with built-in checks:
+`CanRequest` and `CanRestore` deny everyone, so nobody can call `request`, `request_again`, `retry_purge` or `restore` until you change them. Replace their `match?/3`, or replace the `authorize_if` lines in the deletion's policies with built-in checks:
 
 ```elixir
 policies do
+  policy action(:request) do
+    authorize_if relates_to_actor_via([:subject, :owner])
+  end
+
   policy action([:request_again, :retry_purge]) do
     authorize_if actor_attribute_equals(:role, :support)
   end
@@ -129,6 +133,8 @@ policies do
   end
 end
 ```
+
+Reads stay open by default. `AshWorkflow` authorizes `:read` on the deletion resource for every actor. Add a read policy if deletions are private.
 
 ### Restore
 

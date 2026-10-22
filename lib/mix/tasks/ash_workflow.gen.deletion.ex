@@ -20,11 +20,10 @@ defmodule Mix.Tasks.AshWorkflow.Gen.Deletion.Docs do
     subject does not exist, it is created with `mix ash.gen.resource` first.
 
     Every purge fails until the application defines what it erases, in the
-    generated `Changes.Purge` module. The `:request` action has no policy, so
-    the application decides who may request a deletion. Nobody may request a deletion again,
-    retry a purge or restore a deletion until the application defines who can,
-    in the generated `Checks.CanRequestDeletion` and `Checks.CanRestore`
-    modules.
+    generated `Changes.Purge` module. Nobody may request a deletion, request
+    it again, retry a purge or restore a deletion until the application
+    defines who can, in the generated `Checks.CanRequest` and
+    `Checks.CanRestore` modules.
 
     ## Example
 
@@ -93,7 +92,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
         config = %{
           subject: subject,
           deletion: deletion,
-          can_request_deletion: Module.concat([deletion, Checks, CanRequestDeletion]),
+          can_request: Module.concat([deletion, Checks, CanRequest]),
           can_restore: Module.concat([deletion, Checks, CanRestore]),
           purge: Module.concat([deletion, Changes, Purge]),
           grace_period: grace_period,
@@ -160,10 +159,10 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       |> ProjectModule.create_module(config.deletion, deletion_contents(config, storage))
       |> ProjectModule.create_module(config.purge, purge_contents(config))
       |> ProjectModule.create_module(
-        config.can_request_deletion,
+        config.can_request,
         Recipe.deny_check_contents(
-          "Decides who may request again or retry the purge of an `#{inspect(config.deletion)}`.",
-          "actor may request this deletion again or retry its purge"
+          "Decides who may request, request again or retry the purge of an `#{inspect(config.deletion)}`.",
+          "actor may request this deletion, request it again or retry its purge"
         )
       )
       |> ProjectModule.create_module(
@@ -182,9 +181,10 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       #{inspect(config.purge)}. An unfilled purge moves the deletion to \
       :purge_failed once the grace period has passed.
 
-      Nobody can request a deletion again or restore one yet. Define who may in \
-      #{inspect(config.can_request_deletion)} and #{inspect(config.can_restore)}, \
-      which deny everyone as generated.
+      Nobody can request or restore a deletion yet. Define who may request, \
+      request again or retry a purge in #{inspect(config.can_request)}, and \
+      who may restore in #{inspect(config.can_restore)}. Both deny everyone \
+      as generated.
       """)
     end
 
@@ -278,8 +278,10 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       end
 
       policies do
+        #{Recipe.create_policy(:request, config.can_request)}
+
         policy action([:request_again, :retry_purge]) do
-          authorize_if #{inspect(config.can_request_deletion)}
+          authorize_if #{inspect(config.can_request)}
         end
 
         policy action(:restore) do
