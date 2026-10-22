@@ -18,8 +18,8 @@ defmodule Mix.Tasks.AshWorkflow.Gen.Expiry.Docs do
     gains `has_one :expiry` and an `expired?` calculation. When the subject
     does not exist, it is created with `mix ash.gen.resource` first.
 
-    Nobody may renew until the application defines who can, in the generated
-    `Checks.CanRenew` module.
+    Nobody may create or renew an expiry until the application defines who
+    can, in the generated `Checks.CanCreate` and `Checks.CanRenew` modules.
 
     ## Example
 
@@ -84,6 +84,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
           config = %{
             subject: subject,
             expiry: expiry,
+            can_create: Module.concat([expiry, Checks, CanCreate]),
             can_renew: Module.concat([expiry, Checks, CanRenew]),
             notice_period: notice_period,
             transition_log?: options[:transition_log]
@@ -132,14 +133,16 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
     defp create_expiry(igniter, config, storage) do
       igniter
       |> ProjectModule.create_module(config.expiry, expiry_contents(config, storage))
+      |> ProjectModule.create_module(config.can_create, can_create_contents(config))
       |> ProjectModule.create_module(config.can_renew, can_renew_contents(config))
       |> DomainIgniter.add_resource_reference(storage.domain, config.expiry)
       |> compose_transition_log(config)
       |> Igniter.add_notice("""
       Generated #{inspect(config.expiry)} to expire #{inspect(config.subject)}.
 
-      Nobody can renew an expiry yet. Define who may renew in \
-      #{inspect(config.can_renew)}, which denies everyone as generated.
+      Nobody can create or renew an expiry yet. Define who may create one in \
+      #{inspect(config.can_create)} and who may renew in \
+      #{inspect(config.can_renew)}. Both deny everyone as generated.
       """)
     end
 
@@ -182,6 +185,8 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       end
 
       policies do
+        #{Recipe.create_policy(:create, config.can_create)}
+
         policy action(:renew) do
           authorize_if #{inspect(config.can_renew)}
         end
@@ -270,22 +275,18 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
     defp interval(:hours), do: :hour
     defp interval(:days), do: :day
 
+    defp can_create_contents(config) do
+      Recipe.deny_check_contents(
+        "Decides who may create an `#{inspect(config.expiry)}` for a subject.",
+        "actor may create an expiry for this subject"
+      )
+    end
+
     defp can_renew_contents(config) do
-      """
-      @moduledoc \"\"\"
-      Decides who may renew an `#{inspect(config.expiry)}`.
-
-      Denies everyone until the application replaces `match?/3`.
-      \"\"\"
-
-      use Ash.Policy.SimpleCheck
-
-      @impl true
-      def describe(_opts), do: "actor may renew this expiry"
-
-      @impl true
-      def match?(_actor, _context, _opts), do: false
-      """
+      Recipe.deny_check_contents(
+        "Decides who may renew an `#{inspect(config.expiry)}`.",
+        "actor may renew this expiry"
+      )
     end
   end
 else

@@ -19,9 +19,10 @@ When the subject does not exist, the task creates it with `mix ash.gen.resource`
 
 ## What it generates
 
-For the command above, the task writes two modules and edits the subject:
+For the command above, the task writes three modules and edits the subject:
 
 - `MyApp.Contracts.ContractExpiry` runs the workflow. It belongs to the contract and holds `expires_at`. An identity on `subject_id` allows one expiry per contract.
+- `MyApp.Contracts.ContractExpiry.Checks.CanCreate` decides who may create an expiry. It denies everyone as generated.
 - `MyApp.Contracts.ContractExpiry.Checks.CanRenew` decides who may renew. It denies everyone as generated.
 - `MyApp.Contracts.Contract` gains `has_one :expiry` and an `expired?` calculation. The task adds no change, argument or policy to the subject's actions.
 
@@ -79,17 +80,31 @@ An expiry created with `expires_at` already in the past moves to `:expiring` on 
 
 ## What your application does next
 
+### Decide who may create an expiry
+
+`CanCreate` denies everyone, so no expiry can be created until you change it. Replace its `match?/3`, or replace the `authorize_if` line in the `:create` policy with a built-in check:
+
+```elixir
+policies do
+  policy action(:create) do
+    authorize_if actor_attribute_equals(:role, :account_manager)
+  end
+end
+```
+
+Code that creates an expiry on the application's behalf, such as an import, can pass `authorize?: false` instead.
+
+Reads stay open by default. `AshWorkflow` authorizes `:read` on the expiry resource for every actor. Add a read policy if expiries are private.
+
 ### Create the expiry
 
 Call `create/3` wherever a subject starts to run out, such as the subject's create action, an activation step or an import:
 
 ```elixir
-MyApp.Contracts.ContractExpiry.create(contract.id, ~U[2027-06-30 00:00:00Z])
+MyApp.Contracts.ContractExpiry.create(contract.id, ~U[2027-06-30 00:00:00Z], actor: current_user)
 ```
 
 A second expiry for the same contract fails on the `:unique_subject` identity.
-
-The generated `:create` action has no policy. Add one to the expiry resource if your application restricts who can create an expiry.
 
 ### Decide who may renew
 

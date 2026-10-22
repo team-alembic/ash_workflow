@@ -10,7 +10,9 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ExpiryTest do
 
   @fixtures "test/support/recipe_fixtures/expiry"
   @files ["#{@fixtures}/domain.ex", "#{@fixtures}/contract.ex"]
-  @can_renew "lib/ash_workflow_test/recipe_fixtures/expiry/contract_expiry/checks/can_renew.ex"
+  @checks "lib/ash_workflow_test/recipe_fixtures/expiry/contract_expiry/checks"
+  @deny_all "def match?(_actor, _context, _opts), do: false"
+  @creator %{id: "creator", role: :account_manager}
   @renewer %{id: "renewer", role: :renewer}
 
   defp generate(files \\ @files, argv) do
@@ -22,17 +24,25 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ExpiryTest do
   defp expiry_for_contracts(tmp_dir, argv \\ ["--notice-period", "30d"]) do
     [inspect(Contract) | argv]
     |> generate()
+    |> allow_creators()
     |> allow_renewers()
     |> compile(tmp_dir)
   end
 
   # What an application does once it has generated the recipe: fill in
-  # CanRenew. Here anyone with the :renewer role may renew.
+  # CanCreate and CanRenew. Here any actor may create an expiry, and anyone
+  # with the :renewer role may renew.
+  defp allow_creators(recipe, checks \\ @checks) do
+    edit_source(recipe, "#{checks}/can_create.ex", fn source ->
+      String.replace(source, @deny_all, "def match?(actor, _context, _opts), do: is_map(actor)")
+    end)
+  end
+
   defp allow_renewers(recipe) do
-    edit_source(recipe, @can_renew, fn source ->
+    edit_source(recipe, "#{@checks}/can_renew.ex", fn source ->
       String.replace(
         source,
-        "def match?(_actor, _context, _opts), do: false",
+        @deny_all,
         "def match?(actor, _context, _opts), do: is_map(actor) and actor.role == :renewer"
       )
     end)
@@ -51,12 +61,13 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ExpiryTest do
     |> Ash.create!()
   end
 
-  defp expire(recipe, subject, days_from_now) do
+  defp expire(recipe, subject, days_from_now, actor \\ @creator) do
     recipe.modules[ContractExpiry]
-    |> Ash.Changeset.for_create(:create, %{
-      subject_id: subject.id,
-      expires_at: days_from_now(days_from_now)
-    })
+    |> Ash.Changeset.for_create(
+      :create,
+      %{subject_id: subject.id, expires_at: days_from_now(days_from_now)},
+      actor: actor
+    )
     |> Ash.create()
   end
 
@@ -117,6 +128,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ExpiryTest do
     recipe =
       ["#{@fixtures}/domain.ex", "#{@fixtures}/contract.ex"]
       |> generate([inspect(Licence), "--domain", inspect(Domain)])
+      |> allow_creators("lib/ash_workflow_test/recipe_fixtures/expiry/licence_expiry/checks")
       |> compile(tmp_dir)
 
     licence_module = recipe.modules[Licence]
@@ -129,7 +141,11 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ExpiryTest do
 
     expiry =
       expiry_module
-      |> Ash.Changeset.for_create(:create, %{subject_id: licence.id, expires_at: days_from_now(1)})
+      |> Ash.Changeset.for_create(
+        :create,
+        %{subject_id: licence.id, expires_at: days_from_now(1)},
+        actor: @creator
+      )
       |> Ash.create!()
 
     assert expiry.state == :active
@@ -193,19 +209,54 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ExpiryTest do
     assert {:error, %Ash.Error.Invalid{}} = expire(recipe, contract, 120)
   end
 
+  describe "CanCreate" do
+    test "denies everyone as generated", %{tmp_dir: tmp_dir} do
+      recipe =
+        [inspect(Contract), "--notice-period", "30d"]
+        |> generate()
+        |> allow_renewers()
+        |> compile(tmp_dir)
+
+      assert {:error, %Ash.Error.Forbidden{}} = expire(recipe, contract(recipe), 90)
+      assert {:error, %Ash.Error.Forbidden{}} = expire(recipe, contract(recipe), 90, nil)
+      assert Ash.read!(recipe.modules[ContractExpiry]) == []
+
+      assert Enum.any?(
+               recipe.notices,
+               &String.contains?(&1, "Nobody can create or renew an expiry yet")
+             )
+    end
+
+    test "lets a creator create once the application permits them", %{tmp_dir: tmp_dir} do
+      recipe = expiry_for_contracts(tmp_dir)
+
+      assert {:error, %Ash.Error.Forbidden{}} = expire(recipe, contract(recipe), 90, nil)
+      assert {:ok, %{state: :active}} = expire(recipe, contract(recipe), 90)
+    end
+
+    test "leaves reads open to every actor", %{tmp_dir: tmp_dir} do
+      recipe = expiry_for_contracts(tmp_dir)
+      {:ok, expiry} = expire(recipe, contract(recipe), 90)
+
+      for actor <- [nil, %{id: "other", role: :tenant}] do
+        assert [%{id: id}] = Ash.read!(recipe.modules[ContractExpiry], actor: actor)
+        assert id == expiry.id
+      end
+    end
+  end
+
   describe "CanRenew" do
     test "denies everyone as generated", %{tmp_dir: tmp_dir} do
       recipe =
         [inspect(Contract), "--notice-period", "30d"]
         |> generate()
+        |> allow_creators()
         |> compile(tmp_dir)
 
       {:ok, expiry} = expire(recipe, contract(recipe), 90)
 
       assert {:error, %Ash.Error.Forbidden{}} = renew(expiry, days_from_now(180))
       assert reload(expiry).expires_at == expiry.expires_at
-
-      assert Enum.any?(recipe.notices, &String.contains?(&1, "Nobody can renew an expiry yet"))
     end
 
     test "lets a renewer renew once the application permits them", %{tmp_dir: tmp_dir} do
