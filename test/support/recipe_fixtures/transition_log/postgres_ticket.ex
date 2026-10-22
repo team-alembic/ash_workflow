@@ -5,9 +5,12 @@ defmodule AshWorkflowTest.RecipeFixtures.TransitionLog.PostgresTicket do
     data_layer: AshPostgres.DataLayer,
     extensions: [AshWorkflow, AshOban]
 
+  # Listed in the test `:ash_domains` but never migrated, so test codegen
+  # does not generate a migration for a fixture table.
   postgres do
     table "recipe_fixture_tickets"
     repo(AshWorkflowTest.Repo)
+    migrate?(false)
   end
 
   workflow do

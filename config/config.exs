@@ -34,15 +34,20 @@ if Mix.env() == :test do
   # The suite deliberately exercises failure paths; their logging is noise.
   config :logger, level: :critical
 
-  # The recipe fixture domains are listed so `Ash.Domain.Igniter` finds them,
-  # as it would find the domains of a real application.
+  # The recipe fixture domains are listed in `:ash_domains` because
+  # `Ash.Domain.Igniter` only edits a domain listed there. Without them, a
+  # recipe task does not recognise the fixture as a domain and adds a second
+  # `use Ash.Domain` to it. `test_helper.exs` leaves them out of the Oban
+  # config, and the Postgres fixture sets `migrate? false`.
+  recipe_fixture_domains = [
+    AshWorkflowTest.RecipeFixtures.TransitionLog.Domain,
+    AshWorkflowTest.RecipeFixtures.TransitionLog.PostgresDomain
+  ]
+
   config :ash_workflow,
-    ash_domains: [
-      AshWorkflowTest.Domain,
-      AshWorkflowTest.Postgres.Domain,
-      AshWorkflowTest.RecipeFixtures.TransitionLog.Domain,
-      AshWorkflowTest.RecipeFixtures.TransitionLog.PostgresDomain
-    ],
+    ash_domains:
+      [AshWorkflowTest.Domain, AshWorkflowTest.Postgres.Domain] ++ recipe_fixture_domains,
+    recipe_fixture_domains: recipe_fixture_domains,
     ecto_repos: [AshWorkflowTest.Repo]
 
   config :ash_workflow, AshWorkflowTest.Repo,
