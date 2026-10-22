@@ -260,6 +260,7 @@ defmodule AshWorkflow do
       AshWorkflow.Verifiers.ValidateRetry,
       AshWorkflow.Verifiers.ValidateTransitionLog,
       AshWorkflow.Verifiers.ValidateUndo,
-      AshWorkflow.Verifiers.ValidateStepPolicies
+      AshWorkflow.Verifiers.ValidateStepPolicies,
+      AshWorkflow.Verifiers.ValidateResourceChangesAtomic
     ]
 end
