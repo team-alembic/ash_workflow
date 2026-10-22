@@ -34,7 +34,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.VerificationTest do
   # :verify action with the provider call, and fill in CanReview. Here anyone
   # with the :reviewer role may review.
   defp call_provider(recipe) do
-    update_in(recipe.changed[@verification], fn source ->
+    edit_source(recipe, @verification, fn source ->
       String.replace(
         source,
         ~r/update :verify do\n/,
@@ -44,13 +44,20 @@ defmodule Mix.Tasks.AshWorkflow.Gen.VerificationTest do
   end
 
   defp allow_reviewers(recipe) do
-    update_in(recipe.changed[@can_review], fn source ->
+    edit_source(recipe, @can_review, fn source ->
       String.replace(
         source,
         "def match?(_actor, _context, _opts), do: false",
         "def match?(actor, _context, _opts), do: is_map(actor) and actor.role == :reviewer"
       )
     end)
+  end
+
+  # `compile/2` reads every file from the project, not only the changed ones.
+  defp edit_source(recipe, path, fun) do
+    recipe
+    |> update_in([Access.key!(:changed), path], fun)
+    |> update_in([Access.key!(:igniter), Access.key!(:assigns), :test_files, path], fun)
   end
 
   defp document(recipe, number) do
@@ -180,6 +187,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.VerificationTest do
     second = run_task(first.igniter, "ash_workflow.gen.verification", argv)
 
     assert second.changed == %{}
+    assert second.warnings == []
   end
 
   describe "the provider" do
