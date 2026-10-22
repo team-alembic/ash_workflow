@@ -51,8 +51,9 @@ defmodule AshWorkflow.Clarity.Diagram do
 
   @doc """
   What happens to a record in one step, as a Mermaid timeline from the moment
-  it enters. Deadlines read from a field on the record follow in their own
-  section, since they have no fixed place on the axis.
+  it enters. Deadlines read from a field on the record, and an `every` firing
+  at a wall-clock time, follow in their own section, since they have no fixed
+  place on the axis.
   """
   @spec step_timeline(Ash.Resource.t(), atom()) :: iodata()
   def step_timeline(resource, step_name) do
@@ -65,7 +66,7 @@ defmodule AshWorkflow.Clarity.Diagram do
         else: [
           "    section From entering the step\n",
           moment_lines(fixed),
-          "    section Deadlines set on the record\n",
+          "    section Not timed from entering the step\n",
           moment_lines(anchored)
         ]
 
@@ -99,7 +100,12 @@ defmodule AshWorkflow.Clarity.Diagram do
   defp symbol(:terminal), do: "■ "
 
   # A timeline line splits its events on `:`, and `#` starts an entity code.
-  defp timeline_text(text), do: String.replace(text, [":", "#", ";"], " ")
+  # A clock time keeps its look with U+2236 RATIO in place of the colon.
+  defp timeline_text(text) do
+    text
+    |> String.replace(~r/(\d):(\d)/, "\\1\u2236\\2")
+    |> String.replace([":", "#", ";"], " ")
+  end
 
   defp styles(nodes, theme) do
     groups = Enum.group_by(nodes, & &1.kind, &Mermaid.state_id(&1.id))

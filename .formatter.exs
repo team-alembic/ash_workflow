@@ -1,6 +1,7 @@
 spark_locals_without_parens = [
   accept: 1,
   action: 1,
+  at: 1,
   backoff: 1,
   belongs_to_actor: 2,
   belongs_to_actor: 3,
@@ -16,6 +17,7 @@ spark_locals_without_parens = [
   interval: 1,
   last_fired_field: 1,
   max_attempts: 1,
+  on: 1,
   on_error: 1,
   on_success: 1,
   on_success: 2,
@@ -34,6 +36,7 @@ spark_locals_without_parens = [
   step: 2,
   terminal: 1,
   terminated_at_calculation: 1,
+  time_zone: 1,
   timeout: 1,
   timeout: 2,
   to: 1,

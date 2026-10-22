@@ -83,6 +83,14 @@ defmodule AshWorkflow.Clarity.TimelineTest do
              )
     end
 
+    test "a wall-clock every is listed by its schedule after the fixed moments" do
+      assert moments(AshWorkflowTest.WallClockWorkflow, :waiting) == [
+               {"on entry", ["callers can run resolve"]},
+               {"at 09:00 on mon, tue, wed, thu, fri in candidate_time_zone",
+                ["digest runs send_digest"]}
+             ]
+    end
+
     test "a deadline read from a field follows the fixed moments" do
       assert [{"on entry", _}, {"3 days after last_session_date", [text]}] =
                moments(AshWorkflowTest.FieldTimeoutWorkflow, :active)
