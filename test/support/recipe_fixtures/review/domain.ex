@@ -4,6 +4,7 @@ defmodule AshWorkflowTest.RecipeFixtures.Review.Domain do
 
   resources do
     resource AshWorkflowTest.RecipeFixtures.Review.Article
+    resource AshWorkflowTest.RecipeFixtures.Review.Note
     resource AshWorkflowTest.RecipeFixtures.Review.User
   end
 end

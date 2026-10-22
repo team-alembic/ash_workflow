@@ -35,7 +35,8 @@ defmodule Mix.AshWorkflow.RecipeTest do
 
   for {task, argv} <- [
         {"ash_workflow.gen.approval", ["--approver", inspect(User)]},
-        {"ash_workflow.gen.expiry", []}
+        {"ash_workflow.gen.expiry", []},
+        {"ash_workflow.gen.review", ["--reviewer", inspect(User)]}
       ] do
     test "#{task} stops when an existing subject has no data layer" do
       igniter =

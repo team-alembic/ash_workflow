@@ -39,8 +39,8 @@ defmodule Mix.Tasks.AshWorkflow.Gen.Review.Docs do
     * `--domain` - the domain for a subject the task creates. Required only
       when the subject does not exist.
     * `--overdue-after` - moves a review the reviewer has not decided to
-      `:overdue` this long after it was last submitted, given as `30m`,
-      `12h`, `2d` or `2w`. Without it, no `:overdue` step is generated.
+      `:overdue` this long after it was last submitted, given as `10s`,
+      `30m`, `12h`, `2d` or `2w`. Without it, no `:overdue` step is generated.
     * `--transition-log` - also generates a transition log for the review
       with `mix ash_workflow.gen.transition_log`. Defaults to `true`.
     """
@@ -112,7 +112,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
                  "review",
                  [reviewer]
                ) do
-            {:ok, igniter, storage} -> generate(igniter, config, storage)
+            {:ok, igniter, storage} -> generate_with_key_types(igniter, config, storage)
             {:error, igniter} -> igniter
           end
 
@@ -123,6 +123,19 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
 
     defp review_module(subject, nil), do: Module.concat([inspect(subject) <> "Review"])
     defp review_module(_subject, module), do: ProjectModule.parse(module)
+
+    # The review's foreign keys take the type of the key they point at. A
+    # subject created in this run does not compile yet and gets
+    # ash.gen.resource's uuid_v7 key.
+    defp generate_with_key_types(igniter, config, storage) do
+      with {:ok, subject_type} <- Recipe.key_type(config.names.subject, "review", :uuid_v7),
+           {:ok, reviewer_type} <- Recipe.key_type(config.names.reviewer, "review", nil) do
+        key_types = %{subject: subject_type, reviewer: reviewer_type}
+        generate(igniter, Map.put(config, :key_types, key_types), storage)
+      else
+        {:error, message} -> Igniter.add_issue(igniter, message)
+      end
+    end
 
     defp generate(igniter, config, storage) do
       names = config.names
@@ -160,7 +173,10 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
 
       igniter
       |> ProjectModule.create_module(names.review, review_contents(config, storage))
-      |> ProjectModule.create_module(names.decision, decision_contents(names, storage))
+      |> ProjectModule.create_module(
+        names.decision,
+        decision_contents(names, storage, config.key_types.reviewer)
+      )
       |> ProjectModule.create_module(names.record_decision, record_decision_contents(names))
       |> ProjectModule.create_module(names.can_review, can_review_contents(names))
       |> DomainIgniter.add_resource_reference(storage.domain, names.review)
@@ -269,8 +285,8 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       end
 
       relationships do
-        belongs_to :subject, #{inspect(names.subject)}, allow_nil?: false, public?: true
-        belongs_to :requested_by, #{inspect(names.reviewer)}, allow_nil?: false, public?: true
+        #{Recipe.belongs_to(:subject, names.subject, config.key_types.subject)}
+        #{Recipe.belongs_to(:requested_by, names.reviewer, config.key_types.reviewer)}
 
         has_many :decisions, #{inspect(names.decision)} do
           destination_attribute :review_id
@@ -305,7 +321,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       """
     end
 
-    defp decision_contents(names, storage) do
+    defp decision_contents(names, storage, reviewer_key_type) do
       """
       use Ash.Resource,
         domain: #{inspect(storage.domain)},
@@ -347,8 +363,8 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       end
 
       relationships do
-        belongs_to :review, #{inspect(names.review)}, allow_nil?: false, public?: true
-        belongs_to :reviewer, #{inspect(names.reviewer)}, allow_nil?: false, public?: true
+        #{Recipe.belongs_to(:review, names.review, nil)}
+        #{Recipe.belongs_to(:reviewer, names.reviewer, reviewer_key_type)}
       end
 
       identities do
@@ -389,21 +405,10 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
     end
 
     defp can_review_contents(names) do
-      """
-      @moduledoc \"\"\"
-      Decides who may approve, reject or request changes on an `#{inspect(names.review)}`.
-
-      Denies everyone until the application replaces `match?/3`.
-      \"\"\"
-
-      use Ash.Policy.SimpleCheck
-
-      @impl true
-      def describe(_opts), do: "actor may review this review"
-
-      @impl true
-      def match?(_actor, _context, _opts), do: false
-      """
+      Recipe.deny_check_contents(
+        "Decides who may approve, reject or request changes on an `#{inspect(names.review)}`.",
+        "actor may review this review"
+      )
     end
   end
 else

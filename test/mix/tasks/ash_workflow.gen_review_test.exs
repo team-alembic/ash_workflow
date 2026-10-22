@@ -7,12 +7,15 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ReviewTest do
   alias AshWorkflowTest.RecipeFixtures.Review.ArticleReviewDecision
   alias AshWorkflowTest.RecipeFixtures.Review.ArticleReviewTransition
   alias AshWorkflowTest.RecipeFixtures.Review.Domain
+  alias AshWorkflowTest.RecipeFixtures.Review.Note
   alias AshWorkflowTest.RecipeFixtures.Review.Post
   alias AshWorkflowTest.RecipeFixtures.Review.User
 
   @fixtures "test/support/recipe_fixtures/review"
-  @files ["#{@fixtures}/domain.ex", "#{@fixtures}/user.ex", "#{@fixtures}/article.ex"]
-  @can_review "lib/ash_workflow_test/recipe_fixtures/review/article_review/checks/can_review.ex"
+  @domain_files Enum.map(~w(domain user note), &"#{@fixtures}/#{&1}.ex")
+  @files @domain_files ++ ["#{@fixtures}/article.ex"]
+  @checks "lib/ash_workflow_test/recipe_fixtures/review/article_review/checks"
+  @deny_all "def match?(_actor, _context, _opts), do: false"
 
   defp generate(files \\ @files, argv) do
     files
@@ -30,17 +33,24 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ReviewTest do
   # What an application does once it has generated the recipe: fill in
   # CanReview. Here anyone with the :reviewer role may review.
   defp allow_reviewers(recipe) do
-    update_in(recipe.changed[@can_review], fn source ->
+    edit_source(recipe, "#{@checks}/can_review.ex", fn source ->
       String.replace(
         source,
-        "def match?(_actor, _context, _opts), do: false",
+        @deny_all,
         "def match?(actor, _context, _opts), do: is_map(actor) and actor.role == :reviewer"
       )
     end)
   end
 
-  defp user(role \\ :reviewer) do
-    User
+  # `compile/2` reads every file from the project, not only the changed ones.
+  defp edit_source(recipe, path, fun) do
+    recipe
+    |> update_in([Access.key!(:changed), path], fun)
+    |> update_in([Access.key!(:igniter), Access.key!(:assigns), :test_files, path], fun)
+  end
+
+  defp user(recipe, role \\ :reviewer) do
+    recipe.modules[User]
     |> Ash.Changeset.for_create(:create, %{name: "#{role}", role: role})
     |> Ash.create!()
   end
@@ -101,13 +111,13 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ReviewTest do
       recipe = review_for_articles(tmp_dir)
       article = article(recipe)
 
-      review = request(recipe, article, user(:author))
+      review = request(recipe, article, user(recipe, :author))
       refute Ash.load!(article, :review_approved?).review_approved?
 
-      assert {:ok, %{state: :approved}} = act(review, :approve, user())
+      assert {:ok, %{state: :approved}} = act(review, :approve, user(recipe))
       assert Ash.load!(article, :review_approved?).review_approved?
 
-      request(recipe, article, user(:author))
+      request(recipe, article, user(recipe, :author))
       refute Ash.load!(article, :review_approved?).review_approved?
     end
   end
@@ -116,7 +126,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ReviewTest do
     tmp_dir: tmp_dir
   } do
     recipe =
-      ["#{@fixtures}/domain.ex", "#{@fixtures}/user.ex"]
+      @domain_files
       |> generate([inspect(Post), "--reviewer", inspect(User), "--domain", inspect(Domain)])
       |> compile(tmp_dir)
 
@@ -130,11 +140,28 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ReviewTest do
 
     review =
       review_module
-      |> Ash.Changeset.for_create(:request, %{subject_id: post.id}, actor: user(:author))
+      |> Ash.Changeset.for_create(:request, %{subject_id: post.id}, actor: user(recipe, :author))
       |> Ash.create!()
 
     assert {review.state, review.round} == {:in_review, 1}
     assert Ash.load!(post, latest_review: :id).latest_review.id == review.id
+    assert Ash.Resource.Info.attribute(review_module, :subject_id).type == Ash.Type.UUIDv7
+  end
+
+  test "foreign keys take the type of the subject's and reviewer's primary keys", %{
+    tmp_dir: tmp_dir
+  } do
+    recipe =
+      [inspect(Note), "--reviewer", inspect(User)]
+      |> generate()
+      |> compile(tmp_dir)
+
+    review = recipe.modules[AshWorkflowTest.RecipeFixtures.Review.NoteReview]
+    decision = recipe.modules[AshWorkflowTest.RecipeFixtures.Review.NoteReviewDecision]
+
+    assert Ash.Resource.Info.attribute(review, :subject_id).type == Ash.Type.Integer
+    assert Ash.Resource.Info.attribute(review, :requested_by_id).type == Ash.Type.UUIDv7
+    assert Ash.Resource.Info.attribute(decision, :reviewer_id).type == Ash.Type.UUIDv7
   end
 
   test "running the task a second time changes nothing" do
@@ -143,6 +170,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ReviewTest do
     second = run_task(first.igniter, "ash_workflow.gen.review", argv)
 
     assert second.changed == %{}
+    assert second.warnings == []
   end
 
   describe "CanReview" do
@@ -152,11 +180,11 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ReviewTest do
         |> generate()
         |> compile(tmp_dir)
 
-      review = request(recipe, article(recipe), user(:author))
+      review = request(recipe, article(recipe), user(recipe, :author))
 
-      assert {:error, %Ash.Error.Forbidden{}} = request_changes(review, user())
-      assert {:error, %Ash.Error.Forbidden{}} = act(review, :approve, user())
-      assert {:error, %Ash.Error.Forbidden{}} = act(review, :reject, user())
+      assert {:error, %Ash.Error.Forbidden{}} = request_changes(review, user(recipe))
+      assert {:error, %Ash.Error.Forbidden{}} = act(review, :approve, user(recipe))
+      assert {:error, %Ash.Error.Forbidden{}} = act(review, :reject, user(recipe))
       assert reload(review).state == :in_review
 
       assert Enum.any?(recipe.notices, &String.contains?(&1, "Nobody can review yet"))
@@ -164,15 +192,15 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ReviewTest do
 
     test "lets a reviewer decide once the application permits them", %{tmp_dir: tmp_dir} do
       recipe = review_for_articles(tmp_dir)
-      review = request(recipe, article(recipe), user(:author))
+      review = request(recipe, article(recipe), user(recipe, :author))
 
-      assert {:error, %Ash.Error.Forbidden{}} = act(review, :approve, user(:author))
-      assert {:ok, %{state: :approved}} = act(review, :approve, user())
+      assert {:error, %Ash.Error.Forbidden{}} = act(review, :approve, user(recipe, :author))
+      assert {:ok, %{state: :approved}} = act(review, :approve, user(recipe))
     end
 
     test "the requester cannot review their own work", %{tmp_dir: tmp_dir} do
       recipe = review_for_articles(tmp_dir)
-      requester = user()
+      requester = user(recipe)
       review = request(recipe, article(recipe), requester)
 
       assert {:error, %Ash.Error.Forbidden{}} = request_changes(review, requester)
@@ -186,8 +214,8 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ReviewTest do
       tmp_dir: tmp_dir
     } do
       recipe = review_for_articles(tmp_dir)
-      requester = user(:author)
-      reviewer = user()
+      requester = user(recipe, :author)
+      reviewer = user(recipe)
       review = request(recipe, article(recipe), requester)
 
       assert {:ok, %{state: :changes_requested, round: 1} = review} =
@@ -221,37 +249,37 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ReviewTest do
 
     test "a reviewer can reject after a resubmission", %{tmp_dir: tmp_dir} do
       recipe = review_for_articles(tmp_dir)
-      requester = user(:author)
+      requester = user(recipe, :author)
       review = request(recipe, article(recipe), requester)
 
-      {:ok, review} = request_changes(review, user())
+      {:ok, review} = request_changes(review, user(recipe))
       {:ok, review} = act(review, :resubmit, requester)
 
-      assert {:ok, %{state: :rejected, round: 2}} = act(review, :reject, user())
+      assert {:ok, %{state: :rejected, round: 2}} = act(review, :reject, user(recipe))
     end
 
     test "requesting changes needs a comment", %{tmp_dir: tmp_dir} do
       recipe = review_for_articles(tmp_dir)
-      review = request(recipe, article(recipe), user(:author))
+      review = request(recipe, article(recipe), user(recipe, :author))
 
-      assert {:error, %Ash.Error.Invalid{}} = act(review, :request_changes, user())
+      assert {:error, %Ash.Error.Invalid{}} = act(review, :request_changes, user(recipe))
       assert reload(review).state == :in_review
     end
 
     test "only the requester can resubmit", %{tmp_dir: tmp_dir} do
       recipe = review_for_articles(tmp_dir)
-      requester = user(:author)
+      requester = user(recipe, :author)
       review = request(recipe, article(recipe), requester)
-      {:ok, review} = request_changes(review, user())
+      {:ok, review} = request_changes(review, user(recipe))
 
-      assert {:error, %Ash.Error.Forbidden{}} = act(review, :resubmit, user())
-      assert {:error, %Ash.Error.Forbidden{}} = act(review, :resubmit, user(:author))
+      assert {:error, %Ash.Error.Forbidden{}} = act(review, :resubmit, user(recipe))
+      assert {:error, %Ash.Error.Forbidden{}} = act(review, :resubmit, user(recipe, :author))
       assert {:ok, %{state: :in_review}} = act(review, :resubmit, requester)
     end
 
     test "a review in review cannot be resubmitted", %{tmp_dir: tmp_dir} do
       recipe = review_for_articles(tmp_dir)
-      requester = user(:author)
+      requester = user(recipe, :author)
       review = request(recipe, article(recipe), requester)
 
       assert {:error, _error} = act(review, :resubmit, requester)
@@ -267,8 +295,8 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ReviewTest do
       review_module = recipe.modules[ArticleReview]
       article = article(recipe)
 
-      fresh = request(recipe, article, user(:author))
-      late = submitted_days_ago(recipe, article, user(:author), 4)
+      fresh = request(recipe, article, user(recipe, :author))
+      late = submitted_days_ago(recipe, article, user(recipe, :author), 4)
 
       assert Timeline.run_due(review_module) == 1
       assert reload(fresh).state == :in_review
@@ -280,28 +308,28 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ReviewTest do
       review_module = recipe.modules[ArticleReview]
       article = article(recipe)
 
-      to_send_back = submitted_days_ago(recipe, article, user(:author), 4)
-      to_approve = submitted_days_ago(recipe, article, user(:author), 4)
-      to_reject = submitted_days_ago(recipe, article, user(:author), 4)
+      to_send_back = submitted_days_ago(recipe, article, user(recipe, :author), 4)
+      to_approve = submitted_days_ago(recipe, article, user(recipe, :author), 4)
+      to_reject = submitted_days_ago(recipe, article, user(recipe, :author), 4)
 
       assert Timeline.run_due(review_module) == 3
 
       assert {:ok, %{state: :changes_requested}} =
-               to_send_back |> reload() |> request_changes(user())
+               to_send_back |> reload() |> request_changes(user(recipe))
 
-      assert {:ok, %{state: :approved}} = to_approve |> reload() |> act(:approve, user())
-      assert {:ok, %{state: :rejected}} = to_reject |> reload() |> act(:reject, user())
+      assert {:ok, %{state: :approved}} = to_approve |> reload() |> act(:approve, user(recipe))
+      assert {:ok, %{state: :rejected}} = to_reject |> reload() |> act(:reject, user(recipe))
     end
 
     test "a resubmission starts a new review clock", %{tmp_dir: tmp_dir} do
       recipe = review_for_articles(tmp_dir, ["--overdue-after", "3d"])
       review_module = recipe.modules[ArticleReview]
-      requester = user(:author)
+      requester = user(recipe, :author)
 
       review = submitted_days_ago(recipe, article(recipe), requester, 4)
       assert Timeline.run_due(review_module) == 1
 
-      {:ok, review} = review |> reload() |> request_changes(user())
+      {:ok, review} = review |> reload() |> request_changes(user(recipe))
       {:ok, review} = act(review, :resubmit, requester)
 
       assert Timeline.run_due(review_module) == 0
@@ -310,8 +338,8 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ReviewTest do
 
     test "a review waiting on changes does not go overdue", %{tmp_dir: tmp_dir} do
       recipe = review_for_articles(tmp_dir, ["--overdue-after", "3d"])
-      review = submitted_days_ago(recipe, article(recipe), user(:author), 4)
-      {:ok, review} = request_changes(review, user())
+      review = submitted_days_ago(recipe, article(recipe), user(recipe, :author), 4)
+      {:ok, review} = request_changes(review, user(recipe))
 
       assert Timeline.run_due(recipe.modules[ArticleReview]) == 0
       assert reload(review).state == :changes_requested
@@ -375,7 +403,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ReviewTest do
 
   test "reports an issue for a missing subject without --domain" do
     igniter =
-      ["#{@fixtures}/domain.ex", "#{@fixtures}/user.ex"]
+      @domain_files
       |> project()
       |> Igniter.compose_task("ash_workflow.gen.review", [
         inspect(Post),
