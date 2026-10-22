@@ -14,5 +14,7 @@ defmodule AshWorkflowTest.Postgres.Domain do
     resource AshWorkflowTest.Postgres.EveryUntilWorkflow
     resource AshWorkflowTest.Postgres.StaleTransitionWorkflow
     resource AshWorkflowTest.Postgres.ActionTimeoutWorkflow
+    resource AshWorkflowTest.Postgres.UpsertWorkflow
+    resource AshWorkflowTest.Postgres.UpsertTransition
   end
 end

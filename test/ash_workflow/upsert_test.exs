@@ -71,6 +71,22 @@ defmodule AshWorkflow.UpsertTest do
     assert open("b") |> log_states() == [:open]
   end
 
+  test "a bulk upsert logs only the rows it inserted" do
+    existing = "g" |> open() |> close()
+    flush_notifications(existing.id)
+
+    %Ash.BulkResult{status: :success, records: records} =
+      Ash.bulk_create([%{code: "g"}, %{code: "h"}], Workflow, :open, return_records?: true)
+
+    inserted = Enum.find(records, &(&1.code == "h"))
+    existing_id = existing.id
+
+    assert Enum.find(records, &(&1.code == "g")).id == existing_id
+    assert log_states(existing) == [:closed, :open]
+    assert log_states(inserted) == [:open]
+    refute_received {:state_change_notified, ^existing_id}
+  end
+
   test "an upsert onto an existing row does not tell the scheduler" do
     first = "c" |> open() |> close()
     flush_notifications(first.id)
