@@ -20,11 +20,12 @@ When the subject does not exist, the task creates it with `mix ash.gen.resource`
 
 ## What it generates
 
-For the command above, the task writes two modules and edits the subject:
+For the command above, the task writes three modules and edits the subject:
 
 - `MyApp.Sales.CustomerSync` runs the workflow. It belongs to the customer and holds `external_id` and `last_synced_at`. An identity on `subject_id` allows one sync per customer.
+- `MyApp.Sales.CustomerSync.Checks.CanCreate` decides who may create a sync. It denies everyone as generated.
 - `MyApp.Sales.CustomerSync.Checks.CanResync` decides who may resync. It denies everyone as generated.
-- `MyApp.Sales.Customer` gains `has_one :sync` and a `synced?` calculation. The task adds no change, argument or policy to the subject's actions.
+- `MyApp.Sales.Customer` gains `has_one :sync` and a `synced?` calculation, which is `false` for a customer without a sync. The task adds no change, argument or policy to the subject's actions.
 
 The sync is a separate resource rather than a `workflow` block on the subject, so a subject that already runs a workflow keeps it.
 
@@ -78,10 +79,26 @@ With the default exponential backoff, five attempts wait 16, 31, 96 and 271 seco
 Call `create/2` wherever a subject should start syncing, such as the subject's create action, an import or a backfill:
 
 ```elixir
-MyApp.Sales.CustomerSync.create(customer.id)
+MyApp.Sales.CustomerSync.create(customer.id, actor: current_user)
 ```
 
-The `:create` action has no generated policy, and your application adds one if it needs to restrict who may start a sync. A second sync for the same customer fails on the `:unique_subject` identity.
+A second sync for the same customer fails on the `:unique_subject` identity.
+
+### Decide who may create a sync
+
+`CanCreate` denies everyone, so no sync can be created until you change it. Replace its `match?/3`, or replace the `authorize_if` line in the `:create` policy with a built-in check:
+
+```elixir
+policies do
+  policy action(:create) do
+    authorize_if actor_attribute_equals(:role, :account_manager)
+  end
+end
+```
+
+Code that creates a sync on the application's behalf, such as an import or a backfill, can pass `authorize?: false` instead.
+
+Reads stay open by default. `AshWorkflow` authorizes `:read` on the sync resource for every actor. Add a read policy if syncs are private.
 
 ### Fill in the push
 

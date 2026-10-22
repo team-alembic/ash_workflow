@@ -16,7 +16,7 @@ The application owns three things:
 
 - When a sync is created. The application calls `CustomerSync.create/2` with the subject, from wherever that makes sense: the subject's create action, an import, a backfill.
 - What a push does. The generated `:push` action has no push logic. The application adds the change that calls the external system and writes `external_id`.
-- Who may resync. This is one `Ash.Policy.Check` module, generated to deny everyone.
+- Who may create and resync a sync. These are two `Ash.Policy.Check` modules, generated to deny everyone.
 
 ## The command
 
@@ -45,7 +45,7 @@ The generator adds `MyApp.Sales.CustomerSync` next to the subject, for the reaso
 Sync is a lifecycle recipe. A subject has one current sync state, the one the external system last agreed with. A resync moves the existing row back through the workflow rather than creating a new row. The subject gains, by `Ash.Resource.Igniter` edits, and nothing else:
 
 - `has_one :sync, MyApp.Sales.CustomerSync`
-- `calculate :synced?, :boolean, expr(sync.state == :synced)`
+- `calculate :synced?, :boolean, expr(sync.state == :synced || false)`
 
 `CustomerSync` has the identity `:unique_subject` on `subject_id`. On a data layer without unique constraints, such as ETS, it sets `pre_check_with` to the domain.
 
@@ -138,7 +138,7 @@ end
 
 `:resync` is the transition AshWorkflow generates. It accepts nothing and runs no change, so the generator does not declare it.
 
-## Who may resync
+## Who may create and resync
 
 The generator writes `MyApp.Sales.CustomerSync.Checks.CanResync`, which denies everyone, mirroring expiry's `CanRenew`. The generator's notice says so.
 
@@ -150,7 +150,7 @@ policies do
 end
 ```
 
-`resync` is the only transition a human calls. The generator adds no policy to `:create`, because the application owns who may create a sync, as it owns when one is created. `AshWorkflow.Transformers.AddPolicies` allows `create`, `read`, the scheduler's `:push` and the generated `on_error` action, so a sync can be created and can succeed or fail before the application has written `CanResync`.
+`resync` is the only transition a human calls. The generator also writes `MyApp.Sales.CustomerSync.Checks.CanCreate`, denying everyone, and a policy on `:create` that authorizes with it, mirroring expiry. `AshWorkflow.Transformers.AddPolicies` allows `read`, the scheduler's `:push` and the generated `on_error` action, so a created sync can succeed or fail before the application has written `CanResync`.
 
 ## Code shared with the other recipes
 

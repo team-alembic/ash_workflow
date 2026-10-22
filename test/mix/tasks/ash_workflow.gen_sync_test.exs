@@ -13,7 +13,9 @@ defmodule Mix.Tasks.AshWorkflow.Gen.SyncTest do
   @fixtures "test/support/recipe_fixtures/sync"
   @files ["#{@fixtures}/domain.ex", "#{@fixtures}/customer.ex"]
   @sync_file "lib/ash_workflow_test/recipe_fixtures/sync/customer_sync.ex"
-  @can_resync "lib/ash_workflow_test/recipe_fixtures/sync/customer_sync/checks/can_resync.ex"
+  @checks "lib/ash_workflow_test/recipe_fixtures/sync/customer_sync/checks"
+  @deny_all "def match?(_actor, _context, _opts), do: false"
+  @creator %{id: "creator", role: :account_manager}
   @operator %{id: "operator", role: :operator}
 
   defp generate(files \\ @files, argv) do
@@ -26,6 +28,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.SyncTest do
     [inspect(Customer) | argv]
     |> generate()
     |> fill_in_push()
+    |> allow_creators()
     |> allow_operators()
     |> compile(tmp_dir)
   end
@@ -42,12 +45,19 @@ defmodule Mix.Tasks.AshWorkflow.Gen.SyncTest do
     end)
   end
 
-  # And fill in CanResync. Here anyone with the :operator role may resync.
+  # And fill in CanCreate and CanResync. Here any actor may create a sync, and
+  # anyone with the :operator role may resync.
+  defp allow_creators(recipe, checks \\ @checks) do
+    edit_source(recipe, "#{checks}/can_create.ex", fn source ->
+      String.replace(source, @deny_all, "def match?(actor, _context, _opts), do: is_map(actor)")
+    end)
+  end
+
   defp allow_operators(recipe) do
-    edit_source(recipe, @can_resync, fn source ->
+    edit_source(recipe, "#{@checks}/can_resync.ex", fn source ->
       String.replace(
         source,
-        "def match?(_actor, _context, _opts), do: false",
+        @deny_all,
         "def match?(actor, _context, _opts), do: is_map(actor) and actor.role == :operator"
       )
     end)
@@ -66,11 +76,11 @@ defmodule Mix.Tasks.AshWorkflow.Gen.SyncTest do
     |> Ash.create!()
   end
 
-  defp start_sync(recipe, subject \\ nil) do
+  defp start_sync(recipe, subject \\ nil, actor \\ @creator) do
     subject = subject || customer(recipe)
 
     recipe.modules[CustomerSync]
-    |> Ash.Changeset.for_create(:create, %{subject_id: subject.id})
+    |> Ash.Changeset.for_create(:create, %{subject_id: subject.id}, actor: actor)
     |> Ash.create()
   end
 
@@ -140,6 +150,12 @@ defmodule Mix.Tasks.AshWorkflow.Gen.SyncTest do
                names(Ash.Resource.Info.calculations(Customer)) == [:synced?]
     end
 
+    test "is not synced, rather than nil, without a sync", %{tmp_dir: tmp_dir} do
+      recipe = sync_for_customers(tmp_dir)
+
+      assert Ash.load!(customer(recipe), :synced?).synced? == false
+    end
+
     test "is synced once its sync is", %{tmp_dir: tmp_dir} do
       recipe = sync_for_customers(tmp_dir)
       customer = customer(recipe)
@@ -158,6 +174,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.SyncTest do
     recipe =
       @files
       |> generate([inspect(Account), "--domain", inspect(Domain)])
+      |> allow_creators("lib/ash_workflow_test/recipe_fixtures/sync/account_sync/checks")
       |> compile(tmp_dir)
 
     account_module = recipe.modules[Account]
@@ -170,7 +187,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.SyncTest do
 
     sync =
       sync_module
-      |> Ash.Changeset.for_create(:create, %{subject_id: account.id})
+      |> Ash.Changeset.for_create(:create, %{subject_id: account.id}, actor: @creator)
       |> Ash.create!()
 
     assert sync.state == :syncing
@@ -197,11 +214,36 @@ defmodule Mix.Tasks.AshWorkflow.Gen.SyncTest do
     assert {:error, %Ash.Error.Invalid{}} = start_sync(recipe, customer)
   end
 
+  describe "CanCreate" do
+    test "denies everyone as generated", %{tmp_dir: tmp_dir} do
+      recipe =
+        [inspect(Customer)]
+        |> generate()
+        |> compile(tmp_dir)
+
+      assert {:error, %Ash.Error.Forbidden{}} = start_sync(recipe)
+      assert Ash.read!(recipe.modules[CustomerSync]) == []
+
+      assert Enum.any?(
+               recipe.notices,
+               &String.contains?(&1, "Nobody can create or resync a sync yet")
+             )
+    end
+
+    test "lets an actor create a sync once the application permits them", %{tmp_dir: tmp_dir} do
+      recipe = sync_for_customers(tmp_dir)
+
+      assert {:error, %Ash.Error.Forbidden{}} = start_sync(recipe, nil, nil)
+      assert {:ok, %{state: :syncing}} = start_sync(recipe)
+    end
+  end
+
   describe "CanResync" do
     test "denies everyone as generated", %{tmp_dir: tmp_dir} do
       recipe =
         [inspect(Customer)]
         |> generate()
+        |> allow_creators()
         |> compile(tmp_dir)
 
       {:ok, sync} = start_sync(recipe)
@@ -209,8 +251,6 @@ defmodule Mix.Tasks.AshWorkflow.Gen.SyncTest do
 
       assert {:error, %Ash.Error.Forbidden{}} = sync |> reload() |> resync()
       assert reload(sync).state == :synced
-
-      assert Enum.any?(recipe.notices, &String.contains?(&1, "Nobody can resync yet"))
     end
 
     test "lets an operator resync once the application permits them", %{tmp_dir: tmp_dir} do
