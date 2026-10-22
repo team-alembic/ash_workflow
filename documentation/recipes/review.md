@@ -22,11 +22,12 @@ When the subject does not exist, the task creates it with `mix ash.gen.resource`
 
 ## What it generates
 
-For the command above, the task writes five modules and edits the subject:
+For the command above, the task writes six modules and edits the subject:
 
 - `MyApp.Content.ArticleReview` runs the workflow. It belongs to the article and to the user who requested the review, and its `round` attribute counts the rounds.
 - `MyApp.Content.ArticleReviewDecision` holds one row for each decision, with the round it ended, the reviewer and the comment. A decision made with no actor, such as by a system process with `authorize?: false`, has no reviewer. An identity allows one decision per round.
 - `MyApp.Content.ArticleReview.Changes.RecordDecision` writes the decision row when `:request_changes`, `:approve` or `:reject` runs.
+- `MyApp.Content.ArticleReview.Validations.NoOpenReview` refuses a `:request` for a subject that already has a review in `:in_review`, `:overdue` or `:changes_requested`.
 - `MyApp.Content.ArticleReview.Checks.CanRequest` decides who may open a review of a subject. It denies everyone as generated.
 - `MyApp.Content.ArticleReview.Checks.CanReview` decides who may review. It denies everyone as generated.
 - `MyApp.Content.Article` gains `has_many :reviews`, `has_one :latest_review` and a `review_approved?` calculation. The task adds no change, argument or policy to the subject's actions.
@@ -78,6 +79,12 @@ end
 The overdue deadline is measured from `submitted_at`. The `:request` action sets it when the review opens, and `:resubmit` sets it again, so each resubmission starts a new review clock. A review waiting in `:changes_requested` is waiting on the requester and never goes overdue.
 
 `:overdue` is a step, not a flag. An overdue review can still be approved, rejected or sent back, and a query can filter on `state == :overdue`. Add a `timeout` or `every` to the `:overdue` step for reminders or escalation.
+
+## One open review per subject
+
+A subject has at most one open review. `:request` validates with `NoOpenReview`, which refuses a second review while one is in `:in_review`, `:overdue` or `:changes_requested`. Without it, a second request would become the subject's `latest_review` and turn `review_approved?` false for a subject whose first review is then approved. Once a review is approved or rejected, the subject can be reviewed again.
+
+On AshPostgres the review also declares a partial unique identity on `subject_id`, limited to open reviews with `identity_wheres_to_sql`. Two requests that pass the validation at the same moment then fail on the index rather than both open. Other data layers have only the validation, so two simultaneous requests for one subject can both succeed there.
 
 ## The policies
 

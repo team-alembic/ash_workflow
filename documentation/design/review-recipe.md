@@ -121,6 +121,12 @@ Three anchors were considered:
 
 `state_entered_at` gives the right answer for the generated workflow, because `:resubmit` is the only way back into `:in_review`. It stops being right as soon as the application adds a loop such as `transition :reassign, to: :in_review`, which would hand an overdue review a fresh deadline. `submitted_at` changes only in the two actions that start a round, and it is also the value a UI shows as "waiting since". Approval's `requested_at` is wrong here: measured from the first submission, a review sent back twice would be overdue on arrival in round three.
 
+## One open review per subject
+
+`:request` runs a generated `Validations.NoOpenReview`, modelled on the invitation recipe's `NoOpenInvitation`. It refuses a request for a subject that has a review in `:in_review`, `:overdue` or `:changes_requested`. A second open review would become `latest_review`, so an article gated on `review_approved?` would stay blocked after its first review was approved.
+
+On AshPostgres the review also declares `identity :unique_open_subject, [:subject_id]` with a `where` on the open states, and `identity_wheres_to_sql` gives the partial index its SQL. The index closes the race between two requests that both pass the validation. Ash's identity pre-check ignores `where`, so other data layers get no identity and rely on the validation alone.
+
 ## Rounds and decisions
 
 `ArticleReview` attributes: `round` (integer, default `1`) and `submitted_at`. `round` is the round count: `:resubmit` adds one to it. A review approved on first reading ends with `round == 1`.

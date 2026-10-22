@@ -375,16 +375,121 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ReviewTest do
     end
   end
 
+  defp validation_modules(resource, action) do
+    for %Ash.Resource.Validation{module: module} <-
+          Ash.Resource.Info.action(resource, action).changes,
+        do: module
+  end
+
+  describe "one open review per subject" do
+    defp try_request(recipe, subject) do
+      recipe.modules[ArticleReview]
+      |> Ash.Changeset.for_create(:request, %{subject_id: subject.id},
+        actor: user(recipe, :author)
+      )
+      |> Ash.create()
+    end
+
+    test "refuses a second review while one is in review or waiting on changes", %{
+      tmp_dir: tmp_dir
+    } do
+      recipe = review_for_articles(tmp_dir)
+      article = article(recipe)
+      review = request(recipe, article, user(recipe, :author))
+
+      assert {:error, %Ash.Error.Invalid{} = error} = try_request(recipe, article)
+      assert Exception.message(error) =~ "already has an open review"
+
+      {:ok, _review} = request_changes(review, user(recipe))
+      assert {:error, %Ash.Error.Invalid{}} = try_request(recipe, article)
+
+      assert {:ok, _review} = try_request(recipe, article(recipe))
+    end
+
+    test "refuses a second review while one is overdue", %{tmp_dir: tmp_dir} do
+      recipe = review_for_articles(tmp_dir, ["--overdue-after", "3d"])
+      article = article(recipe)
+      review = submitted_days_ago(recipe, article, user(recipe, :author), 4)
+
+      assert Timeline.run_due(recipe.modules[ArticleReview]) == 1
+      assert reload(review).state == :overdue
+      assert {:error, %Ash.Error.Invalid{}} = try_request(recipe, article)
+    end
+
+    test "a refused second request leaves the open review to be approved", %{
+      tmp_dir: tmp_dir
+    } do
+      recipe = review_for_articles(tmp_dir)
+      article = article(recipe)
+      review = request(recipe, article, user(recipe, :author))
+
+      assert {:error, %Ash.Error.Invalid{}} = try_request(recipe, article)
+      assert {:ok, %{state: :approved}} = act(review, :approve, user(recipe))
+      assert Ash.load!(article, :review_approved?).review_approved?
+    end
+
+    test "opens a new review once the last one is approved or rejected", %{tmp_dir: tmp_dir} do
+      recipe = review_for_articles(tmp_dir)
+      article = article(recipe)
+
+      {:ok, _review} = act(request(recipe, article, user(recipe, :author)), :reject, user(recipe))
+      {:ok, review} = try_request(recipe, article)
+      {:ok, _review} = act(review, :approve, user(recipe))
+
+      assert {:ok, %{state: :in_review}} = try_request(recipe, article)
+    end
+
+    test "on Postgres, also declares a partial unique identity on open reviews", %{
+      tmp_dir: tmp_dir
+    } do
+      recipe =
+        [
+          "test/support/recipe_fixtures/transition_log/postgres_domain.ex",
+          "test/support/recipe_fixtures/transition_log/postgres_ticket.ex"
+        ]
+        |> generate([
+          "AshWorkflowTest.RecipeFixtures.TransitionLog.PostgresTicket",
+          "--reviewer",
+          "AshWorkflowTest.RecipeFixtures.TransitionLog.Reviewer",
+          "--no-transition-log"
+        ])
+        |> compile(tmp_dir)
+
+      review = recipe.modules[AshWorkflowTest.RecipeFixtures.TransitionLog.PostgresTicketReview]
+
+      assert [%{name: :unique_open_subject, keys: [:subject_id], where: where}] =
+               Ash.Resource.Info.identities(review)
+
+      assert inspect(where) =~ "state in [:in_review, :overdue, :changes_requested]"
+
+      assert AshPostgres.DataLayer.Info.identity_wheres_to_sql(review) == [
+               unique_open_subject: "state IN ('in_review', 'overdue', 'changes_requested')"
+             ]
+
+      no_open_review =
+        recipe.modules[
+          AshWorkflowTest.RecipeFixtures.TransitionLog.PostgresTicketReview.Validations.NoOpenReview
+        ]
+
+      assert no_open_review in validation_modules(review, :request)
+    end
+
+    test "on ETS, declares no identity and relies on the validation", %{tmp_dir: tmp_dir} do
+      recipe = review_for_articles(tmp_dir)
+
+      assert Ash.Resource.Info.identities(recipe.modules[ArticleReview]) == []
+    end
+  end
+
   describe "--overdue-after" do
     test "moves a review nobody has decided to overdue once the deadline passes", %{
       tmp_dir: tmp_dir
     } do
       recipe = review_for_articles(tmp_dir, ["--overdue-after", "3d"])
       review_module = recipe.modules[ArticleReview]
-      article = article(recipe)
 
-      fresh = request(recipe, article, user(recipe, :author))
-      late = submitted_days_ago(recipe, article, user(recipe, :author), 4)
+      fresh = request(recipe, article(recipe), user(recipe, :author))
+      late = submitted_days_ago(recipe, article(recipe), user(recipe, :author), 4)
 
       assert Timeline.run_due(review_module) == 1
       assert reload(fresh).state == :in_review
@@ -394,11 +499,10 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ReviewTest do
     test "an overdue review can still be decided", %{tmp_dir: tmp_dir} do
       recipe = review_for_articles(tmp_dir, ["--overdue-after", "3d"])
       review_module = recipe.modules[ArticleReview]
-      article = article(recipe)
 
-      to_send_back = submitted_days_ago(recipe, article, user(recipe, :author), 4)
-      to_approve = submitted_days_ago(recipe, article, user(recipe, :author), 4)
-      to_reject = submitted_days_ago(recipe, article, user(recipe, :author), 4)
+      to_send_back = submitted_days_ago(recipe, article(recipe), user(recipe, :author), 4)
+      to_approve = submitted_days_ago(recipe, article(recipe), user(recipe, :author), 4)
+      to_reject = submitted_days_ago(recipe, article(recipe), user(recipe, :author), 4)
 
       assert Timeline.run_due(review_module) == 3
 

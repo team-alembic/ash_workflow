@@ -96,6 +96,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
             decision: Module.concat([inspect(review) <> "Decision"]),
             can_request: Module.concat([review, Checks, CanRequest]),
             can_review: Module.concat([review, Checks, CanReview]),
+            no_open_review: Module.concat([review, Validations, NoOpenReview]),
             record_decision: Module.concat([review, Changes, RecordDecision])
           }
 
@@ -181,6 +182,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       |> ProjectModule.create_module(names.record_decision, record_decision_contents(names))
       |> ProjectModule.create_module(names.can_request, can_request_contents(names))
       |> ProjectModule.create_module(names.can_review, can_review_contents(names))
+      |> ProjectModule.create_module(names.no_open_review, no_open_review_contents(names))
       |> DomainIgniter.add_resource_reference(storage.domain, names.review)
       |> DomainIgniter.add_resource_reference(storage.domain, names.decision)
       |> compose_transition_log(names, config.transition_log?)
@@ -208,7 +210,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
         authorizers: [Ash.Policy.Authorizer],
         extensions: [AshWorkflow, AshOban]
 
-      #{Recipe.postgres_block(storage, names.review)}
+      #{Recipe.postgres_block(storage, names.review, postgres_identity(names.review))}
 
       workflow do
         step :in_review do
@@ -242,6 +244,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
           accept [:subject_id]
           change relate_actor(:requested_by)
           change set_attribute(:submitted_at, &DateTime.utc_now/0)
+          validate #{inspect(names.no_open_review)}
         end
 
         update :request_changes do
@@ -299,8 +302,31 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
           public? true
         end
       end
+
+      #{postgres_identities(storage)}
       """
     end
+
+    defp postgres_identity(review) do
+      """
+      #{Recipe.identity_index_name(review, :unique_open_subject)}
+      identity_wheres_to_sql unique_open_subject: "state IN ('in_review', 'overdue', 'changes_requested')"
+      """
+    end
+
+    # Ash's pre-check for an identity ignores its `where`, so on other data
+    # layers NoOpenReview is the only guard.
+    defp postgres_identities(%{data_layer: AshPostgres.DataLayer}) do
+      """
+      identities do
+        identity :unique_open_subject, [:subject_id],
+          where: expr(state in [:in_review, :overdue, :changes_requested]),
+          message: "already has an open review"
+      end
+      """
+    end
+
+    defp postgres_identities(_storage), do: ""
 
     defp decision_transitions do
       """
@@ -415,6 +441,35 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
             {:error, error} -> {:error, error}
           end
         end)
+      end
+      """
+    end
+
+    defp no_open_review_contents(names) do
+      """
+      @moduledoc "Refuses a review of a subject that already has one open."
+
+      use Ash.Resource.Validation
+
+      require Ash.Query
+
+      @impl true
+      def validate(changeset, _opts, _context) do
+        subject_id = Ash.Changeset.get_attribute(changeset, :subject_id)
+
+        if subject_id && open_review?(subject_id) do
+          {:error, field: :subject_id, message: "already has an open review"}
+        else
+          :ok
+        end
+      end
+
+      defp open_review?(subject_id) do
+        #{inspect(names.review)}
+        |> Ash.Query.filter(
+          subject_id == ^subject_id and state in [:in_review, :overdue, :changes_requested]
+        )
+        |> Ash.exists?(authorize?: false)
       end
       """
     end
