@@ -34,7 +34,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.Expiry.Docs do
     * `--domain` - the domain for a subject the task creates. Required only
       when the subject does not exist.
     * `--notice-period` - moves an expiry to `:expiring` this long before
-      `expires_at`, given as `30m`, `12h`, `2d` or `2w`. Without it, no
+      `expires_at`, given as `10s`, `30m`, `12h`, `2d` or `2w`. Without it, no
       `:expiring` step is generated.
     * `--transition-log` - also generates a transition log for the expiry
       with `mix ash_workflow.gen.transition_log`. Defaults to `true`.
@@ -265,6 +265,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       """
     end
 
+    defp interval(:seconds), do: :second
     defp interval(:minutes), do: :minute
     defp interval(:hours), do: :hour
     defp interval(:days), do: :day

@@ -70,4 +70,44 @@ defmodule Mix.AshWorkflow.RecipeTest do
       end
     end
   end
+
+  describe "parse_duration/2" do
+    for {value, duration} <- [
+          {"10s", {10, :seconds}},
+          {"30m", {30, :minutes}},
+          {"12h", {12, :hours}},
+          {"2d", {2, :days}},
+          {"2w", {14, :days}}
+        ] do
+      test "parses #{value} as #{inspect(duration)}" do
+        assert Recipe.parse_duration(unquote(value), "--after") ==
+                 {:ok, unquote(Macro.escape(duration))}
+      end
+    end
+
+    test "returns nil when the flag is not given" do
+      assert Recipe.parse_duration(nil, "--after") == {:ok, nil}
+    end
+
+    for value <- ["0s", "10", "2y", "-1d"] do
+      test "rejects #{value}, naming the flag" do
+        assert {:error, message} = Recipe.parse_duration(unquote(value), "--after")
+        assert message =~ "--after must look like 10s, 30m, 12h, 2d or 2w"
+      end
+    end
+  end
+
+  describe "validate_max_attempts/1" do
+    test "accepts a positive integer" do
+      assert Recipe.validate_max_attempts(1) == :ok
+      assert Recipe.validate_max_attempts(5) == :ok
+    end
+
+    for value <- [0, -1, nil, "3"] do
+      test "rejects #{inspect(value)}" do
+        assert {:error, message} = Recipe.validate_max_attempts(unquote(value))
+        assert message =~ "--max-attempts must be a positive integer"
+      end
+    end
+  end
 end

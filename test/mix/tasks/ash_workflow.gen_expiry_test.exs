@@ -298,6 +298,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ExpiryTest do
 
   describe "--notice-period" do
     for {flag, interval} <- [
+          {"10s", "-10, :second"},
           {"30m", "-30, :minute"},
           {"12h", "-12, :hour"},
           {"2d", "-2, :day"},

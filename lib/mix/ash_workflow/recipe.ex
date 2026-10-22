@@ -15,16 +15,25 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
     def parse_duration(nil, _flag), do: {:ok, nil}
 
     def parse_duration(value, flag) do
-      case Regex.run(~r/^([1-9]\d*)([mhdw])$/, value) do
+      case Regex.run(~r/^([1-9]\d*)([smhdw])$/, value) do
         [_match, count, unit] -> {:ok, duration(String.to_integer(count), unit)}
-        nil -> {:error, "#{flag} must look like 30m, 12h, 2d or 2w, got: #{value}"}
+        nil -> {:error, "#{flag} must look like 10s, 30m, 12h, 2d or 2w, got: #{value}"}
       end
     end
+
+    defp duration(count, "s"), do: {count, :seconds}
 
     defp duration(count, "m"), do: {count, :minutes}
     defp duration(count, "h"), do: {count, :hours}
     defp duration(count, "d"), do: {count, :days}
     defp duration(count, "w"), do: {count * 7, :days}
+
+    @doc "Accepts a `--max-attempts` value only when it is a positive integer."
+    @spec validate_max_attempts(term()) :: :ok | {:error, String.t()}
+    def validate_max_attempts(count) when is_integer(count) and count >= 1, do: :ok
+
+    def validate_max_attempts(count),
+      do: {:error, "--max-attempts must be a positive integer, got: #{inspect(count)}"}
 
     @doc """
     Resolves where the recipe's resources are stored, composing

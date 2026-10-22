@@ -12,7 +12,7 @@ mix ash_workflow.gen.expiry MyApp.Contracts.Contract --notice-period 30d
 |---|---|---|
 | `--module` | `<Subject>Expiry` | Name of the generated expiry resource. |
 | `--domain` | the subject's domain | Domain for a subject the task creates. Required only when the subject does not exist. |
-| `--notice-period` | none | Moves an expiry to `:expiring` this long before `expires_at`. Accepts `30m`, `12h`, `2d` and `2w`. Without it, no `:expiring` step is generated. |
+| `--notice-period` | none | Moves an expiry to `:expiring` this long before `expires_at`. Accepts `10s`, `30m`, `12h`, `2d` and `2w`. Without it, no `:expiring` step is generated. |
 | `--transition-log` | `true` | Also runs `mix ash_workflow.gen.transition_log` for the expiry resource. Pass `--no-transition-log` to skip it. |
 
 When the subject does not exist, the task creates it with `mix ash.gen.resource`, using the data layer of the first ETS or Postgres resource in `--domain`. When no resource there uses ETS or Postgres, the task stops with an issue and writes nothing. Create the subject resource first, or pass a `--domain` that has one. Running the task again on the same subject changes nothing.

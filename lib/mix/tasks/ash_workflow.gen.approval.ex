@@ -39,8 +39,8 @@ defmodule Mix.Tasks.AshWorkflow.Gen.Approval.Docs do
     * `--required-approvals` - the number of approvals a request
       needs. Defaults to `1`.
     * `--overdue-after` - moves a request nobody has decided to `:overdue`
-      after this long, given as `30m`, `12h`, `2d` or `2w`. Without it, no
-      `:overdue` step is generated.
+      after this long, given as `10s`, `30m`, `12h`, `2d` or `2w`. Without
+      it, no `:overdue` step is generated.
     * `--transition-log` - also generates a transition log for the approval
       with `mix ash_workflow.gen.transition_log`. Defaults to `true`.
     """
