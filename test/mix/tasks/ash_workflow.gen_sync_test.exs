@@ -382,6 +382,15 @@ defmodule Mix.Tasks.AshWorkflow.Gen.SyncTest do
       assert DateTime.after?(resynced.last_synced_at, first_synced_at)
     end
 
+    test "is refused while the sync is syncing", %{tmp_dir: tmp_dir} do
+      recipe = sync_for_customers(tmp_dir)
+      {:ok, sync} = start_sync(recipe)
+
+      assert {:error, %Ash.Error.Invalid{}} = resync(sync)
+      assert reload(sync).state == :syncing
+      assert Timeline.run_due(recipe.modules[CustomerSync]) == 1
+    end
+
     # The timeline numbers each attempt and re-arms a failed one after the
     # backoff, so the attempt count here comes from the library.
     test "returns a failed sync to syncing with a fresh set of attempts", %{tmp_dir: tmp_dir} do
