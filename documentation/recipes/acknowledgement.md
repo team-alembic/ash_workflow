@@ -22,9 +22,10 @@ When the subject does not exist, the task creates it with `mix ash.gen.resource`
 
 ## What it generates
 
-For the command above, the task writes one module and edits the subject:
+For the command above, the task writes two modules and edits the subject:
 
 - `MyApp.Policies.PolicyAcknowledgement` runs the workflow. It belongs to the policy and to a person, and holds `requested_at` and `acknowledged_at`. An identity on `(subject_id, person_id)` allows one request per person per policy.
+- `MyApp.Policies.PolicyAcknowledgement.Checks.CanRequest` decides who may open a request. It denies everyone as generated.
 - `MyApp.Policies.Policy` gains `has_many :acknowledgements` and an `acknowledged_by_actor?` calculation. The task adds no change, argument or policy to the subject's actions.
 
 The acknowledgement is a separate resource rather than a `workflow` block on the subject, so a subject that already runs a workflow keeps it.
@@ -63,6 +64,10 @@ A person in `:overdue` can still acknowledge. The overdue deadline reads `reques
 
 ```elixir
 policies do
+  policy action(:request) do
+    authorize_if MyApp.Policies.PolicyAcknowledgement.Checks.CanRequest
+  end
+
   policy action(:acknowledge) do
     authorize_if relates_to_actor_via(:person)
   end
@@ -71,20 +76,37 @@ end
 
 Only the person a request was opened for may acknowledge it. Nobody can acknowledge on someone else's behalf, and an acknowledgement without an actor is forbidden.
 
-The `:request` create action has no policy, so anyone can open a request. Add a policy to it if your application needs to restrict who opens requests.
+`CanRequest` gates `:request`, so it also gates `request_many/3`, which runs the same action in bulk. Nobody can open a request until you change it.
 
 ## What your application does next
+
+### Decide who may open a request
+
+`CanRequest` denies everyone, so no request can be opened until you change it. Replace its `match?/3`, or replace the `authorize_if` line in the `:request` policy with a built-in check:
+
+```elixir
+policies do
+  policy action(:request) do
+    authorize_if actor_attribute_equals(:role, :compliance_officer)
+  end
+end
+```
+
+Code that opens requests on the application's behalf, such as an onboarding job, can pass `authorize?: false` instead.
+
+Reads stay open by default. `AshWorkflow` authorizes `:read` on the acknowledgement resource for every actor. Add a read policy if acknowledgements are private.
 
 ### Open requests
 
 Call `request/3` for one person, or `request_many/3` for a list of people, wherever acknowledgement should start, such as a publish action or an onboarding step:
 
 ```elixir
-MyApp.Policies.PolicyAcknowledgement.request(policy.id, user.id)
+MyApp.Policies.PolicyAcknowledgement.request(policy.id, user.id, actor: current_user)
 
 MyApp.Policies.PolicyAcknowledgement.request_many(
   policy.id,
-  Enum.map(staff, &%{person_id: &1.id})
+  Enum.map(staff, &%{person_id: &1.id}),
+  actor: current_user
 )
 ```
 

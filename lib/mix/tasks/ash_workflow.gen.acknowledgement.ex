@@ -19,6 +19,9 @@ defmodule Mix.Tasks.AshWorkflow.Gen.Acknowledgement.Docs do
     `acknowledged_by_actor?` calculation. When the subject does not exist, it
     is created with `mix ash.gen.resource` first.
 
+    Nobody may open a request until the application defines who can, in the
+    generated `Checks.CanRequest` module.
+
     ## Example
 
     ```bash
@@ -83,11 +86,13 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       case Recipe.parse_duration(options[:overdue_after], "--overdue-after") do
         {:ok, overdue_after} ->
           person = ProjectModule.parse(options[:person])
+          acknowledgement = acknowledgement_module(subject, options[:module])
 
           config = %{
             subject: subject,
             person: person,
-            acknowledgement: acknowledgement_module(subject, options[:module]),
+            acknowledgement: acknowledgement,
+            can_request: Module.concat([acknowledgement, Checks, CanRequest]),
             overdue_after: overdue_after,
             transition_log?: options[:transition_log]
           }
@@ -154,14 +159,18 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
         config.acknowledgement,
         acknowledgement_contents(config, storage)
       )
+      |> ProjectModule.create_module(config.can_request, can_request_contents(config))
       |> DomainIgniter.add_resource_reference(storage.domain, config.acknowledgement)
       |> compose_transition_log(config)
       |> Igniter.add_notice("""
       Generated #{inspect(config.acknowledgement)} to acknowledge #{inspect(config.subject)}.
 
+      Nobody can open a request yet. Define who may open one in \
+      #{inspect(config.can_request)}, which denies everyone as generated. \
+      Open requests with request/3 or request_many/3.
+
       Only the person a request was opened for may acknowledge it, as the \
-      policy on :acknowledge states. Open requests with request/3 or \
-      request_many/3.
+      policy on :acknowledge states.
       """)
     end
 
@@ -217,6 +226,8 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       end
 
       policies do
+        #{Recipe.create_policy(:request, config.can_request)}
+
         policy action(:acknowledge) do
           authorize_if relates_to_actor_via(:person)
         end
@@ -238,6 +249,13 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
         identity :unique_person, [:subject_id, :person_id]#{Recipe.pre_check_with(storage)}
       end
       """
+    end
+
+    defp can_request_contents(config) do
+      Recipe.deny_check_contents(
+        "Decides who may open an `#{inspect(config.acknowledgement)}` request.",
+        "actor may open an acknowledgement request"
+      )
     end
 
     defp overdue_timeout(nil), do: ""

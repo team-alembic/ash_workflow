@@ -155,21 +155,27 @@ The alternative was a plain create that fails on the identity. Every caller addi
 
 A person acknowledges a subject once. A terms update that must be acknowledged again is a new subject row, such as a new version of the terms, not a second acknowledgement of the old one.
 
-## Who may acknowledge
+## Who may request and acknowledge
+
+Who may open a request differs per application, so `:request` follows the other recipes. The generator writes `PolicyAcknowledgement.Checks.CanRequest`, a check that denies everyone, and gates `:request` on it. `request_many/3` runs the same action through `Ash.bulk_create/4`, so the same policy authorizes each row of a bulk call.
 
 The only human transition is `acknowledge`, and its rule is the same in every application: the person asked is the person who confirms. The generator writes that rule as a built-in check rather than a deny-by-default check module.
 
 ```elixir
 policies do
+  policy action(:request) do
+    authorize_if MyApp.Policies.PolicyAcknowledgement.Checks.CanRequest
+  end
+
   policy action(:acknowledge) do
     authorize_if relates_to_actor_via(:person)
   end
 end
 ```
 
-Approval and expiry generate a check module that denies everyone, because who may approve or renew differs per application and an open default is unsafe. Acknowledgement has no such open default to avoid. A check module that denied everyone would make every application write the same `relates_to_actor_via(:person)` line before the recipe did anything. The generator therefore writes no check module, and its notice names the policy instead.
+A check module for `:acknowledge` that denied everyone would make every application write the same `relates_to_actor_via(:person)` line before the recipe did anything. The generator therefore writes no check module for it, and its notice names the policy instead.
 
-`AshWorkflow.Transformers.AddPolicies` allows `:request`, reads and the scheduler's overdue timeout. Who may open a request is the application's decision, made where it calls `request/3`.
+`AshWorkflow.Transformers.AddPolicies` allows `:request`, reads and the scheduler's overdue timeout. Ash requires every policy that applies to an action to pass, so `CanRequest` still decides `:request`.
 
 ## Composing the transition log
 
@@ -177,7 +183,7 @@ The generator composes `ash_workflow.gen.transition_log` with `--actor` set to `
 
 ## Code shared with the other recipes
 
-The generator uses `Mix.AshWorkflow.Recipe` as it stands: `parse_duration/2`, `ensure_subject/5`, `add_subject_edits/4`, `compose_transition_log/3` and the rendering helpers. It adds nothing to the module.
+The generator uses `Mix.AshWorkflow.Recipe` as it stands: `parse_duration/2`, `ensure_subject/5`, `add_subject_edits/4`, `compose_transition_log/3`, `key_type/3`, `belongs_to/3`, `deny_check_contents/2`, `create_policy/2` and the rendering helpers. It adds nothing to the module.
 
 ## Open questions
 

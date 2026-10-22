@@ -11,6 +11,8 @@ defmodule Mix.Tasks.AshWorkflow.Gen.AcknowledgementTest do
 
   @fixtures "test/support/recipe_fixtures/acknowledgement"
   @files ["#{@fixtures}/domain.ex", "#{@fixtures}/user.ex", "#{@fixtures}/policy.ex"]
+  @checks "lib/ash_workflow_test/recipe_fixtures/acknowledgement/policy_acknowledgement/checks"
+  @deny_all "def match?(_actor, _context, _opts), do: false"
 
   defp generate(files \\ @files, argv) do
     files
@@ -21,7 +23,23 @@ defmodule Mix.Tasks.AshWorkflow.Gen.AcknowledgementTest do
   defp acknowledgement_for_policies(tmp_dir, argv \\ ["--overdue-after", "14d"]) do
     [inspect(Policy), "--person", inspect(User) | argv]
     |> generate()
+    |> allow_requesters()
     |> compile(tmp_dir)
+  end
+
+  # What an application does once it has generated the recipe: fill in
+  # CanRequest. Here any actor may open a request.
+  defp allow_requesters(recipe, checks \\ @checks) do
+    edit_source(recipe, "#{checks}/can_request.ex", fn source ->
+      String.replace(source, @deny_all, "def match?(actor, _context, _opts), do: is_map(actor)")
+    end)
+  end
+
+  # `compile/2` reads every file from the project, not only the changed ones.
+  defp edit_source(recipe, path, fun) do
+    recipe
+    |> update_in([Access.key!(:changed), path], fun)
+    |> update_in([Access.key!(:igniter), Access.key!(:assigns), :test_files, path], fun)
   end
 
   defp user(recipe, name \\ "person") do
@@ -30,6 +48,8 @@ defmodule Mix.Tasks.AshWorkflow.Gen.AcknowledgementTest do
     |> Ash.create!()
   end
 
+  defp requester(recipe), do: user(recipe, "requester")
+
   defp policy(recipe) do
     recipe.modules[Policy]
     |> Ash.Changeset.for_create(:create, %{title: "Code of conduct"})
@@ -37,14 +57,42 @@ defmodule Mix.Tasks.AshWorkflow.Gen.AcknowledgementTest do
   end
 
   defp request(recipe, subject, person) do
+    {:ok, acknowledgement} = open_request(recipe, subject, person)
+    acknowledgement
+  end
+
+  defp open_request(recipe, subject, person),
+    do: open_request(recipe, subject, person, requester(recipe))
+
+  defp open_request(recipe, subject, person, actor) do
     recipe.modules[PolicyAcknowledgement]
-    |> Ash.Changeset.for_create(:request, %{subject_id: subject.id, person_id: person.id})
-    |> Ash.create!()
+    |> Ash.Changeset.for_create(
+      :request,
+      %{subject_id: subject.id, person_id: person.id},
+      actor: actor
+    )
+    |> Ash.create()
+  end
+
+  defp request_many(recipe, subject, people),
+    do: request_many(recipe, subject, people, requester(recipe))
+
+  defp request_many(recipe, subject, people, actor) do
+    recipe.modules[PolicyAcknowledgement].request_many(
+      subject.id,
+      Enum.map(people, &%{person_id: &1.id}),
+      actor: actor,
+      bulk_options: [return_records?: true, return_errors?: true]
+    )
   end
 
   defp requested_days_ago(recipe, subject, person, days) do
     recipe.modules[PolicyAcknowledgement]
-    |> Ash.Changeset.for_create(:request, %{subject_id: subject.id, person_id: person.id})
+    |> Ash.Changeset.for_create(
+      :request,
+      %{subject_id: subject.id, person_id: person.id},
+      actor: requester(recipe)
+    )
     |> Ash.Changeset.force_change_attribute(
       :requested_at,
       DateTime.add(DateTime.utc_now(), -days, :day)
@@ -120,6 +168,9 @@ defmodule Mix.Tasks.AshWorkflow.Gen.AcknowledgementTest do
     recipe =
       ["#{@fixtures}/domain.ex", "#{@fixtures}/user.ex"]
       |> generate([inspect(Terms), "--person", inspect(User), "--domain", inspect(Domain)])
+      |> allow_requesters(
+        "lib/ash_workflow_test/recipe_fixtures/acknowledgement/terms_acknowledgement/checks"
+      )
       |> compile(tmp_dir)
 
     terms_module = recipe.modules[Terms]
@@ -135,7 +186,11 @@ defmodule Mix.Tasks.AshWorkflow.Gen.AcknowledgementTest do
 
     acknowledgement =
       acknowledgement_module
-      |> Ash.Changeset.for_create(:request, %{subject_id: terms.id, person_id: person.id})
+      |> Ash.Changeset.for_create(
+        :request,
+        %{subject_id: terms.id, person_id: person.id},
+        actor: requester(recipe)
+      )
       |> Ash.create!()
 
     assert acknowledgement.state == :pending
@@ -205,14 +260,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.AcknowledgementTest do
       people = [asked, user(recipe, "new"), user(recipe, "newer")]
 
       for listed <- [Enum.take(people, 2), people] do
-        result =
-          acknowledgement_module.request_many(
-            policy.id,
-            Enum.map(listed, &%{person_id: &1.id}),
-            bulk_options: [return_records?: true, return_errors?: true]
-          )
-
-        assert result.status == :success
+        assert %{status: :success} = request_many(recipe, policy, listed)
       end
 
       acknowledgements = Ash.read!(acknowledgement_module)
@@ -233,6 +281,45 @@ defmodule Mix.Tasks.AshWorkflow.Gen.AcknowledgementTest do
         |> Enum.frequencies_by(&person_by_acknowledgement[&1.workflow_id])
 
       assert initial_rows_by_person == Map.new(people, &{&1.id, 1})
+    end
+  end
+
+  describe "CanRequest" do
+    test "denies everyone as generated", %{tmp_dir: tmp_dir} do
+      recipe =
+        [inspect(Policy), "--person", inspect(User)]
+        |> generate()
+        |> compile(tmp_dir)
+
+      policy = policy(recipe)
+      person = user(recipe)
+
+      assert {:error, %Ash.Error.Forbidden{}} = open_request(recipe, policy, person)
+      assert {:error, %Ash.Error.Forbidden{}} = open_request(recipe, policy, person, nil)
+
+      assert %{status: :error, errors: [%Ash.Error.Forbidden{} | _]} =
+               request_many(recipe, policy, [person, user(recipe, "other")])
+
+      assert Ash.read!(recipe.modules[PolicyAcknowledgement]) == []
+      assert Enum.any?(recipe.notices, &String.contains?(&1, "Nobody can open a request yet"))
+    end
+
+    test "lets a requester open requests once the application permits them", %{
+      tmp_dir: tmp_dir
+    } do
+      recipe = acknowledgement_for_policies(tmp_dir)
+      policy = policy(recipe)
+      people = [user(recipe), user(recipe, "other")]
+
+      assert {:error, %Ash.Error.Forbidden{}} = open_request(recipe, policy, hd(people), nil)
+
+      assert %{status: :error, errors: [%Ash.Error.Forbidden{} | _]} =
+               request_many(recipe, policy, people, nil)
+
+      assert Ash.read!(recipe.modules[PolicyAcknowledgement]) == []
+
+      assert %{status: :success, records: [_, _]} = request_many(recipe, policy, people)
+      assert {:ok, %{state: :pending}} = open_request(recipe, policy, user(recipe, "third"))
     end
   end
 
