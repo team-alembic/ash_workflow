@@ -29,13 +29,20 @@ defmodule Mix.Tasks.AshWorkflow.Gen.PublicationTest do
   # What an application does once it has generated the recipe: fill in
   # CanPublish. Here anyone with the :editor role may publish.
   defp allow_editors(recipe) do
-    update_in(recipe.changed[@can_publish], fn source ->
+    edit_source(recipe, @can_publish, fn source ->
       String.replace(
         source,
         "def match?(_actor, _context, _opts), do: false",
         "def match?(actor, _context, _opts), do: is_map(actor) and actor.role == :editor"
       )
     end)
+  end
+
+  # `compile/2` reads every file from the project, not only the changed ones.
+  defp edit_source(recipe, path, fun) do
+    recipe
+    |> update_in([Access.key!(:changed), path], fun)
+    |> update_in([Access.key!(:igniter), Access.key!(:assigns), :test_files, path], fun)
   end
 
   defp post(recipe) do
@@ -100,7 +107,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.PublicationTest do
       post = post(recipe)
       {:ok, publication} = draft(recipe, post)
 
-      refute Ash.load!(post, :published?).published?
+      assert Ash.load!(post, :published?).published? == false
 
       publication = move!(publication, :publish_now)
       assert Ash.load!(post, :published?).published?
@@ -143,6 +150,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.PublicationTest do
     second = run_task(first.igniter, "ash_workflow.gen.publication", argv)
 
     assert second.changed == %{}
+    assert second.warnings == []
   end
 
   test "a subject has at most one publication", %{tmp_dir: tmp_dir} do

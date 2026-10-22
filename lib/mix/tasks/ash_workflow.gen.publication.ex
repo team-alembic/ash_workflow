@@ -94,8 +94,17 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
              "publication",
              []
            ) do
-        {:ok, igniter, storage} -> generate(igniter, config, storage)
+        {:ok, igniter, storage} -> generate_with_key_type(igniter, config, storage)
         {:error, igniter} -> igniter
+      end
+    end
+
+    # A subject created in this run does not compile yet and gets
+    # ash.gen.resource's uuid_v7 key.
+    defp generate_with_key_type(igniter, config, storage) do
+      case Recipe.key_type(config.subject, "publication", :uuid_v7) do
+        {:ok, key_type} -> generate(igniter, Map.put(config, :key_type, key_type), storage)
+        {:error, message} -> Igniter.add_issue(igniter, message)
       end
     end
 
@@ -118,7 +127,8 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
           end
           """
         ],
-        published?: "calculate :published?, :boolean, expr(publication.state == :published)"
+        published?:
+          "calculate :published?, :boolean, expr(publication.state == :published || false)"
       )
       |> then(fn igniter ->
         if exists?, do: igniter, else: create_publication(igniter, config, storage)
@@ -216,7 +226,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       end
 
       relationships do
-        belongs_to :subject, #{inspect(config.subject)}, allow_nil?: false, public?: true
+        #{Recipe.belongs_to(:subject, config.subject, config.key_type)}
       end
 
       identities do
@@ -303,21 +313,10 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       do: "attribute :unpublish_at, :utc_datetime_usec, public?: true"
 
     defp can_publish_contents(config) do
-      """
-      @moduledoc \"\"\"
-      Decides who may schedule, publish or unpublish a `#{inspect(config.publication)}`.
-
-      Denies everyone until the application replaces `match?/3`.
-      \"\"\"
-
-      use Ash.Policy.SimpleCheck
-
-      @impl true
-      def describe(_opts), do: "actor may publish this publication"
-
-      @impl true
-      def match?(_actor, _context, _opts), do: false
-      """
+      Recipe.deny_check_contents(
+        "Decides who may schedule, publish or unpublish a `#{inspect(config.publication)}`.",
+        "actor may publish this publication"
+      )
     end
   end
 else
