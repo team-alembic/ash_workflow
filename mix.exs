@@ -108,7 +108,7 @@ defmodule AshWorkflow.MixProject do
   defp deps do
     [
       {:mix_test_watch, "~> 1.2", only: [:dev, :test], runtime: false},
-      {:ash, "~> 3.0"},
+      {:ash, "~> 3.29"},
       {:ash_state_machine, "~> 0.2"},
       {:ash_oban, "~> 0.2"},
       {:jason, "~> 1.4"},
