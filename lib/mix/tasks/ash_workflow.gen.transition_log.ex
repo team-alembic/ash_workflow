@@ -58,6 +58,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
     alias Ash.Domain.Igniter, as: DomainIgniter
     alias Ash.Resource.Igniter, as: ResourceIgniter
     alias Igniter.Project.Module, as: ProjectModule
+    alias Mix.AshWorkflow.Recipe
 
     @impl Igniter.Mix.Task
     def info(_argv, _composing_task) do
@@ -184,9 +185,21 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
     defp ast_module(_other), do: nil
 
     defp generate(igniter, workflow_module, %{workflow?: true} = resource) do
-      options = igniter.args.options
-      log_module = log_module(workflow_module, options[:log_module])
-      actor = actor_config(options[:actor])
+      case actor_config(igniter.args.options[:actor]) do
+        {:ok, actor} -> generate_log(igniter, workflow_module, resource, actor)
+        {:error, message} -> Igniter.add_issue(igniter, message)
+      end
+    end
+
+    defp generate(igniter, workflow_module, _resource) do
+      Igniter.add_issue(
+        igniter,
+        "#{inspect(workflow_module)} does not use the AshWorkflow extension."
+      )
+    end
+
+    defp generate_log(igniter, workflow_module, resource, actor) do
+      log_module = log_module(workflow_module, igniter.args.options[:log_module])
 
       igniter
       |> ProjectModule.create_module(
@@ -208,13 +221,6 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       """)
     end
 
-    defp generate(igniter, workflow_module, _resource) do
-      Igniter.add_issue(
-        igniter,
-        "#{inspect(workflow_module)} does not use the AshWorkflow extension."
-      )
-    end
-
     defp log_module(workflow_module, nil) do
       workflow_module
       |> Module.split()
@@ -228,15 +234,19 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       module |> Module.split() |> List.last()
     end
 
-    defp actor_config(nil), do: nil
+    defp actor_config(nil), do: {:ok, nil}
 
+    # The actor foreign key takes the type of the actor's primary key, so an
+    # actor with an integer key gets an integer column.
     defp actor_config(actor_module_string) do
       actor_module = ProjectModule.parse(actor_module_string)
 
       name =
         actor_module |> Module.split() |> List.last() |> Macro.underscore() |> String.to_atom()
 
-      %{name: name, destination: actor_module}
+      with {:ok, key_type} <- Recipe.key_type(actor_module, "transition log", nil) do
+        {:ok, %{name: name, destination: actor_module, key_type: key_type}}
+      end
     end
 
     defp add_transition_log_entry(igniter, workflow_module, resource, log_module, actor) do
@@ -337,12 +347,15 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
     defp actor_relationship(actor) do
       """
       belongs_to :#{actor.name}, #{inspect(actor.destination)},
-        allow_nil?: true,
+        #{attribute_type(actor.key_type)}allow_nil?: true,
         public?: true,
         attribute_public?: true,
         attribute_writable?: true
       """
     end
+
+    defp attribute_type(nil), do: ""
+    defp attribute_type(type), do: "attribute_type: #{inspect(type)},\n"
 
     defp data_layer_block(%{postgres: %{table: table, repo: repo}}, log_module) do
       """
