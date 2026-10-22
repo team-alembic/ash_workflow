@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **A Workflows lens for Clarity.** With [Clarity](https://hex.pm/packages/clarity) installed, `AshWorkflow.Clarity.Lensmaker` adds a Workflows lens that lists each workflow resource with its steps. `AshWorkflow.Clarity.Introspector` adds an `AshWorkflow.Clarity.Vertex.Step` for each step. A workflow resource gets Workflow Overview, Workflow Diagram and Workflow Timing tabs, and a step gets Step Overview, Step Diagram and Step Timeline tabs. The timing tabs place each automatic action, retry attempt, timeout, `every` firing and undo window at its offset from entering the step, and say how long a record can stay in each step. Clarity is an optional dependency, so a project without it compiles none of these modules.
 
+### Fixed
+
+- A create action that upserts onto an existing row no longer appends an `:initial` row to the transition log or calls `AshWorkflow.Scheduler.notify_state_change/1`. The row stays in the step it was in. `AshWorkflow.Changes.RecordEvent` skips both when the returned record carries `upsert_action: :update` metadata, or `upsert_skipped: true` metadata from an `upsert_condition` that did not match. This covers `Ash.create/2` and `Ash.bulk_create/4`. The `[:ash_workflow, :transition]` span still emits `:stop`, because its `:start` event fires before the data layer reports whether the row was inserted. ash_workflow now requires Ash 3.29 or later, the first release that sets `upsert_action` on ETS and Mnesia. AshPostgres sets it from 2.10.0 on PostgreSQL 17 and later, and from 2.13.1 on every PostgreSQL version. With an older AshPostgres, an upsert onto an existing row is still logged.
+
 ## [0.10.1] - 2026-10-19
 
 ### Upgrading from 0.10.0
