@@ -40,7 +40,9 @@ defmodule AshWorkflow.Calculations.PendingDeadlines do
       opts[:timeouts]
       |> Map.values()
       |> List.flatten()
-      |> Enum.flat_map(&([&1.field | List.wrap(Map.get(&1, :fired_field))] ++ time_zone_field(&1)))
+      |> Enum.flat_map(
+        &([&1.field | List.wrap(Map.get(&1, :fired_field))] ++ time_zone_field(&1))
+      )
       |> Enum.uniq()
 
     [Keyword.fetch!(opts, :state_attribute), :state_entered_at | fields]

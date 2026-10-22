@@ -180,19 +180,24 @@ A record that has never fired has no last fire to measure the stride from, so it
 Under `AshWorkflow.Scheduler.Oban` the `where` clause is a Postgres fragment, because the zone is per row:
 
 ```sql
-EXTRACT(ISODOW FROM (now() AT TIME ZONE candidate_time_zone))::int = ANY('{1,2,3,4,5}')
-AND (now() AT TIME ZONE candidate_time_zone)::time >= '09:00:00'::time
-AND coalesce(waiting_digest_last_fired_at, state_entered_at)
-    < ((date_trunc('day', now() AT TIME ZONE candidate_time_zone) + '09:00:00'::time)
-       AT TIME ZONE candidate_time_zone)
+EXISTS (
+  SELECT 1
+  FROM (
+    SELECT (now() AT TIME ZONE candidate_time_zone)::date - back AS day
+    FROM generate_series(0, 6) AS back
+  ) AS o
+  WHERE EXTRACT(ISODOW FROM o.day)::int = ANY('{1,2,3,4,5}')
+    AND ((o.day + '09:00:00'::time) AT TIME ZONE candidate_time_zone) <= now()
+    AND (coalesce(waiting_digest_last_fired_at, state_entered_at) AT TIME ZONE 'UTC')
+        < ((o.day + '09:00:00'::time) AT TIME ZONE candidate_time_zone)
+)
 ```
 
-That is "today is a listed day, 09:00 has passed locally, and the last fire is older than today's 09:00". So `at` needs a SQL data layer under the Oban scheduler. A stride adds one more clause, comparing two dates in the row's own zone:
+That is "on one of the last seven local dates, a listed day's 09:00 has passed, and the last fire is older than it". `on` is never empty, so the most recent occurrence is always one of those seven. So `at` needs a SQL data layer under the Oban scheduler. A stride adds one more clause inside the subquery, comparing the occurrence's local date with the last fire's:
 
 ```sql
-AND ((now() AT TIME ZONE candidate_time_zone)::date
-     - ((coalesce(waiting_digest_last_fired_at, state_entered_at) AT TIME ZONE 'UTC')
-        AT TIME ZONE candidate_time_zone)::date) >= 14
+    AND o.day - ((coalesce(waiting_digest_last_fired_at, state_entered_at) AT TIME ZONE 'UTC')
+                 AT TIME ZONE candidate_time_zone)::date >= 14
 ```
 
 `state_entered_at` and the last-fired column are stored as naive timestamps holding UTC, so both clauses lift them to an instant with an explicit `AT TIME ZONE 'UTC'` before shifting into the row's zone. Leaving that implicit would resolve against the session's `TimeZone` setting, which nothing here controls.
@@ -201,7 +206,7 @@ AND ((now() AT TIME ZONE candidate_time_zone)::date
 
 #### Missed occurrences and daylight saving
 
-A missed occurrence fires late rather than being skipped. If nothing polled at 09:00, the digest goes out whenever polling resumes, once, no matter how many occurrences were missed — the comparison is against the most recent occurrence, not against each one in turn. Once the local day rolls over, that occurrence is gone and the next one is tomorrow's.
+A missed occurrence fires late rather than being skipped. If nothing polled at 09:00, the digest goes out whenever polling resumes, once, no matter how many occurrences were missed — the comparison is against the most recent occurrence, not against each one in turn.
 
 Across a daylight saving change, a local time that was skipped still fires that day, at the instant the clock jumped to. `~T[02:30:00]` on a day whose clocks go 02:00 to 03:00 fires at 03:00 local. Skipping the day instead would mean a digest silently missing one day a year, in whichever zones the rows happen to name. A local time that happens twice fires on the first of its two instants; the second is then no longer after the last fire, so nothing fires again.
 

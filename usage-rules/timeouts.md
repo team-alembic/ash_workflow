@@ -190,7 +190,7 @@ A calculation must be expression-based. The zone is read from the trigger's filt
 
 The first fire is the first occurrence after the record entered the step, so a record entering at 09:30 on Monday waits until Tuesday. Firing writes the same `last_fired_field` column an `interval` `every` writes, which is what stops two polls in one morning sending two digests. `until` still applies, and is still measured against `state_entered_at`.
 
-A missed occurrence fires late rather than being skipped. If nothing polled at 09:00, the digest goes out whenever polling resumes that local day, once, no matter how many occurrences were missed.
+A missed occurrence fires late rather than being skipped. If nothing polled at 09:00, the digest goes out whenever polling resumes, on that day or a later one, once, no matter how many occurrences were missed.
 
 Across a daylight saving change, a local time that was skipped still fires that day, at the instant the clock jumped to. A local time that happens twice fires on the first of the two instants. See `AshWorkflow.WallClock`.
 

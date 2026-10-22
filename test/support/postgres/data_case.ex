@@ -65,6 +65,9 @@ defmodule AshWorkflowTest.DataCase do
   """
   def set_field(record, field, %DateTime{} = at) do
     table = DataLayerInfo.table(record.__struct__)
+    # The columns are naive timestamps holding UTC, and Postgrex writes a zoned
+    # `DateTime` as its local wall time.
+    at = DateTime.shift_zone!(at, "Etc/UTC")
 
     {1, _} =
       Repo.update_all(

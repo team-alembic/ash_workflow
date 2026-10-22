@@ -73,10 +73,10 @@ defmodule AshWorkflow.WallClock do
 
   ## A missed occurrence fires late
 
-  The trigger compares the last fire against the most recent occurrence, so a
+  Both readers compare the last fire against the most recent occurrence, so a
   09:00 digest missed because nothing was polling goes out whenever polling
-  resumes, as long as that is still the same local day. Once the local day
-  rolls over, the missed occurrence is gone and the next one is tomorrow's.
+  resumes, on that day or a later one. It goes out once, however many
+  occurrences were missed.
   """
 
   defstruct [:time, :days, :time_zone, :stride]

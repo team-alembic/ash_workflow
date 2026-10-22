@@ -189,67 +189,75 @@ defmodule AshWorkflow.Transformers.AddScheduler do
   # A wall-clock `every` is due when the most recent occurrence of its local
   # time is at or before now, and the last fire is older than that occurrence.
   # The zone comes out of the row, so the occurrence cannot be computed in
-  # Elixir at query-build time the way every other deadline's bound is — the
+  # Elixir at query-build time the way every other deadline's bound is. The
   # data layer has to do the arithmetic per row.
+  #
+  # The subquery tries each of the last seven local dates. `on` is never empty,
+  # so the most recent occurrence is one of them, and any older occurrence the
+  # last fire predates means the most recent one is predated too. A missed
+  # occurrence therefore fires late, once, on whichever day polling resumes,
+  # the same as `AshWorkflow.WallClock.next_occurrence/3`.
   #
   # This is one `fragment` rather than a composition of Ash operators so that
   # nothing has to infer a type for a `time` or for an `AT TIME ZONE` result.
-  # Everything that varies — the zone, the local time, the day numbers, the two
-  # columns — is a bound parameter, since `fragment` refuses an interpolated
-  # string.
+  # Everything that varies is a bound parameter, since `fragment` refuses an
+  # interpolated string.
+  #
+  # `state_entered_at` and the last-fired column are stored as naive
+  # timestamps holding UTC, so they are lifted to an instant with an explicit
+  # `AT TIME ZONE 'UTC'` before being shifted into the row's own zone. Leaving
+  # that implicit would resolve against the session's `TimeZone` setting.
+  #
+  # A stride compares the occurrence's local date with the last fire's, and
+  # `date - date` is an integer count of days in Postgres. See
+  # `AshWorkflow.WallClock` for why a duration comparison is not exact.
   #
   # `every ... at` therefore runs on a SQL data layer only.
   # `AshWorkflow.Scheduler.Precise` reads `Work.deadline` instead and computes
   # the same occurrence in Elixir through `AshWorkflow.WallClock`, so it needs
   # no data layer support at all.
-  defp every_due(%Every{}, %AshWorkflow.WallClock{} = wall_clock, field) do
-    time = Time.to_string(wall_clock.time)
-    days = Ash.Expr.expr(type(^wall_clock.days, {:array, :integer}))
+  defp every_due(%Every{}, %AshWorkflow.WallClock{stride: nil} = wall_clock, field) do
     zone = time_zone_expr(wall_clock)
 
-    occurrence_due =
-      Ash.Expr.expr(
-        fragment(
-          "EXTRACT(ISODOW FROM (now() AT TIME ZONE ?))::int = ANY(?) AND (now() AT TIME ZONE ?)::time >= ?::time AND (coalesce(?, ?) AT TIME ZONE 'UTC') < ((date_trunc('day', now() AT TIME ZONE ?) + ?::time) AT TIME ZONE ?)",
-          ^zone,
-          ^days,
-          ^zone,
-          ^time,
-          ^ref(field),
-          ^ref(:state_entered_at),
-          ^zone,
-          ^time,
-          ^zone
-        )
-      )
-
-    stride_clear(occurrence_due, wall_clock, zone, field)
-  end
-
-  # `state_entered_at` and the last-fired column are stored as naive
-  # timestamps holding UTC, so they are lifted to an instant with an explicit
-  # `AT TIME ZONE 'UTC'` before being shifted into the row's own zone. Leaving
-  # that implicit would resolve against the session's `TimeZone` setting
-  # instead, which nothing here controls.
-  #
-  # `date - date` is an integer count of days in Postgres, which is what makes
-  # the stride exact. See `AshWorkflow.WallClock` for why a duration
-  # comparison is not.
-  defp stride_clear(due, %AshWorkflow.WallClock{stride: nil}, _zone, _field), do: due
-
-  defp stride_clear(due, %AshWorkflow.WallClock{stride: stride}, zone, field) do
     Ash.Expr.expr(
-      ^due and
-        fragment(
-          "((now() AT TIME ZONE ?)::date - ((coalesce(?, ?) AT TIME ZONE 'UTC') AT TIME ZONE ?)::date) >= ?",
-          ^zone,
-          ^ref(field),
-          ^ref(:state_entered_at),
-          ^zone,
-          ^Ash.Expr.expr(type(^stride, :integer))
-        )
+      fragment(
+        "EXISTS (SELECT 1 FROM (SELECT (now() AT TIME ZONE ?)::date - back AS day FROM generate_series(0, 6) AS back) AS o WHERE EXTRACT(ISODOW FROM o.day)::int = ANY(?) AND ((o.day + ?::time) AT TIME ZONE ?) <= now() AND (coalesce(?, ?) AT TIME ZONE 'UTC') < ((o.day + ?::time) AT TIME ZONE ?))",
+        ^zone,
+        ^days(wall_clock),
+        ^time(wall_clock),
+        ^zone,
+        ^ref(field),
+        ^ref(:state_entered_at),
+        ^time(wall_clock),
+        ^zone
+      )
     )
   end
+
+  defp every_due(%Every{}, %AshWorkflow.WallClock{stride: stride} = wall_clock, field) do
+    zone = time_zone_expr(wall_clock)
+
+    Ash.Expr.expr(
+      fragment(
+        "EXISTS (SELECT 1 FROM (SELECT (now() AT TIME ZONE ?)::date - back AS day FROM generate_series(0, 6) AS back) AS o WHERE EXTRACT(ISODOW FROM o.day)::int = ANY(?) AND ((o.day + ?::time) AT TIME ZONE ?) <= now() AND (coalesce(?, ?) AT TIME ZONE 'UTC') < ((o.day + ?::time) AT TIME ZONE ?) AND o.day - ((coalesce(?, ?) AT TIME ZONE 'UTC') AT TIME ZONE ?)::date >= ?)",
+        ^zone,
+        ^days(wall_clock),
+        ^time(wall_clock),
+        ^zone,
+        ^ref(field),
+        ^ref(:state_entered_at),
+        ^time(wall_clock),
+        ^zone,
+        ^ref(field),
+        ^ref(:state_entered_at),
+        ^zone,
+        ^Ash.Expr.expr(type(^stride, :integer))
+      )
+    )
+  end
+
+  defp time(wall_clock), do: Ash.Expr.expr(type(^wall_clock.time, :time))
+  defp days(wall_clock), do: Ash.Expr.expr(type(^wall_clock.days, {:array, :integer}))
 
   defp time_zone_expr(%AshWorkflow.WallClock{time_zone: zone}) when is_binary(zone), do: zone
   defp time_zone_expr(%AshWorkflow.WallClock{time_zone: attribute}), do: ref(attribute)

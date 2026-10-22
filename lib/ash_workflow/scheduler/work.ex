@@ -27,6 +27,12 @@ defmodule AshWorkflow.Scheduler.Work do
   `DateTime`, so an implementation that only arms timers never has to match on
   the shape.
 
+  An `every` that fires at a wall-clock time adds a third shape,
+  `%{field: last_fired_field, fire_after: nil, wall_clock: %AshWorkflow.WallClock{}}`.
+  Its instant is the next occurrence after `field`, in a zone that may be read
+  off the record. `AshWorkflow.Scheduler.due_at/2` resolves it through
+  `AshWorkflow.WallClock`.
+
   A step has no `deadline` — it is eligible as soon as a record occupies it.
   A timeout has both, and they agree: `match` is true exactly when `deadline`
   has passed.
@@ -74,8 +80,10 @@ defmodule AshWorkflow.Scheduler.Work do
   @type kind :: :step | :timeout
 
   @type deadline :: %{
-          field: atom(),
-          fire_after: {pos_integer(), AshWorkflow.Entities.Timeout.duration_unit()} | nil
+          required(:field) => atom(),
+          required(:fire_after) =>
+            {pos_integer(), AshWorkflow.Entities.Timeout.duration_unit()} | nil,
+          optional(:wall_clock) => AshWorkflow.WallClock.t()
         }
 
   @type t :: %__MODULE__{
