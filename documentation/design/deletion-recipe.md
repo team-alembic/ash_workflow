@@ -39,7 +39,7 @@ mix ash_workflow.gen.deletion MyApp.Accounts.Account --grace-period 30d
 
 `--grace-period` has no default. A default grace period would be a policy decision, such as the thirty days some regulators allow, made by the generator on the application's behalf.
 
-`--max-attempts` must be at least `1`. It becomes the purge step's `retry` block with the default exponential backoff. A purge usually fails on a transient error from a store it calls, so the default retries it rather than sending it straight to `:purge_failed`.
+`--max-attempts` must be a positive integer, checked by `Mix.AshWorkflow.Recipe.validate_max_attempts/1`. Above `1`, it becomes the purge step's `retry` block with the default exponential backoff. At `1`, the generator writes no `retry` block, since a single attempt is the step's default. A purge usually fails on a transient error from a store it calls, so the default retries it rather than sending it straight to `:purge_failed`.
 
 There is no actor option, for the reason `gen.expiry` gives. Nothing in the generated code records who requested or restored a deletion, so the transition log is generated without `--actor`.
 

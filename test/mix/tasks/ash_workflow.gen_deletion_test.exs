@@ -396,6 +396,27 @@ defmodule Mix.Tasks.AshWorkflow.Gen.DeletionTest do
       assert purge_work(recipe.modules[AccountDeletion]).retry.max_attempts == 5
     end
 
+    test "--max-attempts 1 generates no retry block and fails the purge at once", %{
+      tmp_dir: tmp_dir
+    } do
+      recipe =
+        [inspect(Account), "--grace-period", "30d", "--max-attempts", "1"]
+        |> generate()
+        |> allow_owners()
+        |> compile(tmp_dir)
+
+      refute source!(recipe, "lib/ash_workflow_test/recipe_fixtures/deletion/account_deletion.ex") =~
+               "retry do"
+
+      deletion_module = recipe.modules[AccountDeletion]
+      assert purge_work(deletion_module).retry.max_attempts == 1
+
+      deletion = lapsed(recipe, account(recipe))
+      run_until_settled(deletion_module)
+
+      assert reload(deletion).state == :purge_failed
+    end
+
     test "reports an issue for --max-attempts below 1" do
       igniter =
         @files
@@ -408,7 +429,10 @@ defmodule Mix.Tasks.AshWorkflow.Gen.DeletionTest do
           "0"
         ])
 
-      assert Enum.any?(igniter.issues, &String.contains?(&1, "--max-attempts must be at least 1"))
+      assert Enum.any?(
+               igniter.issues,
+               &String.contains?(&1, "--max-attempts must be a positive integer, got: 0")
+             )
     end
   end
 

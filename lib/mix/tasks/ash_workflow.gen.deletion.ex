@@ -36,7 +36,8 @@ defmodule Mix.Tasks.AshWorkflow.Gen.Deletion.Docs do
     * `--grace-period` - required. How long a request waits before the purge
       runs, given as `30m`, `12h`, `2d` or `2w`.
     * `--max-attempts` - how many times the purge runs before the deletion
-      moves to `:purge_failed`. Defaults to `3`.
+      moves to `:purge_failed`. Defaults to `3`. With `1`, no `retry` block is
+      generated.
     * `--module` - the deletion resource's module name. Defaults to the
       subject's name with `Deletion` appended.
     * `--domain` - the domain for a subject the task creates. Required only
@@ -86,7 +87,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
 
       with {:ok, grace_period} <-
              Recipe.parse_duration(options[:grace_period], "--grace-period"),
-           :ok <- validate_max_attempts(options[:max_attempts]) do
+           :ok <- Recipe.validate_max_attempts(options[:max_attempts]) do
         deletion = deletion_module(subject, options[:module])
 
         config = %{
@@ -114,11 +115,6 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
         {:error, message} -> Igniter.add_issue(igniter, message)
       end
     end
-
-    defp validate_max_attempts(count) when count >= 1, do: :ok
-
-    defp validate_max_attempts(count),
-      do: {:error, "--max-attempts must be at least 1, got: #{count}"}
 
     defp deletion_module(subject, nil), do: Module.concat([inspect(subject) <> "Deletion"])
     defp deletion_module(_subject, module), do: ProjectModule.parse(module)
@@ -188,6 +184,17 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       """)
     end
 
+    defp retry(1), do: ""
+
+    defp retry(max_attempts) do
+      """
+
+      retry do
+        max_attempts #{max_attempts}
+      end
+      """
+    end
+
     defp purge_contents(config) do
       """
       @moduledoc \"\"\"
@@ -234,10 +241,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
           action :purge
           on_success :deleted
           on_error :purge_failed
-
-          retry do
-            max_attempts #{config.max_attempts}
-          end
+          #{retry(config.max_attempts)}
         end
 
         step :purge_failed do

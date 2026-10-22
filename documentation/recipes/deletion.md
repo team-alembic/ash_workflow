@@ -11,7 +11,7 @@ mix ash_workflow.gen.deletion MyApp.Accounts.Account --grace-period 30d
 | Option | Default | Effect |
 |---|---|---|
 | `--grace-period` | required | How long a request waits in `:requested` before the purge runs. Accepts `30m`, `12h`, `2d` and `2w`. A grace period in seconds, such as `10s`, needs a scheduler that fires more often than once a minute, such as `AshWorkflow.Scheduler.Precise`. |
-| `--max-attempts` | `3` | How many times the purge runs before the deletion moves to `:purge_failed`. Must be at least `1`. |
+| `--max-attempts` | `3` | How many times the purge runs before the deletion moves to `:purge_failed`. Must be a positive integer. With `1`, the task generates no `retry` block, and a failed purge moves straight to `:purge_failed`. |
 | `--module` | `<Subject>Deletion` | Name of the generated deletion resource. |
 | `--domain` | the subject's domain | Domain for a subject the task creates. Required only when the subject does not exist. |
 | `--transition-log` | `true` | Also runs `mix ash_workflow.gen.transition_log` for the deletion resource. Pass `--no-transition-log` to skip it. |
