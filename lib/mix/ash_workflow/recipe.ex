@@ -8,7 +8,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
     alias Ash.Resource.Info, as: ResourceInfo
     alias Igniter.Project.Module, as: ProjectModule
 
-    @type storage :: %{domain: module(), data_layer: module() | nil, repo: module() | nil}
+    @type storage :: %{domain: module(), data_layer: module(), repo: module() | nil}
 
     @spec parse_duration(String.t() | nil, String.t()) ::
             {:ok, AshWorkflow.Duration.t() | nil} | {:error, String.t()}
@@ -59,7 +59,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
     defp existing_subject(igniter, subject, recipe) do
       case Code.ensure_compiled(subject) do
         {:module, _module} ->
-          {:ok, igniter, storage(subject, ResourceInfo.domain(subject))}
+          stored_subject(igniter, subject, recipe)
 
         {:error, reason} ->
           {:error,
@@ -68,6 +68,21 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
              "Could not load #{inspect(subject)} (#{inspect(reason)}). " <>
                "An existing subject must compile before adding #{recipe} to it."
            )}
+      end
+    end
+
+    defp stored_subject(igniter, subject, recipe) do
+      case storage(subject, ResourceInfo.domain(subject)) do
+        %{data_layer: Ash.DataLayer.Simple} ->
+          {:error,
+           Igniter.add_issue(
+             igniter,
+             "#{inspect(subject)} has no data layer, so a #{recipe} resource beside it " <>
+               "could not store records. Give #{inspect(subject)} a data layer first."
+           )}
+
+        storage ->
+          {:ok, igniter, storage}
       end
     end
 
@@ -249,7 +264,6 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
     def pre_check_with(storage), do: ", pre_check_with: #{inspect(storage.domain)}"
 
     @spec data_layer_option(storage()) :: String.t()
-    def data_layer_option(%{data_layer: nil}), do: ""
     def data_layer_option(%{data_layer: data_layer}), do: "data_layer: #{inspect(data_layer)},"
 
     @spec postgres_block(storage(), module(), String.t()) :: String.t()

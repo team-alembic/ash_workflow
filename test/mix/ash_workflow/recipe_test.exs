@@ -30,4 +30,22 @@ defmodule Mix.AshWorkflow.RecipeTest do
       assert Enum.filter(Rewrite.sources(igniter.rewrite), &Rewrite.Source.updated?/1) == []
     end
   end
+
+  for {task, argv} <- [
+        {"ash_workflow.gen.approval", ["--approver", inspect(User)]},
+        {"ash_workflow.gen.expiry", []}
+      ] do
+    test "#{task} stops when an existing subject has no data layer" do
+      igniter =
+        ["#{@fixtures}/domain.ex", "#{@fixtures}/user.ex"]
+        |> project()
+        |> Igniter.compose_task(unquote(task), [inspect(User) | unquote(argv)])
+
+      assert [issue] = igniter.issues
+      assert issue =~ "#{inspect(User)} has no data layer"
+
+      assert {:error, _issues} = Igniter.Test.apply_igniter(igniter)
+      assert Enum.filter(Rewrite.sources(igniter.rewrite), &Rewrite.Source.updated?/1) == []
+    end
+  end
 end
