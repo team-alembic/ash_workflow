@@ -12,8 +12,9 @@ Content, design work and sign-offs go through review. Someone submits a piece of
 
 The generator owns the review lifecycle: the states, the send-back loop, the round count, the overdue deadline and the history of decisions.
 
-The application owns two things, as it does for approval:
+The application owns three things, as it does for approval:
 
+- Who may open a review. This is one `Ash.Policy.Check` module, `Checks.CanRequest`, generated to deny everyone.
 - Who may review. This is one `Ash.Policy.Check` module, `Checks.CanReview`, generated to deny everyone.
 - When a review is opened. The application calls `ArticleReview.request/2` from wherever that makes sense: a submit action, a LiveView event, an import.
 
@@ -50,7 +51,7 @@ Review is a request recipe. A subject can be reviewed many times, and a rejected
 
 - `has_many :reviews, MyApp.Content.ArticleReview`
 - `has_one :latest_review`, sorted by `inserted_at` descending
-- `calculate :review_approved?, :boolean, expr(latest_review.state == :approved)`
+- `calculate :review_approved?, :boolean, expr(latest_review.state == :approved || false)`, which is false rather than nil for a subject with no review
 
 The calculation is `review_approved?` rather than approval's `approved?`. A subject can run both recipes, and `Mix.AshWorkflow.Recipe.add_subject_edits/4` skips a calculation whose name is already there, so a shared name would leave the second recipe's outcome unreachable.
 
@@ -138,6 +139,10 @@ Approval stops an approver deciding twice with `forbid_if expr(exists(decisions,
 
 ```elixir
 policies do
+  policy action(:request) do
+    authorize_if MyApp.Content.ArticleReview.Checks.CanRequest
+  end
+
   policy action([:request_changes, :approve, :reject]) do
     forbid_if expr(requested_by_id == ^actor(:id))
     authorize_if MyApp.Content.ArticleReview.Checks.CanReview
@@ -151,7 +156,7 @@ end
 
 `CanReview` denies everyone, as approval's `CanApprove` does, and the generator's notice says so. The requester cannot review their own work.
 
-The generator adds no policy to the `:request` create action. Who may open a review is the application's decision, like when a review is opened. `AshWorkflow.Transformers.AddPolicies` still allows `:request`, reads and the scheduler's overdue timeout, so a review opens and goes overdue before the application has written `CanReview`.
+The generator gates the `:request` create action on a `CanRequest` check, which denies everyone as generated, as approval's `CanRequest` does. Who may open a review is the application's decision. `AshWorkflow.Transformers.AddPolicies` still allows reads and the scheduler's overdue timeout.
 
 ## Code shared with approval
 

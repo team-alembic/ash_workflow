@@ -26,12 +26,20 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ReviewTest do
   defp review_for_articles(tmp_dir, argv \\ []) do
     [inspect(Article), "--reviewer", inspect(User) | argv]
     |> generate()
+    |> allow_requesters()
     |> allow_reviewers()
     |> compile(tmp_dir)
   end
 
   # What an application does once it has generated the recipe: fill in
-  # CanReview. Here anyone with the :reviewer role may review.
+  # CanRequest and CanReview. Here any actor may open a review, and anyone
+  # with the :reviewer role may review.
+  defp allow_requesters(recipe, checks \\ @checks) do
+    edit_source(recipe, "#{checks}/can_request.ex", fn source ->
+      String.replace(source, @deny_all, "def match?(actor, _context, _opts), do: is_map(actor)")
+    end)
+  end
+
   defp allow_reviewers(recipe) do
     edit_source(recipe, "#{@checks}/can_review.ex", fn source ->
       String.replace(
@@ -107,6 +115,12 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ReviewTest do
                names(Ash.Resource.Info.calculations(Article)) == [:review_approved?]
     end
 
+    test "is not review approved, rather than nil, without a review", %{tmp_dir: tmp_dir} do
+      recipe = review_for_articles(tmp_dir)
+
+      assert Ash.load!(article(recipe), :review_approved?).review_approved? == false
+    end
+
     test "is review approved once its latest review is", %{tmp_dir: tmp_dir} do
       recipe = review_for_articles(tmp_dir)
       article = article(recipe)
@@ -128,6 +142,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ReviewTest do
     recipe =
       @domain_files
       |> generate([inspect(Post), "--reviewer", inspect(User), "--domain", inspect(Domain)])
+      |> allow_requesters("lib/ash_workflow_test/recipe_fixtures/review/post_review/checks")
       |> compile(tmp_dir)
 
     post_module = recipe.modules[Post]
@@ -203,11 +218,39 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ReviewTest do
     assert source =~ "calculate(:review_approved?, :boolean, expr(latest_review.state"
   end
 
+  describe "CanRequest" do
+    test "denies everyone as generated", %{tmp_dir: tmp_dir} do
+      recipe =
+        [inspect(Article), "--reviewer", inspect(User)]
+        |> generate()
+        |> allow_reviewers()
+        |> compile(tmp_dir)
+
+      result =
+        recipe.modules[ArticleReview]
+        |> Ash.Changeset.for_create(:request, %{subject_id: article(recipe).id},
+          actor: user(recipe, :author)
+        )
+        |> Ash.create()
+
+      assert {:error, %Ash.Error.Forbidden{}} = result
+      assert Ash.read!(recipe.modules[ArticleReview]) == []
+      assert Enum.any?(recipe.notices, &String.contains?(&1, "Nobody can request or review yet"))
+    end
+
+    test "lets an actor open a review once the application permits them", %{tmp_dir: tmp_dir} do
+      recipe = review_for_articles(tmp_dir)
+
+      assert %{state: :in_review} = request(recipe, article(recipe), user(recipe, :author))
+    end
+  end
+
   describe "CanReview" do
     test "denies everyone as generated", %{tmp_dir: tmp_dir} do
       recipe =
         [inspect(Article), "--reviewer", inspect(User)]
         |> generate()
+        |> allow_requesters()
         |> compile(tmp_dir)
 
       review = request(recipe, article(recipe), user(recipe, :author))
@@ -216,8 +259,6 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ReviewTest do
       assert {:error, %Ash.Error.Forbidden{}} = act(review, :approve, user(recipe))
       assert {:error, %Ash.Error.Forbidden{}} = act(review, :reject, user(recipe))
       assert reload(review).state == :in_review
-
-      assert Enum.any?(recipe.notices, &String.contains?(&1, "Nobody can review yet"))
     end
 
     test "lets a reviewer decide once the application permits them", %{tmp_dir: tmp_dir} do

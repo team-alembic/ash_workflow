@@ -21,8 +21,8 @@ defmodule Mix.Tasks.AshWorkflow.Gen.Review.Docs do
     calculation. When the subject does not exist, it is created with
     `mix ash.gen.resource` first.
 
-    Nobody may review until the application defines who can, in the
-    generated `Checks.CanReview` module.
+    Nobody may request or review until the application defines who can, in
+    the generated `Checks.CanRequest` and `Checks.CanReview` modules.
 
     ## Example
 
@@ -94,6 +94,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
             reviewer: reviewer,
             review: review,
             decision: Module.concat([inspect(review) <> "Decision"]),
+            can_request: Module.concat([review, Checks, CanRequest]),
             can_review: Module.concat([review, Checks, CanReview]),
             record_decision: Module.concat([review, Changes, RecordDecision])
           }
@@ -161,7 +162,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
           """
         ],
         review_approved?:
-          "calculate :review_approved?, :boolean, expr(latest_review.state == :approved)"
+          "calculate :review_approved?, :boolean, expr(latest_review.state == :approved || false)"
       )
       |> then(fn igniter ->
         if exists?, do: igniter, else: create_review(igniter, config, storage)
@@ -178,6 +179,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
         decision_contents(names, storage, config.key_types.reviewer)
       )
       |> ProjectModule.create_module(names.record_decision, record_decision_contents(names))
+      |> ProjectModule.create_module(names.can_request, can_request_contents(names))
       |> ProjectModule.create_module(names.can_review, can_review_contents(names))
       |> DomainIgniter.add_resource_reference(storage.domain, names.review)
       |> DomainIgniter.add_resource_reference(storage.domain, names.decision)
@@ -185,8 +187,9 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       |> Igniter.add_notice("""
       Generated #{inspect(names.review)} to review #{inspect(names.subject)}.
 
-      Nobody can review yet. Define who may review in \
-      #{inspect(names.can_review)}, which denies everyone as generated.
+      Nobody can request or review yet. Define who may open a review in \
+      #{inspect(names.can_request)} and who may review in \
+      #{inspect(names.can_review)}. Both deny everyone as generated.
       """)
     end
 
@@ -267,6 +270,8 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       end
 
       policies do
+        #{Recipe.create_policy(:request, names.can_request)}
+
         policy action([:request_changes, :approve, :reject]) do
           forbid_if expr(requested_by_id == ^actor(:id))
           authorize_if #{inspect(names.can_review)}
@@ -402,6 +407,13 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
         end)
       end
       """
+    end
+
+    defp can_request_contents(names) do
+      Recipe.deny_check_contents(
+        "Decides who may open an `#{inspect(names.review)}` on a subject.",
+        "actor may request a review of this subject"
+      )
     end
 
     defp can_review_contents(names) do

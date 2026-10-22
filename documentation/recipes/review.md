@@ -22,11 +22,12 @@ When the subject does not exist, the task creates it with `mix ash.gen.resource`
 
 ## What it generates
 
-For the command above, the task writes four modules and edits the subject:
+For the command above, the task writes five modules and edits the subject:
 
 - `MyApp.Content.ArticleReview` runs the workflow. It belongs to the article and to the user who requested the review, and its `round` attribute counts the rounds.
 - `MyApp.Content.ArticleReviewDecision` holds one row for each decision, with the round it ended, the reviewer and the comment. An identity allows one decision per round.
 - `MyApp.Content.ArticleReview.Changes.RecordDecision` writes the decision row when `:request_changes`, `:approve` or `:reject` runs.
+- `MyApp.Content.ArticleReview.Checks.CanRequest` decides who may open a review of a subject. It denies everyone as generated.
 - `MyApp.Content.ArticleReview.Checks.CanReview` decides who may review. It denies everyone as generated.
 - `MyApp.Content.Article` gains `has_many :reviews`, `has_one :latest_review` and a `review_approved?` calculation. The task adds no change, argument or policy to the subject's actions.
 
@@ -82,6 +83,10 @@ The overdue deadline is measured from `submitted_at`. The `:request` action sets
 
 ```elixir
 policies do
+  policy action(:request) do
+    authorize_if MyApp.Content.ArticleReview.Checks.CanRequest
+  end
+
   policy action([:request_changes, :approve, :reject]) do
     forbid_if expr(requested_by_id == ^actor(:id))
     authorize_if MyApp.Content.ArticleReview.Checks.CanReview
@@ -93,11 +98,20 @@ policies do
 end
 ```
 
-The requester cannot review their own work, and only the requester can resubmit. The generated `:available_actions` calculation applies these policies, so loading it with an actor tells a UI whether that user can review or resubmit.
+Only an actor that `CanRequest` permits can open a review. The requester cannot review their own work, and only the requester can resubmit. The generated `:available_actions` calculation applies these policies, so loading it with an actor tells a UI whether that user can review or resubmit.
 
-The generated `:request` create action has no policy, so AshWorkflow's default policy lets any actor open a review. Your application adds a policy for `:request` if it needs one.
+Reads stay open by default. `AshWorkflow` authorizes `:read` on the review resource for every actor, and the decision resource's only policy allows every read. Add a read policy to each if reviews or decisions are private.
 
 ## What your application does next
+
+### Decide who may open a review
+
+`CanRequest` denies everyone, so no review can be opened until you change it. Replace its `match?/3`, or replace the `authorize_if` line in the `:request` policy with a built-in check. The `:request` action is a create, so a check that reads the subject finds its id in `context.changeset`:
+
+```elixir
+# Any author may request a review
+authorize_if actor_attribute_equals(:role, :author)
+```
 
 ### Decide who may review
 
@@ -134,7 +148,7 @@ Load `decisions` on a review to show the history of rounds, sorted by round.
 
 ### Use the outcome
 
-`review_approved?` on the subject is true when its latest review is approved. Gating a subject action on it is up to you, for example with a policy on the subject:
+`review_approved?` on the subject is true when its latest review is approved, and false otherwise, including when the subject has no review. Gating a subject action on it is up to you, for example with a policy on the subject:
 
 ```elixir
 policy action(:publish) do
