@@ -119,6 +119,8 @@ Call `resync/2` on a sync in `:synced` or `:failed`, for example from an admin s
 MyApp.Sales.CustomerSync.resync(sync, actor: current_user)
 ```
 
+The actor must be one that `CanResync` permits. As generated, `CanResync` denies everyone, so every `resync/2` call fails with `Ash.Error.Forbidden` until you change it. Code that runs without a user, such as a background job, passes an actor `CanResync` permits, or `authorize?: false`.
+
 A sync in `:syncing` refuses `resync`, because only `:synced` and `:failed` declare it. A push that is already running or waiting for its next attempt sends the subject as it was when that attempt started.
 
 ### Resync after the subject changes
@@ -158,6 +160,8 @@ oban do
   end
 end
 ```
+
+The trigger runs `:resync` like any other caller, so `CanResync` must permit the trigger's actor, or the trigger must run with authorization off.
 
 `:push` does not touch the flag, so a change that lands during a push stays recorded and is sent by the next resync.
 
