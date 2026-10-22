@@ -30,13 +30,20 @@ defmodule Mix.Tasks.AshWorkflow.Gen.DormancyTest do
   # What an application does once it has generated the recipe: fill in
   # CanReactivate. Here anyone with the :support role may reactivate.
   defp allow_support(recipe) do
-    update_in(recipe.changed[@can_reactivate], fn source ->
+    edit_source(recipe, @can_reactivate, fn source ->
       String.replace(
         source,
         "def match?(_actor, _context, _opts), do: false",
         "def match?(actor, _context, _opts), do: is_map(actor) and actor.role == :support"
       )
     end)
+  end
+
+  # `compile/2` reads every file from the project, not only the changed ones.
+  defp edit_source(recipe, path, fun) do
+    recipe
+    |> update_in([Access.key!(:changed), path], fun)
+    |> update_in([Access.key!(:igniter), Access.key!(:assigns), :test_files, path], fun)
   end
 
   defp account(recipe) do
@@ -148,6 +155,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.DormancyTest do
     second = run_task(first.igniter, "ash_workflow.gen.dormancy", argv)
 
     assert second.changed == %{}
+    assert second.warnings == []
   end
 
   test "a subject has at most one dormancy", %{tmp_dir: tmp_dir} do
@@ -312,6 +320,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.DormancyTest do
 
   describe "options" do
     for {flag, duration} <- [
+          {"10s", "{10, :seconds}"},
           {"30m", "{30, :minutes}"},
           {"12h", "{12, :hours}"},
           {"2w", "{14, :days}"}

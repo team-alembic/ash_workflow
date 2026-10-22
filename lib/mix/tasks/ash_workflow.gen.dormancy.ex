@@ -32,7 +32,8 @@ defmodule Mix.Tasks.AshWorkflow.Gen.Dormancy.Docs do
     ## Options
 
     * `--dormant-after` - moves a dormancy to `:dormant` once
-      `last_activity_at` is this old, given as `30m`, `12h`, `2d` or `2w`.
+      `last_activity_at` is this old, given as `10s`, `30m`, `12h`, `2d` or
+      `2w`.
       Required.
     * `--archive-after` - moves a dormancy to `:archived` once it has been
       `:dormant` this long. Without it, no `:archived` step is generated.
@@ -105,7 +106,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
                "dormancy",
                []
              ) do
-          {:ok, igniter, storage} -> generate(igniter, config, storage)
+          {:ok, igniter, storage} -> generate_with_key_type(igniter, config, storage)
           {:error, igniter} -> igniter
         end
       else
@@ -115,6 +116,15 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
 
     defp dormancy_module(subject, nil), do: Module.concat([inspect(subject) <> "Dormancy"])
     defp dormancy_module(_subject, module), do: ProjectModule.parse(module)
+
+    # A subject created in this run does not compile yet and gets
+    # ash.gen.resource's uuid_v7 key.
+    defp generate_with_key_type(igniter, config, storage) do
+      case Recipe.key_type(config.subject, "dormancy", :uuid_v7) do
+        {:ok, key_type} -> generate(igniter, Map.put(config, :key_type, key_type), storage)
+        {:error, message} -> Igniter.add_issue(igniter, message)
+      end
+    end
 
     defp generate(igniter, config, storage) do
       {exists?, igniter} = ProjectModule.module_exists(igniter, config.dormancy)
@@ -225,7 +235,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       end
 
       relationships do
-        belongs_to :subject, #{inspect(config.subject)}, allow_nil?: false, public?: true
+        #{Recipe.belongs_to(:subject, config.subject, config.key_type)}
       end
 
       identities do
@@ -270,21 +280,10 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
     end
 
     defp can_reactivate_contents(config) do
-      """
-      @moduledoc \"\"\"
-      Decides who may reactivate an `#{inspect(config.dormancy)}`.
-
-      Denies everyone until the application replaces `match?/3`.
-      \"\"\"
-
-      use Ash.Policy.SimpleCheck
-
-      @impl true
-      def describe(_opts), do: "actor may reactivate this dormancy"
-
-      @impl true
-      def match?(_actor, _context, _opts), do: false
-      """
+      Recipe.deny_check_contents(
+        "Decides who may reactivate an `#{inspect(config.dormancy)}`.",
+        "actor may reactivate this dormancy"
+      )
     end
   end
 else
