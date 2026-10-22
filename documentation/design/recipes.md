@@ -49,10 +49,10 @@ A shared `AshWorkflow.RecipeCase` in `test/support` runs four stages:
 
 1. Build an `Igniter.Test.test_project/1` with fixture files: a domain, an actor resource, and optionally an existing subject resource on `Ash.DataLayer.Ets`.
 2. Compose the recipe task with its arguments and `apply_igniter!/1`. Assert there are no issues, and that the expected notices are present.
-3. Write every created or changed file into the test's `tmp_dir` and compile them with `Kernel.ParallelCompiler.compile/2`. Assert there are no warnings, so generated code that compiles with a deprecation still fails.
+3. Write every `.ex` file in the project into the test's `tmp_dir`, the unchanged fixtures included, and compile them with `Kernel.ParallelCompiler.compile/2`. Assert there are no warnings, so generated code that compiles with a deprecation still fails.
 4. Hand the compiled modules to the test body, which drives them through Ash: create a subject, open a request, approve as the wrong actor, approve as the right one, fire the overdue timeout.
 
-Each test module passes a subject name under its own namespace, such as `RecipeFixtures.ApprovalQuorum.Expense`. Compiled modules stay loaded for the rest of the run, so unique names let the tests run with `async: true` without redefining each other's modules.
+Each `compile/2` call renames every module it writes under its own namespace, `RecipeRunN`, where `N` is unique to the call. `RecipeRun12.AshWorkflowTest.RecipeFixtures.Approval.Expense` is one such name, and the test looks it up in `modules` by the name the task gave it. Compiled modules stay loaded for the rest of the run, so the unique namespace lets the tests run with `async: true` without redefining each other's modules.
 
 Every recipe is tested in two cases: an existing subject with attributes and actions of its own, and a missing subject the generator creates. A third test runs the task twice and asserts the second run changes nothing.
 
