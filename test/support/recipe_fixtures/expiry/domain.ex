@@ -4,5 +4,6 @@ defmodule AshWorkflowTest.RecipeFixtures.Expiry.Domain do
 
   resources do
     resource AshWorkflowTest.RecipeFixtures.Expiry.Contract
+    resource AshWorkflowTest.RecipeFixtures.Expiry.Lease
   end
 end

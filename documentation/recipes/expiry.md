@@ -21,7 +21,7 @@ When the subject does not exist, the task creates it with `mix ash.gen.resource`
 
 For the command above, the task writes three modules and edits the subject:
 
-- `MyApp.Contracts.ContractExpiry` runs the workflow. It belongs to the contract and holds `expires_at`. An identity on `subject_id` allows one expiry per contract.
+- `MyApp.Contracts.ContractExpiry` runs the workflow. It belongs to the contract and holds `expires_at`. Its `subject_id` takes the type of the contract's primary key, and the task reports an issue for a subject with a composite primary key. An identity on `subject_id` allows one expiry per contract.
 - `MyApp.Contracts.ContractExpiry.Checks.CanCreate` decides who may create an expiry. It denies everyone as generated.
 - `MyApp.Contracts.ContractExpiry.Checks.CanRenew` decides who may renew. It denies everyone as generated.
 - `MyApp.Contracts.Contract` gains `has_one :expiry` and an `expired?` calculation. The task adds no change, argument or policy to the subject's actions.
@@ -134,7 +134,7 @@ The task generates no notification. Add a timeout with an `action` to the `:expi
 
 ### Use the outcome
 
-`expired?` on the subject is true when its expiry is in `:expired`. Gating a subject action on it is up to you, for example with a policy on the subject:
+`expired?` on the subject is true when its expiry is in `:expired`, and false otherwise, including for a subject with no expiry. Gating a subject action on it is up to you, for example with a policy on the subject:
 
 ```elixir
 policy action(:sign) do

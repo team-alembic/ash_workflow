@@ -6,10 +6,11 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ExpiryTest do
   alias AshWorkflowTest.RecipeFixtures.Expiry.ContractExpiry
   alias AshWorkflowTest.RecipeFixtures.Expiry.ContractExpiryTransition
   alias AshWorkflowTest.RecipeFixtures.Expiry.Domain
+  alias AshWorkflowTest.RecipeFixtures.Expiry.Lease
   alias AshWorkflowTest.RecipeFixtures.Expiry.Licence
 
   @fixtures "test/support/recipe_fixtures/expiry"
-  @files ["#{@fixtures}/domain.ex", "#{@fixtures}/contract.ex"]
+  @files Enum.map(~w(domain contract lease), &"#{@fixtures}/#{&1}.ex")
   @checks "lib/ash_workflow_test/recipe_fixtures/expiry/contract_expiry/checks"
   @deny_all "def match?(_actor, _context, _opts), do: false"
   @creator %{id: "creator", role: :account_manager}
@@ -107,6 +108,12 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ExpiryTest do
                names(Ash.Resource.Info.calculations(Contract)) == [:expired?]
     end
 
+    test "is not expired, rather than nil, without an expiry", %{tmp_dir: tmp_dir} do
+      recipe = expiry_for_contracts(tmp_dir)
+
+      assert Ash.load!(contract(recipe), :expired?).expired? == false
+    end
+
     test "is expired once its expiry is", %{tmp_dir: tmp_dir} do
       recipe = expiry_for_contracts(tmp_dir)
       contract = contract(recipe)
@@ -126,8 +133,8 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ExpiryTest do
     tmp_dir: tmp_dir
   } do
     recipe =
-      ["#{@fixtures}/domain.ex", "#{@fixtures}/contract.ex"]
-      |> generate([inspect(Licence), "--domain", inspect(Domain)])
+      [inspect(Licence), "--domain", inspect(Domain)]
+      |> generate()
       |> allow_creators("lib/ash_workflow_test/recipe_fixtures/expiry/licence_expiry/checks")
       |> compile(tmp_dir)
 
@@ -150,6 +157,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ExpiryTest do
 
     assert expiry.state == :active
     assert Ash.load!(licence, expiry: :id).expiry.id == expiry.id
+    assert Ash.Resource.Info.attribute(expiry_module, :subject_id).type == Ash.Type.UUIDv7
   end
 
   test "running the task a second time changes nothing" do
@@ -172,10 +180,10 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ExpiryTest do
     recipe =
       Igniter.Test.test_project(
         app_name: :ash_workflow,
-        files: %{
-          "#{@fixtures}/domain.ex" => File.read!("#{@fixtures}/domain.ex"),
-          "#{@fixtures}/contract.ex" => contract
-        }
+        files:
+          @files
+          |> Map.new(&{&1, File.read!(&1)})
+          |> Map.put("#{@fixtures}/contract.ex", contract)
       )
       |> run_task("ash_workflow.gen.expiry", [inspect(Contract)])
 
@@ -415,6 +423,52 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ExpiryTest do
       |> Igniter.compose_task("ash_workflow.gen.expiry", [inspect(Licence)])
 
     assert Enum.any?(igniter.issues, &String.contains?(&1, "Pass --domain to create it"))
+  end
+
+  describe "the subject foreign key" do
+    test "takes the type of the subject's primary key", %{tmp_dir: tmp_dir} do
+      recipe =
+        [inspect(Lease)]
+        |> generate()
+        |> allow_creators("lib/ash_workflow_test/recipe_fixtures/expiry/lease_expiry/checks")
+        |> compile(tmp_dir)
+
+      expiry_module = recipe.modules[AshWorkflowTest.RecipeFixtures.Expiry.LeaseExpiry]
+      assert Ash.Resource.Info.attribute(expiry_module, :subject_id).type == Ash.Type.Integer
+
+      lease =
+        recipe.modules[Lease] |> Ash.Changeset.for_create(:create, %{id: 7}) |> Ash.create!()
+
+      expiry =
+        expiry_module
+        |> Ash.Changeset.for_create(
+          :create,
+          %{subject_id: lease.id, expires_at: days_from_now(30)},
+          actor: @creator
+        )
+        |> Ash.create!()
+
+      assert Ash.load!(lease, expiry: :id).expiry.id == expiry.id
+      assert Ash.load!(lease, :expired?).expired? == false
+    end
+
+    test "reports an issue for a subject with a composite primary key" do
+      igniter =
+        [
+          "test/support/recipe_fixtures/approval/domain.ex",
+          "test/support/recipe_fixtures/approval/ledger_line.ex"
+        ]
+        |> project()
+        |> Igniter.compose_task("ash_workflow.gen.expiry", [
+          "AshWorkflowTest.RecipeFixtures.Approval.LedgerLine"
+        ])
+
+      assert Enum.any?(
+               igniter.issues,
+               &(&1 =~
+                   "AshWorkflowTest.RecipeFixtures.Approval.LedgerLine has a composite primary key")
+             )
+    end
   end
 
   defp names(entities), do: Enum.map(entities, & &1.name)

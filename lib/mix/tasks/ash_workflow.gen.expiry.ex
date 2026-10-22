@@ -97,7 +97,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
                  "expiry",
                  []
                ) do
-            {:ok, igniter, storage} -> generate(igniter, config, storage)
+            {:ok, igniter, storage} -> generate_with_key_type(igniter, config, storage)
             {:error, igniter} -> igniter
           end
 
@@ -108,6 +108,15 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
 
     defp expiry_module(subject, nil), do: Module.concat([inspect(subject) <> "Expiry"])
     defp expiry_module(_subject, module), do: ProjectModule.parse(module)
+
+    # A subject created in this run does not compile yet and gets
+    # ash.gen.resource's uuid_v7 key.
+    defp generate_with_key_type(igniter, config, storage) do
+      case Recipe.key_type(config.subject, "expiry", :uuid_v7) do
+        {:ok, key_type} -> generate(igniter, Map.put(config, :key_type, key_type), storage)
+        {:error, message} -> Igniter.add_issue(igniter, message)
+      end
+    end
 
     defp generate(igniter, config, storage) do
       {exists?, igniter} = ProjectModule.module_exists(igniter, config.expiry)
@@ -123,7 +132,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
           end
           """
         ],
-        expired?: "calculate :expired?, :boolean, expr(expiry.state == :expired)"
+        expired?: "calculate :expired?, :boolean, expr(expiry.state == :expired || false)"
       )
       |> then(fn igniter ->
         if exists?, do: igniter, else: create_expiry(igniter, config, storage)
@@ -199,7 +208,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       end
 
       relationships do
-        belongs_to :subject, #{inspect(config.subject)}, allow_nil?: false, public?: true
+        #{Recipe.belongs_to(:subject, config.subject, config.key_type)}
       end
 
       #{expiring_at(config.notice_period)}
