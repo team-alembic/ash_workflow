@@ -151,10 +151,19 @@ end
 
 actions do
   update :request_resync do
+    require_atomic? false
     change set_attribute(:needs_resync?, true)
   end
 end
+
+policies do
+  policy action(:request_resync) do
+    authorize_if always()
+  end
+end
 ```
+
+`AshWorkflow` authorizes only reads, creates and workflow actions, so `request_resync` needs a policy of its own. `authorize_if always()` lets any subject action that changes the subject flag its sync. The action sets `require_atomic? false`, as `:push` does. On ETS, the `pre_check_with` on the `:unique_subject` identity adds a `before_action` hook to every update, and an atomic update cannot run one.
 
 Clear the flag when the sync resyncs, by adding the change to the `:resync` action:
 
@@ -173,6 +182,8 @@ oban do
     trigger :resync_changed do
       action :resync
       where expr(needs_resync? and state in [:synced, :failed])
+      worker_module_name MyApp.Sales.CustomerSync.AshOban.Worker.ResyncChanged
+      scheduler_module_name MyApp.Sales.CustomerSync.AshOban.Scheduler.ResyncChanged
     end
   end
 end
