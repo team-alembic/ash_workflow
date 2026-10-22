@@ -173,6 +173,36 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ReviewTest do
     assert second.warnings == []
   end
 
+  test "warns and leaves an existing :reviews relationship to another resource" do
+    article =
+      "#{@fixtures}/article.ex"
+      |> File.read!()
+      |> String.replace(
+        "  attributes do",
+        "  relationships do\n    has_many :reviews, #{inspect(Note)}\n  end\n\n  attributes do"
+      )
+
+    recipe =
+      Igniter.Test.test_project(
+        app_name: :ash_workflow,
+        files:
+          @files
+          |> Map.new(&{&1, File.read!(&1)})
+          |> Map.put("#{@fixtures}/article.ex", article)
+      )
+      |> run_task("ash_workflow.gen.review", [inspect(Article), "--reviewer", inspect(User)])
+
+    assert [warning] = recipe.warnings
+    assert warning =~ "#{inspect(Article)} already has a relationship named :reviews"
+    assert warning =~ "has_many :reviews, #{inspect(ArticleReview)}"
+
+    source = source!(recipe, "#{@fixtures}/article.ex")
+    assert source =~ "has_many(:reviews, #{inspect(Note)})"
+    refute source =~ "has_many :reviews, #{inspect(ArticleReview)}"
+    assert source =~ "has_one :latest_review, #{inspect(ArticleReview)}"
+    assert source =~ "calculate(:review_approved?, :boolean, expr(latest_review.state"
+  end
+
   describe "CanReview" do
     test "denies everyone as generated", %{tmp_dir: tmp_dir} do
       recipe =
