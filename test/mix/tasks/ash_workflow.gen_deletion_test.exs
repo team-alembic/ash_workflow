@@ -5,16 +5,17 @@ defmodule Mix.Tasks.AshWorkflow.Gen.DeletionTest do
   alias AshWorkflow.Scheduler.Precise.Timeline
   alias AshWorkflowTest.RecipeFixtures.Deletion.Account
   alias AshWorkflowTest.RecipeFixtures.Deletion.AccountDeletion
+  alias AshWorkflowTest.RecipeFixtures.Deletion.AccountDeletion.Changes.Purge
   alias AshWorkflowTest.RecipeFixtures.Deletion.AccountDeletionTransition
   alias AshWorkflowTest.RecipeFixtures.Deletion.Domain
   alias AshWorkflowTest.RecipeFixtures.Deletion.Workspace
 
   @fixtures "test/support/recipe_fixtures/deletion"
   @files ["#{@fixtures}/domain.ex", "#{@fixtures}/account.ex"]
-  @deletion "lib/ash_workflow_test/recipe_fixtures/deletion/account_deletion.ex"
   @checks "lib/ash_workflow_test/recipe_fixtures/deletion/account_deletion/checks"
   @can_request_deletion "#{@checks}/can_request_deletion.ex"
   @can_restore "#{@checks}/can_restore.ex"
+  @purge "lib/ash_workflow_test/recipe_fixtures/deletion/account_deletion/changes/purge.ex"
   @owner %{id: "owner", role: :owner}
   @deny "def match?(_actor, _context, _opts), do: false"
 
@@ -28,6 +29,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.DeletionTest do
     [inspect(Account), "--grace-period", "30d" | argv]
     |> generate()
     |> allow_owners()
+    |> fill_purge()
     |> compile(tmp_dir)
   end
 
@@ -45,14 +47,14 @@ defmodule Mix.Tasks.AshWorkflow.Gen.DeletionTest do
     end)
   end
 
-  # What a purge that cannot reach its store looks like.
-  defp fail_purge(recipe) do
-    edit_source(recipe, @deletion, fn source ->
+  # What an application does once it has generated the recipe: define what a
+  # purge erases. Here it erases nothing and succeeds.
+  defp fill_purge(recipe) do
+    edit_source(recipe, @purge, fn source ->
       Regex.replace(
-        ~r/update :purge do\n(\s+)require_atomic\?\(false\)/,
+        ~r/def change\(changeset, _opts, _context\) do\n.*?\n  end/s,
         source,
-        "update :purge do\n\\1require_atomic? false\n\n\\1" <>
-          ~S|change fn changeset, _context -> Ash.Changeset.add_error(changeset, "store unavailable") end|
+        "def change(changeset, _opts, _context), do: changeset"
       )
     end)
   end
@@ -316,12 +318,13 @@ defmodule Mix.Tasks.AshWorkflow.Gen.DeletionTest do
       assert Enum.sort(log(recipe)) == [:deleted, :purging, :requested]
     end
 
-    test "a failing purge is retried and then moves to purge_failed", %{tmp_dir: tmp_dir} do
+    test "an unfilled purge fails, is retried and then moves to purge_failed", %{
+      tmp_dir: tmp_dir
+    } do
       recipe =
         [inspect(Account), "--grace-period", "30d"]
         |> generate()
         |> allow_owners()
-        |> fail_purge()
         |> compile(tmp_dir)
 
       deletion_module = recipe.modules[AccountDeletion]
@@ -334,6 +337,19 @@ defmodule Mix.Tasks.AshWorkflow.Gen.DeletionTest do
 
       purging = reload(deletion)
       assert purging.state == :purging
+
+      assert {:error, error} =
+               purging
+               |> Ash.Changeset.for_update(:purge, %{}, authorize?: false)
+               |> Ash.update()
+
+      assert Exception.message(error) =~
+               "#{inspect(recipe.modules[Purge])} erases nothing yet. Replace its change/3"
+
+      assert Enum.any?(
+               recipe.notices,
+               &String.contains?(&1, "Every purge fails until you define")
+             )
 
       work = purge_work(deletion_module)
       assert work.retry.max_attempts == 3

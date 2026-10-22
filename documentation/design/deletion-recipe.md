@@ -16,7 +16,7 @@ The application owns four things:
 
 - When a deletion is requested, and who may request it. The application calls `AccountDeletion.request/2` with the subject from wherever that makes sense: a settings page, a support tool, a data-subject request import. The `:request` action has no policy.
 - Who may request a deletion again, retry a purge, or restore a deletion. These are two `Ash.Policy.Check` modules, each generated to deny everyone.
-- What a purge erases. The generator writes an empty `:purge` update action. The application fills it in, whether that destroys the subject, anonymises its fields, or removes files from a store.
+- What a purge erases. The generator writes a `:purge` update action whose change, `Changes.Purge`, fails until the application fills it in, whether that destroys the subject, anonymises its fields, or removes files from a store.
 - What happens on entering `:purge_failed`, such as paging an operator. The generator adds no notifier for it.
 
 The generator itself deletes nothing. A recipe that destroyed the subject by default would erase data in an application that meant to anonymise it.
@@ -138,10 +138,11 @@ Today `:requested` is entered only by `request` and `request_again`, and both wr
 ```elixir
 update :purge do
   require_atomic? false
+  change MyApp.Accounts.AccountDeletion.Changes.Purge
 end
 ```
 
-It is empty, so as generated a purge succeeds at once and moves the deletion to `:deleted`. The application adds the changes that erase the subject. `require_atomic? false` is declared for the reason expiry's `renew` declares it: the identity's `pre_check_with` on ETS adds a `before_action` hook to every update. An application's purge also tends to call other resources or stores, which an atomic update cannot do.
+`Changes.Purge` is generated to add an error naming itself, so as generated every purge fails and the deletion ends in `:purge_failed`. The application replaces its `change/3` with what erases the subject. An empty purge would succeed at once and move the deletion to the terminal `:deleted` with nothing erased. The `:unique_subject` identity would then refuse any later deletion of that subject, and nothing would show that the erasure never ran. A failing purge leaves the deletion where an operator sees it and can call `retry_purge` once the purge is written. `require_atomic? false` is declared for the reason expiry's `renew` declares it: the identity's `pre_check_with` on ETS adds a `before_action` hook to every update. An application's purge also tends to call other resources or stores, which an atomic update cannot do.
 
 A purge that fails is retried until `--max-attempts` attempts have failed, and then `on_error` moves the deletion to `:purge_failed`. `:purge_failed` is a manual step, not a terminal one, following [`error-handling.md`](../topics/error-handling.md): an operator reads the `:error_path` row in the transition log, fixes the cause and calls `retry_purge`, which runs the purge again from the start. A purge that may have partly run before failing must therefore be safe to run twice.
 
@@ -167,6 +168,7 @@ actions do
 
   update :purge do
     require_atomic? false
+    change MyApp.Accounts.AccountDeletion.Changes.Purge
   end
 end
 

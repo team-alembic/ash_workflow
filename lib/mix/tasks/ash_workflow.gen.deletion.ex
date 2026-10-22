@@ -19,9 +19,9 @@ defmodule Mix.Tasks.AshWorkflow.Gen.Deletion.Docs do
     `has_one :deletion` and a `pending_deletion?` calculation. When the
     subject does not exist, it is created with `mix ash.gen.resource` first.
 
-    The generated `:purge` action is empty. The application decides what a
-    purge erases. The `:request` action has no policy, so the application
-    decides who may request a deletion. Nobody may request a deletion again,
+    Every purge fails until the application defines what it erases, in the
+    generated `Changes.Purge` module. The `:request` action has no policy, so
+    the application decides who may request a deletion. Nobody may request a deletion again,
     retry a purge or restore a deletion until the application defines who can,
     in the generated `Checks.CanRequestDeletion` and `Checks.CanRestore`
     modules.
@@ -95,6 +95,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
           deletion: deletion,
           can_request_deletion: Module.concat([deletion, Checks, CanRequestDeletion]),
           can_restore: Module.concat([deletion, Checks, CanRestore]),
+          purge: Module.concat([deletion, Changes, Purge]),
           grace_period: grace_period,
           max_attempts: options[:max_attempts],
           transition_log?: options[:transition_log]
@@ -157,6 +158,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
     defp create_deletion(igniter, config, storage) do
       igniter
       |> ProjectModule.create_module(config.deletion, deletion_contents(config, storage))
+      |> ProjectModule.create_module(config.purge, purge_contents(config))
       |> ProjectModule.create_module(
         config.can_request_deletion,
         Recipe.deny_check_contents(
@@ -176,13 +178,34 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       |> Igniter.add_notice("""
       Generated #{inspect(config.deletion)} to delete #{inspect(config.subject)}.
 
-      A purge erases nothing yet. Fill in the :purge action in \
-      #{inspect(config.deletion)} with what deleting a subject means.
+      Every purge fails until you define what deleting a subject means, in \
+      #{inspect(config.purge)}. An unfilled purge moves the deletion to \
+      :purge_failed once the grace period has passed.
 
       Nobody can request a deletion again or restore one yet. Define who may in \
       #{inspect(config.can_request_deletion)} and #{inspect(config.can_restore)}, \
       which deny everyone as generated.
       """)
+    end
+
+    defp purge_contents(config) do
+      """
+      @moduledoc \"\"\"
+      Erases or anonymises the subject of an `#{inspect(config.deletion)}` once its grace period has passed.
+
+      Fails every purge until the application replaces `change/3`.
+      \"\"\"
+
+      use Ash.Resource.Change
+
+      @impl true
+      def change(changeset, _opts, _context) do
+        Ash.Changeset.add_error(
+          changeset,
+          "\#{inspect(__MODULE__)} erases nothing yet. Replace its change/3 with what deleting the subject means."
+        )
+      end
+      """
     end
 
     defp compose_transition_log(igniter, %{transition_log?: false}), do: igniter
@@ -248,10 +271,9 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
           change set_attribute(:requested_at, &DateTime.utc_now/0)
         end
 
-        # Runs once the grace period has passed. Add the changes that erase or
-        # anonymise the subject; the generator deletes nothing itself.
         update :purge do
           require_atomic? false
+          change #{inspect(config.purge)}
         end
       end
 

@@ -20,14 +20,15 @@ When the subject does not exist, the task creates it with `mix ash.gen.resource`
 
 ## What it generates
 
-For the command above, the task writes three modules and edits the subject:
+For the command above, the task writes four modules and edits the subject:
 
 - `MyApp.Accounts.AccountDeletion` runs the workflow. It belongs to the account and holds `requested_at`. An identity on `subject_id` allows one deletion per account.
+- `MyApp.Accounts.AccountDeletion.Changes.Purge` is the `:purge` action's change. It fails every purge as generated.
 - `MyApp.Accounts.AccountDeletion.Checks.CanRequestDeletion` decides who may request a deletion again and who may retry a failed purge. It denies everyone as generated.
 - `MyApp.Accounts.AccountDeletion.Checks.CanRestore` decides who may restore a deletion. It denies everyone as generated.
 - `MyApp.Accounts.Account` gains `has_one :deletion` and a `pending_deletion?` calculation. The task adds no change, argument or policy to the subject's actions.
 
-The task deletes nothing itself. The generated `:purge` action is empty until you fill it in.
+The task deletes nothing itself. Until you fill in `Changes.Purge`, every purge fails with an error naming that module, so an unfilled deletion moves to `:purge_failed` rather than to `:deleted`.
 
 ## The workflow
 
@@ -93,14 +94,23 @@ The `:request` create action has no policy, so anyone who can call it can reques
 
 ### Fill in the purge
 
-The `:purge` action runs once the grace period has passed. Add the changes that erase or anonymise the subject:
+The `:purge` action runs once the grace period has passed. Its generated change, `Changes.Purge`, adds an error to every purge. Replace its `change/3` with the changes that erase or anonymise the subject:
 
 ```elixir
-update :purge do
-  require_atomic? false
-  change MyApp.Accounts.Changes.EraseAccount
+defmodule MyApp.Accounts.AccountDeletion.Changes.Purge do
+  use Ash.Resource.Change
+
+  @impl true
+  def change(changeset, _opts, _context) do
+    Ash.Changeset.before_action(changeset, fn changeset ->
+      MyApp.Accounts.anonymise_account!(changeset.data.subject_id)
+      changeset
+    end)
+  end
 end
 ```
+
+A deletion requested before the purge is filled in moves to `:purge_failed` once its attempts run out. Call `retry_purge/2` on it after deploying the purge.
 
 A purge is retried up to `--max-attempts` times, and `retry_purge` runs it again from the start. Write it so that running it twice is safe, such as by checking whether a file is already gone before removing it.
 
