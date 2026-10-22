@@ -300,12 +300,14 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
     defp short_name(_entry, _type), do: nil
 
     @doc """
-    Returns a required, public `belongs_to` whose foreign key takes
-    `key_type`, or Ash's default type when `key_type` is `nil`.
+    Returns a public `belongs_to` whose foreign key takes `key_type`, or Ash's
+    default type when `key_type` is `nil`. It is required unless `opts` has
+    `allow_nil?: true`.
     """
-    @spec belongs_to(atom(), module(), atom() | nil) :: String.t()
-    def belongs_to(name, destination, key_type) do
-      "belongs_to #{inspect(name)}, #{inspect(destination)}, allow_nil?: false, public?: true" <>
+    @spec belongs_to(atom(), module(), atom() | nil, allow_nil?: boolean()) :: String.t()
+    def belongs_to(name, destination, key_type, opts \\ []) do
+      "belongs_to #{inspect(name)}, #{inspect(destination)}, " <>
+        "allow_nil?: #{Keyword.get(opts, :allow_nil?, false)}, public?: true" <>
         attribute_type(key_type)
     end
 

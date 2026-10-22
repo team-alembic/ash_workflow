@@ -71,6 +71,18 @@ defmodule Mix.AshWorkflow.RecipeTest do
     end
   end
 
+  describe "belongs_to/4" do
+    test "writes a required belongs_to by default" do
+      assert Recipe.belongs_to(:subject, MyApp.Invoice, :uuid) ==
+               "belongs_to :subject, MyApp.Invoice, allow_nil?: false, public?: true, attribute_type: :uuid"
+    end
+
+    test "writes a nullable belongs_to when given allow_nil?: true" do
+      assert Recipe.belongs_to(:subject, MyApp.Invoice, nil, allow_nil?: true) ==
+               "belongs_to :subject, MyApp.Invoice, allow_nil?: true, public?: true"
+    end
+  end
+
   describe "parse_duration/2" do
     for {value, duration} <- [
           {"10s", {10, :seconds}},
