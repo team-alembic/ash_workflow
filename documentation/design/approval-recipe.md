@@ -12,8 +12,9 @@ Approval is the workflow most applications write first. A record is created, one
 
 The generator owns the approval lifecycle: the states, the transitions, the quorum count, the overdue deadline and the decision history.
 
-The application owns two things, and each lives in exactly one place:
+The application owns three things, and each lives in exactly one place:
 
+- Who may open a request on a subject. This is one `Ash.Policy.Check` module, generated to deny everyone.
 - Who may approve. This is one `Ash.Policy.Check` module, generated to deny everyone.
 - When a request is opened. The application calls `ExpenseApproval.request/2` from wherever that makes sense: a create action, a submit action, a LiveView event.
 
@@ -136,12 +137,16 @@ The `:request` create action on `ExpenseApproval` accepts only `subject_id`. It 
 
 ## Who may decide
 
-The generator writes one check module, `MyApp.Expenses.ExpenseApproval.Checks.CanApprove`, that denies everyone. The generator's notice says so. A generated approval that anyone could approve would be a worse default than one nobody can approve until the application decides.
+The generator writes two check modules, `MyApp.Expenses.ExpenseApproval.Checks.CanRequest` and `MyApp.Expenses.ExpenseApproval.Checks.CanApprove`, that deny everyone. The generator's notice says so. A generated approval that anyone could approve would be a worse default than one nobody can approve until the application decides. The same holds for opening a request: without `CanRequest`, any actor could open a request on any subject.
 
-The generated policies reference that check and add the rules every approval shares:
+The generated policies reference those checks and add the rules every approval shares:
 
 ```elixir
 policies do
+  policy action(:request) do
+    authorize_if MyApp.Expenses.ExpenseApproval.Checks.CanRequest
+  end
+
   policy action([:approve, :reject]) do
     forbid_if expr(requested_by_id == ^actor(:id))
     forbid_if expr(exists(decisions, approver_id == ^actor(:id)))
@@ -177,7 +182,7 @@ The alternative is a `Spark.Dsl.Fragment` or a `use AshWorkflow.Recipes.Approval
 | Readable in the app | Yes | Hidden behind a macro |
 | Library API to keep stable | The generator's flags | Every option and every generated name |
 
-The recommendation is generated code. Approval varies per application in the policies, the quorum rule and what happens once a request is overdue, and each of those variations would otherwise become an option on a public API. The strongest objection is that a bug in the generated template stays in every app that ran it. The generator keeps that small by emitting only DSL, one change module and one check module, with no runtime helpers of its own.
+The recommendation is generated code. Approval varies per application in the policies, the quorum rule and what happens once a request is overdue, and each of those variations would otherwise become an option on a public API. The strongest objection is that a bug in the generated template stays in every app that ran it. The generator keeps that small by emitting only DSL, one change module and two check modules, with no runtime helpers of its own.
 
 ## Composing the transition log
 

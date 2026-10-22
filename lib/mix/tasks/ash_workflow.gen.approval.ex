@@ -19,8 +19,8 @@ defmodule Mix.Tasks.AshWorkflow.Gen.Approval.Docs do
     `approved?` calculation. When the subject does not exist, it is created
     with `mix ash.gen.resource` first.
 
-    Nobody may approve until the application defines who can, in the
-    generated `Checks.CanApprove` module.
+    Nobody may open a request or approve until the application defines who
+    can, in the generated `Checks.CanRequest` and `Checks.CanApprove` modules.
 
     ## Example
 
@@ -94,6 +94,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
           approver: ProjectModule.parse(options[:approver]),
           approval: approval,
           decision: Module.concat([inspect(approval) <> "Decision"]),
+          can_request: Module.concat([approval, Checks, CanRequest]),
           can_approve: Module.concat([approval, Checks, CanApprove]),
           record_decision: Module.concat([approval, Changes, RecordDecision])
         }
@@ -247,6 +248,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       |> ProjectModule.create_module(names.approval, approval_contents(config, storage))
       |> ProjectModule.create_module(names.decision, decision_contents(names, storage))
       |> ProjectModule.create_module(names.record_decision, record_decision_contents(names))
+      |> ProjectModule.create_module(names.can_request, can_request_contents(names))
       |> ProjectModule.create_module(names.can_approve, can_approve_contents(names))
       |> DomainIgniter.add_resource_reference(storage.domain, names.approval)
       |> DomainIgniter.add_resource_reference(storage.domain, names.decision)
@@ -254,8 +256,9 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       |> Igniter.add_notice("""
       Generated #{inspect(names.approval)} to approve #{inspect(names.subject)}.
 
-      Nobody can approve a request yet. Define who may approve in \
-      #{inspect(names.can_approve)}, which denies everyone as generated.
+      Nobody can open or approve a request yet. Define who may open one in \
+      #{inspect(names.can_request)} and who may approve in \
+      #{inspect(names.can_approve)}. Both deny everyone as generated.
       """)
     end
 
@@ -325,6 +328,10 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       end
 
       policies do
+        policy action(:request) do
+          authorize_if #{inspect(names.can_request)}
+        end
+
         policy action([:approve, :reject]) do
           forbid_if expr(requested_by_id == ^actor(:id))
           forbid_if expr(exists(decisions, approver_id == ^actor(:id)))
@@ -479,6 +486,24 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
           end
         end)
       end
+      """
+    end
+
+    defp can_request_contents(names) do
+      """
+      @moduledoc \"\"\"
+      Decides who may open an `#{inspect(names.approval)}` on a subject.
+
+      Denies everyone until the application replaces `match?/3`.
+      \"\"\"
+
+      use Ash.Policy.SimpleCheck
+
+      @impl true
+      def describe(_opts), do: "actor may request approval of this subject"
+
+      @impl true
+      def match?(_actor, _context, _opts), do: false
       """
     end
 

@@ -13,7 +13,8 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ApprovalTest do
 
   @fixtures "test/support/recipe_fixtures/approval"
   @files ["#{@fixtures}/domain.ex", "#{@fixtures}/user.ex", "#{@fixtures}/expense.ex"]
-  @can_approve "lib/ash_workflow_test/recipe_fixtures/approval/expense_approval/checks/can_approve.ex"
+  @checks "lib/ash_workflow_test/recipe_fixtures/approval/expense_approval/checks"
+  @deny_all "def match?(_actor, _context, _opts), do: false"
 
   defp generate(files \\ @files, argv) do
     files
@@ -24,17 +25,25 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ApprovalTest do
   defp approval_for_expenses(tmp_dir, argv \\ []) do
     [inspect(Expense), "--approver", inspect(User) | argv]
     |> generate()
+    |> allow_requesters()
     |> allow_approvers()
     |> compile(tmp_dir)
   end
 
   # What an application does once it has generated the recipe: fill in
-  # CanApprove. Here anyone with the :approver role may decide.
+  # CanRequest and CanApprove. Here any actor may open a request, and anyone
+  # with the :approver role may decide.
+  defp allow_requesters(recipe, checks \\ @checks) do
+    edit_source(recipe, "#{checks}/can_request.ex", fn source ->
+      String.replace(source, @deny_all, "def match?(actor, _context, _opts), do: is_map(actor)")
+    end)
+  end
+
   defp allow_approvers(recipe) do
-    edit_source(recipe, @can_approve, fn source ->
+    edit_source(recipe, "#{@checks}/can_approve.ex", fn source ->
       String.replace(
         source,
-        "def match?(_actor, _context, _opts), do: false",
+        @deny_all,
         "def match?(actor, _context, _opts), do: is_map(actor) and actor.role == :approver"
       )
     end)
@@ -140,6 +149,9 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ApprovalTest do
     recipe =
       ["#{@fixtures}/domain.ex", "#{@fixtures}/user.ex"]
       |> generate([inspect(Invoice), "--approver", inspect(User), "--domain", inspect(Domain)])
+      |> allow_requesters(
+        "lib/ash_workflow_test/recipe_fixtures/approval/invoice_approval/checks"
+      )
       |> compile(tmp_dir)
 
     invoice_module = recipe.modules[Invoice]
@@ -176,11 +188,36 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ApprovalTest do
     assert second.changed == %{}
   end
 
+  describe "CanRequest" do
+    test "denies everyone as generated", %{tmp_dir: tmp_dir} do
+      recipe =
+        [inspect(Expense), "--approver", inspect(User)]
+        |> generate()
+        |> allow_approvers()
+        |> compile(tmp_dir)
+
+      assert {:error, %Ash.Error.Forbidden{}} =
+               recipe.modules[ExpenseApproval]
+               |> Ash.Changeset.for_create(:request, %{subject_id: expense(recipe).id},
+                 actor: user(recipe, :employee)
+               )
+               |> Ash.create()
+
+      assert Ash.read!(recipe.modules[ExpenseApproval], authorize?: false) == []
+
+      assert Enum.any?(
+               recipe.notices,
+               &String.contains?(&1, "Nobody can open or approve a request yet")
+             )
+    end
+  end
+
   describe "CanApprove" do
     test "denies everyone as generated", %{tmp_dir: tmp_dir} do
       recipe =
         [inspect(Expense), "--approver", inspect(User)]
         |> generate()
+        |> allow_requesters()
         |> compile(tmp_dir)
 
       approval = request(recipe, expense(recipe), user(recipe, :employee))
@@ -188,8 +225,6 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ApprovalTest do
       assert {:error, %Ash.Error.Forbidden{}} = decide(approval, :approve, user(recipe))
       assert {:error, %Ash.Error.Forbidden{}} = decide(approval, :reject, user(recipe))
       assert state(approval) == :pending
-
-      assert Enum.any?(recipe.notices, &String.contains?(&1, "Nobody can approve a request yet"))
     end
 
     test "lets an approver decide once the application permits them", %{tmp_dir: tmp_dir} do

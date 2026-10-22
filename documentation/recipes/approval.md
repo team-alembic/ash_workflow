@@ -29,6 +29,7 @@ For the command above, the task writes four modules and edits the subject:
 - `MyApp.Expenses.ExpenseApproval` runs the workflow. It belongs to the expense and to the user who requested it.
 - `MyApp.Expenses.ExpenseApprovalDecision` holds one row for each approval or rejection. An identity stops an approver deciding the same request twice.
 - `MyApp.Expenses.ExpenseApproval.Changes.RecordDecision` writes the decision row when `:approve` or `:reject` runs.
+- `MyApp.Expenses.ExpenseApproval.Checks.CanRequest` decides who may open a request on a subject. It denies everyone as generated.
 - `MyApp.Expenses.ExpenseApproval.Checks.CanApprove` decides who may approve. It denies everyone as generated.
 - `MyApp.Expenses.Expense` gains `has_many :approvals`, `has_one :latest_approval` and an `approved?` calculation. The task adds no change, argument or policy to the subject's actions.
 
@@ -90,6 +91,10 @@ The overdue deadline is measured from `requested_at`, which the `:request` actio
 
 ```elixir
 policies do
+  policy action(:request) do
+    authorize_if MyApp.Expenses.ExpenseApproval.Checks.CanRequest
+  end
+
   policy action([:approve, :reject]) do
     forbid_if expr(requested_by_id == ^actor(:id))
     forbid_if expr(exists(decisions, approver_id == ^actor(:id)))
@@ -102,9 +107,20 @@ policies do
 end
 ```
 
-The requester cannot decide their own request, and an approver cannot decide twice. Only the requester can cancel. The generated `:available_actions` calculation applies these policies, so loading it with an actor tells a UI whether that user can approve.
+Only an actor that `CanRequest` permits can open a request. The requester cannot decide their own request, and an approver cannot decide twice. Only the requester can cancel. The generated `:available_actions` calculation applies these policies, so loading it with an actor tells a UI whether that user can approve.
+
+Reads stay open by default. `AshWorkflow` authorizes `:read` on the approval resource for every actor, and the decision resource's only policy allows every read. Add a read policy to each if requests or decisions are private.
 
 ## What your application does next
+
+### Decide who may open a request
+
+`CanRequest` denies everyone, so no request can be opened until you change it. Replace its `match?/3`, or replace the `authorize_if` line in the `:request` policy with a built-in check. The `:request` action is a create, so a check that reads the subject finds its id in `context.changeset`:
+
+```elixir
+# Any employee may request approval
+authorize_if actor_attribute_equals(:role, :employee)
+```
 
 ### Decide who may approve
 
