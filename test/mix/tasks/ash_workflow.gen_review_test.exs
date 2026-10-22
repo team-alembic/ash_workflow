@@ -318,6 +318,23 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ReviewTest do
       assert Enum.frequencies(log) == %{in_review: 3, changes_requested: 2, approved: 1}
     end
 
+    test "a system process with no actor can decide, and the decision has no reviewer", %{
+      tmp_dir: tmp_dir
+    } do
+      recipe = review_for_articles(tmp_dir)
+      review = request(recipe, article(recipe), user(recipe, :author))
+
+      assert {:ok, %{state: :approved}} =
+               review
+               |> Ash.Changeset.for_update(:approve, %{comment: "Auto-approved"},
+                 authorize?: false
+               )
+               |> Ash.update(authorize?: false)
+
+      assert [%{decision: :approved, reviewer_id: nil, comment: "Auto-approved"}] =
+               Ash.read!(recipe.modules[ArticleReviewDecision])
+    end
+
     test "a reviewer can reject after a resubmission", %{tmp_dir: tmp_dir} do
       recipe = review_for_articles(tmp_dir)
       requester = user(recipe, :author)

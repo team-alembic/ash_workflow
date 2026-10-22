@@ -340,7 +340,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
 
         create :create do
           accept [:review_id, :round, :decision, :comment]
-          change relate_actor(:reviewer)
+          change relate_actor(:reviewer, allow_nil?: true)
           change set_attribute(:decided_at, &DateTime.utc_now/0)
         end
       end
@@ -369,13 +369,23 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
 
       relationships do
         #{Recipe.belongs_to(:review, names.review, nil)}
-        #{Recipe.belongs_to(:reviewer, names.reviewer, reviewer_key_type)}
+        #{reviewer_belongs_to(names.reviewer, reviewer_key_type)}
       end
 
       identities do
         identity :unique_round, [:review_id, :round]#{Recipe.pre_check_with(storage)}
       end
       """
+    end
+
+    # A decision made with no actor, such as by a system process with
+    # `authorize?: false`, has no reviewer.
+    defp reviewer_belongs_to(reviewer, key_type) do
+      String.replace(
+        Recipe.belongs_to(:reviewer, reviewer, key_type),
+        "allow_nil?: false",
+        "allow_nil?: true"
+      )
     end
 
     defp record_decision_contents(names) do

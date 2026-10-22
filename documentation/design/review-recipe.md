@@ -129,7 +129,7 @@ Three anchors were considered:
 
 The identity `:unique_round` on `(review_id, round)` allows one decision per round. The workflow already stops a second decision, because each reviewer transition leaves `:in_review` and `:overdue`. The identity also holds against a row written outside the workflow. On ETS it sets `pre_check_with` to the domain, and on Postgres a long table name gets a shortened `identity_index_names` entry, both through `Mix.AshWorkflow.Recipe` as approval's `:unique_approver` does.
 
-The decision resource keeps approval's policy shape: one policy that allows reads, and no policy on `:create`. Rows are created only by `RecordDecision`, which runs in an `after_action` of each reviewer transition with `authorize?: false`.
+The decision resource keeps approval's policy shape: one policy that allows reads, and no policy on `:create`. Rows are created only by `RecordDecision`, which runs in an `after_action` of each reviewer transition with `authorize?: false`. It passes the transition's actor on, and `relate_actor(:reviewer, allow_nil?: true)` leaves `reviewer_id` nil when there is none, so a system process can decide a review.
 
 `:request_changes` requires a `comment`. A send-back with no reason gives the requester nothing to revise. `:approve` and `:reject` accept an optional `comment`, as approval's do.
 

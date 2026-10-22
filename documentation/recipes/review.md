@@ -25,7 +25,7 @@ When the subject does not exist, the task creates it with `mix ash.gen.resource`
 For the command above, the task writes five modules and edits the subject:
 
 - `MyApp.Content.ArticleReview` runs the workflow. It belongs to the article and to the user who requested the review, and its `round` attribute counts the rounds.
-- `MyApp.Content.ArticleReviewDecision` holds one row for each decision, with the round it ended, the reviewer and the comment. An identity allows one decision per round.
+- `MyApp.Content.ArticleReviewDecision` holds one row for each decision, with the round it ended, the reviewer and the comment. A decision made with no actor, such as by a system process with `authorize?: false`, has no reviewer. An identity allows one decision per round.
 - `MyApp.Content.ArticleReview.Changes.RecordDecision` writes the decision row when `:request_changes`, `:approve` or `:reject` runs.
 - `MyApp.Content.ArticleReview.Checks.CanRequest` decides who may open a review of a subject. It denies everyone as generated.
 - `MyApp.Content.ArticleReview.Checks.CanReview` decides who may review. It denies everyone as generated.
