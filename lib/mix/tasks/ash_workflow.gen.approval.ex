@@ -144,7 +144,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       case Code.ensure_compiled(subject) do
         {:module, _module} ->
           storage = storage(subject, Ash.Resource.Info.domain(subject))
-          generate(igniter, config, storage)
+          generate_with_key_types(igniter, config, storage, key_type(subject))
 
         {:error, reason} ->
           Igniter.add_issue(
@@ -187,8 +187,43 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
           inspect(domain)
         ] ++ extend_flag(storage.data_layer)
       )
-      |> generate(config, storage)
+      |> generate_with_key_types(config, storage, {:ok, :uuid_v7})
     end
+
+    # The approval's foreign keys take the type of the key they point at, so a
+    # subject or approver with an integer key gets an integer column.
+    defp generate_with_key_types(igniter, config, storage, subject_key_type) do
+      with {:ok, subject_type} <- subject_key_type,
+           {:ok, approver_type} <- approver_key_type(config.names.approver) do
+        key_types = %{subject: subject_type, approver: approver_type}
+        generate(igniter, Map.put(config, :key_types, key_types), storage)
+      else
+        {:error, message} -> Igniter.add_issue(igniter, message)
+      end
+    end
+
+    defp approver_key_type(approver) do
+      case Code.ensure_compiled(approver) do
+        {:module, _module} -> key_type(approver)
+        {:error, _reason} -> {:ok, nil}
+      end
+    end
+
+    defp key_type(resource) do
+      case Ash.Resource.Info.primary_key(resource) do
+        [field] ->
+          type = Ash.Resource.Info.attribute(resource, field).type
+          {:ok, Enum.find_value(Ash.Type.short_names(), type, &short_name(&1, type))}
+
+        fields ->
+          {:error,
+           "#{inspect(resource)} has a composite primary key #{inspect(fields)}. " <>
+             "The approval resource can only belong to a resource with a single-field primary key."}
+      end
+    end
+
+    defp short_name({name, type}, type), do: name
+    defp short_name(_entry, _type), do: nil
 
     defp storage(resource, domain) do
       data_layer = Ash.Resource.Info.data_layer(resource)
@@ -246,7 +281,10 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
 
       igniter
       |> ProjectModule.create_module(names.approval, approval_contents(config, storage))
-      |> ProjectModule.create_module(names.decision, decision_contents(names, storage))
+      |> ProjectModule.create_module(
+        names.decision,
+        decision_contents(names, storage, config.key_types.approver)
+      )
       |> ProjectModule.create_module(names.record_decision, record_decision_contents(names))
       |> ProjectModule.create_module(names.can_request, can_request_contents(names))
       |> ProjectModule.create_module(names.can_approve, can_approve_contents(names))
@@ -359,8 +397,8 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       end
 
       relationships do
-        belongs_to :subject, #{inspect(names.subject)}, allow_nil?: false, public?: true
-        belongs_to :requested_by, #{inspect(names.approver)}, allow_nil?: false, public?: true
+        belongs_to :subject, #{inspect(names.subject)}, allow_nil?: false, public?: true#{attribute_type(config.key_types.subject)}
+        belongs_to :requested_by, #{inspect(names.approver)}, allow_nil?: false, public?: true#{attribute_type(config.key_types.approver)}
 
         has_many :decisions, #{inspect(names.decision)} do
           destination_attribute :approval_id
@@ -408,7 +446,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       """
     end
 
-    defp decision_contents(names, storage) do
+    defp decision_contents(names, storage, approver_key_type) do
       """
       use Ash.Resource,
         domain: #{inspect(storage.domain)},
@@ -450,7 +488,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
 
       relationships do
         belongs_to :approval, #{inspect(names.approval)}, allow_nil?: false, public?: true
-        belongs_to :approver, #{inspect(names.approver)}, allow_nil?: false, public?: true
+        belongs_to :approver, #{inspect(names.approver)}, allow_nil?: false, public?: true#{attribute_type(approver_key_type)}
       end
 
       identities do
@@ -533,6 +571,9 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       do: "change get_and_lock_for_update()\n"
 
     defp lock_for_update(_storage), do: ""
+
+    defp attribute_type(nil), do: ""
+    defp attribute_type(type), do: ", attribute_type: #{inspect(type)}"
 
     defp pre_check_with(%{data_layer: AshPostgres.DataLayer}), do: ""
     defp pre_check_with(storage), do: ", pre_check_with: #{inspect(storage.domain)}"

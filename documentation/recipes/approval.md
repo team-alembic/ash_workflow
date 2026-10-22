@@ -26,7 +26,7 @@ When the subject does not exist, the task creates it with `mix ash.gen.resource`
 
 For the command above, the task writes four modules and edits the subject:
 
-- `MyApp.Expenses.ExpenseApproval` runs the workflow. It belongs to the expense and to the user who requested it.
+- `MyApp.Expenses.ExpenseApproval` runs the workflow. It belongs to the expense and to the user who requested it. Each foreign key takes the type of the primary key it points at. The task reports an issue for a subject or approver with a composite primary key.
 - `MyApp.Expenses.ExpenseApprovalDecision` holds one row for each approval or rejection. An identity stops an approver deciding the same request twice.
 - `MyApp.Expenses.ExpenseApproval.Changes.RecordDecision` writes the decision row when `:approve` or `:reject` runs.
 - `MyApp.Expenses.ExpenseApproval.Checks.CanRequest` decides who may open a request on a subject. It denies everyone as generated.

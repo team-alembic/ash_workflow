@@ -9,10 +9,13 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ApprovalTest do
   alias AshWorkflowTest.RecipeFixtures.Approval.ExpenseApprovalDecision
   alias AshWorkflowTest.RecipeFixtures.Approval.ExpenseApprovalTransition
   alias AshWorkflowTest.RecipeFixtures.Approval.Invoice
+  alias AshWorkflowTest.RecipeFixtures.Approval.LedgerLine
+  alias AshWorkflowTest.RecipeFixtures.Approval.Receipt
   alias AshWorkflowTest.RecipeFixtures.Approval.User
 
   @fixtures "test/support/recipe_fixtures/approval"
-  @files ["#{@fixtures}/domain.ex", "#{@fixtures}/user.ex", "#{@fixtures}/expense.ex"]
+  @domain_files Enum.map(~w(domain user receipt ledger_line), &"#{@fixtures}/#{&1}.ex")
+  @files @domain_files ++ ["#{@fixtures}/expense.ex"]
   @checks "lib/ash_workflow_test/recipe_fixtures/approval/expense_approval/checks"
   @deny_all "def match?(_actor, _context, _opts), do: false"
 
@@ -147,7 +150,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ApprovalTest do
     tmp_dir: tmp_dir
   } do
     recipe =
-      ["#{@fixtures}/domain.ex", "#{@fixtures}/user.ex"]
+      @domain_files
       |> generate([inspect(Invoice), "--approver", inspect(User), "--domain", inspect(Domain)])
       |> allow_requesters(
         "lib/ash_workflow_test/recipe_fixtures/approval/invoice_approval/checks"
@@ -475,7 +478,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ApprovalTest do
 
   test "reports an issue for a missing subject without --domain" do
     igniter =
-      ["#{@fixtures}/domain.ex", "#{@fixtures}/user.ex"]
+      @domain_files
       |> project()
       |> Igniter.compose_task("ash_workflow.gen.approval", [
         inspect(Invoice),
@@ -484,6 +487,71 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ApprovalTest do
       ])
 
     assert Enum.any?(igniter.issues, &String.contains?(&1, "Pass --domain to create it"))
+  end
+
+  describe "foreign keys" do
+    test "take the type of the subject's and approver's primary keys", %{tmp_dir: tmp_dir} do
+      recipe =
+        [inspect(Receipt), "--approver", inspect(User)]
+        |> generate()
+        |> allow_requesters(
+          "lib/ash_workflow_test/recipe_fixtures/approval/receipt_approval/checks"
+        )
+        |> compile(tmp_dir)
+
+      approval = recipe.modules[AshWorkflowTest.RecipeFixtures.Approval.ReceiptApproval]
+      decision = recipe.modules[AshWorkflowTest.RecipeFixtures.Approval.ReceiptApprovalDecision]
+
+      assert Ash.Resource.Info.attribute(approval, :subject_id).type == Ash.Type.Integer
+      assert Ash.Resource.Info.attribute(approval, :requested_by_id).type == Ash.Type.UUIDv7
+      assert Ash.Resource.Info.attribute(decision, :approver_id).type == Ash.Type.UUIDv7
+
+      receipt =
+        recipe.modules[Receipt]
+        |> Ash.Changeset.for_create(:create, %{id: 7, merchant: "Cab Co"})
+        |> Ash.create!()
+
+      request =
+        approval
+        |> Ash.Changeset.for_create(:request, %{subject_id: receipt.id},
+          actor: user(recipe, :employee)
+        )
+        |> Ash.create!()
+
+      assert Ash.load!(receipt, latest_approval: :id).latest_approval.id == request.id
+    end
+
+    test "report an issue for a subject with a composite primary key" do
+      igniter =
+        @files
+        |> project()
+        |> Igniter.compose_task("ash_workflow.gen.approval", [
+          inspect(LedgerLine),
+          "--approver",
+          inspect(User)
+        ])
+
+      assert Enum.any?(
+               igniter.issues,
+               &(&1 =~ "#{inspect(LedgerLine)} has a composite primary key")
+             )
+    end
+
+    test "report an issue for an approver with a composite primary key" do
+      igniter =
+        @files
+        |> project()
+        |> Igniter.compose_task("ash_workflow.gen.approval", [
+          inspect(Expense),
+          "--approver",
+          inspect(LedgerLine)
+        ])
+
+      assert Enum.any?(
+               igniter.issues,
+               &(&1 =~ "#{inspect(LedgerLine)} has a composite primary key")
+             )
+    end
   end
 
   defp names(entities), do: Enum.map(entities, & &1.name)

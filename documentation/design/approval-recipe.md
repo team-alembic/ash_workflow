@@ -44,7 +44,7 @@ Durations accept `30m`, `12h`, `2d` and `2w`, and parse into the `{n, unit}` tup
 
 The generator adds two resources next to the subject rather than adding a `workflow` block to the subject itself.
 
-- `MyApp.Expenses.ExpenseApproval` holds the workflow. It `belongs_to :subject`.
+- `MyApp.Expenses.ExpenseApproval` holds the workflow. It `belongs_to :subject`. Its `belongs_to` relationships set `attribute_type` to the type of the subject's and approver's primary keys, so an integer key gets an integer foreign key. A subject or approver with a composite primary key is reported as an Igniter issue.
 - `MyApp.Expenses.ExpenseApprovalDecision` holds one row per decision made.
 
 A resource has one `workflow` and one `state_attribute`. Adding approval inline would fail on any subject that already runs a workflow, and would overwrite the subject's `state` on one that runs `ash_state_machine` directly. The sibling resource also covers resubmission: a rejected expense that is edited and submitted again gets a new approval row, and the old row keeps the rejection and who made it. That follows the same reasoning as [undo appending rather than erasing](workflow-undo.md).
