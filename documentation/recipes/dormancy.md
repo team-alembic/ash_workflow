@@ -10,7 +10,7 @@ mix ash_workflow.gen.dormancy MyApp.Accounts.Account --dormant-after 90d --archi
 
 | Option | Default | Effect |
 |---|---|---|
-| `--dormant-after` | required | Moves a dormancy to `:dormant` once `last_activity_at` is this old. Accepts `30m`, `12h`, `2d` and `2w`. |
+| `--dormant-after` | required | Moves a dormancy to `:dormant` once `last_activity_at` is this old. Accepts `10s`, `30m`, `12h`, `2d` and `2w`. |
 | `--archive-after` | none | Moves a dormancy to `:archived` once it has been `:dormant` this long. Without it, no `:archived` step is generated. |
 | `--module` | `<Subject>Dormancy` | Name of the generated dormancy resource. |
 | `--domain` | the subject's domain | Domain for a subject the task creates. Required only when the subject does not exist. |
