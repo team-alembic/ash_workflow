@@ -81,7 +81,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       options = igniter.args.options
       subject = ProjectModule.parse(igniter.args.positional.subject)
 
-      case validate_max_attempts(options[:max_attempts]) do
+      case Recipe.validate_max_attempts(options[:max_attempts]) do
         :ok ->
           verification = verification_module(subject, options[:module])
 
@@ -108,11 +108,6 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
           Igniter.add_issue(igniter, message)
       end
     end
-
-    defp validate_max_attempts(count) when count >= 1, do: :ok
-
-    defp validate_max_attempts(count),
-      do: {:error, "--max-attempts must be at least 1, got: #{count}"}
 
     defp verification_module(subject, nil),
       do: Module.concat([inspect(subject) <> "Verification"])

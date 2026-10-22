@@ -345,7 +345,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.VerificationTest do
         "0"
       ])
 
-    assert Enum.any?(igniter.issues, &String.contains?(&1, "--max-attempts must be at least 1"))
+    assert Enum.any?(igniter.issues, &String.contains?(&1, "--max-attempts must be a positive integer"))
   end
 
   test "reports an issue for a missing subject without --domain" do
