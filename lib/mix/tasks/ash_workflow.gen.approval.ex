@@ -87,6 +87,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
 
       with {:ok, overdue_after} <-
              Recipe.parse_duration(options[:overdue_after], "--overdue-after"),
+           :ok <- Recipe.validate_interval(overdue_after, "--overdue-after"),
            :ok <- validate_required_approvals(options[:required_approvals]) do
         approval = approval_module(subject, options[:module])
         approver = ProjectModule.parse(options[:approver])

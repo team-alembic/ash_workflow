@@ -24,11 +24,35 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
     end
 
     defp duration(count, "s"), do: {count, :seconds}
-
     defp duration(count, "m"), do: {count, :minutes}
     defp duration(count, "h"), do: {count, :hours}
     defp duration(count, "d"), do: {count, :days}
     defp duration(count, "w"), do: {count * 7, :days}
+
+    @doc """
+    Accepts a duration the recipe writes as a `fire_after` or `every` interval
+    only when the configured scheduler can honour it, since
+    `AshWorkflow.Verifiers.ValidateTimeoutPrecision` would otherwise reject the
+    generated code at compile time.
+    """
+    @spec validate_interval(AshWorkflow.Duration.t() | nil, String.t()) ::
+            :ok | {:error, String.t()}
+    def validate_interval(nil, _flag), do: :ok
+
+    def validate_interval(duration, flag) do
+      {scheduler, _opts} = default_scheduler = AshWorkflow.Scheduler.default()
+      floor_ms = AshWorkflow.Scheduler.precision_floor_ms(default_scheduler)
+
+      if AshWorkflow.Duration.to_milliseconds(duration) < floor_ms do
+        {:error,
+         "#{flag} is shorter than #{inspect(scheduler)} can honour: it fires no sooner " <>
+           "than every #{floor_ms}ms, so the generated workflow would not compile. " <>
+           "Configure AshWorkflow.Scheduler.Precise as the :ash_workflow scheduler, " <>
+           "or pass a duration of at least #{floor_ms}ms."}
+      else
+        :ok
+      end
+    end
 
     @doc "Accepts a `--max-attempts` value only when it is a positive integer."
     @spec validate_max_attempts(term()) :: :ok | {:error, String.t()}
