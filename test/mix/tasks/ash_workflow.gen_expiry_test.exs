@@ -226,6 +226,55 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ExpiryTest do
     refute source =~ "has_one :expiry"
   end
 
+  defp expiry_with_relationship(relationship) do
+    contract =
+      "#{@fixtures}/contract.ex"
+      |> File.read!()
+      |> String.replace(
+        "  attributes do",
+        "  relationships do\n#{relationship}\n  end\n\n  attributes do"
+      )
+
+    Igniter.Test.test_project(
+      app_name: :ash_workflow,
+      files:
+        @files
+        |> Map.new(&{&1, File.read!(&1)})
+        |> Map.put("#{@fixtures}/contract.ex", contract)
+    )
+    |> run_task("ash_workflow.gen.expiry", [inspect(Contract)])
+  end
+
+  test "leaves an existing do-block relationship to the recipe's resource without a warning" do
+    recipe =
+      expiry_with_relationship("""
+          has_one :expiry, #{inspect(ContractExpiry)}, public?: true do
+            destination_attribute :contract_id
+          end
+      """)
+
+    assert recipe.warnings == []
+
+    source = source!(recipe, "#{@fixtures}/contract.ex")
+    assert length(String.split(source, ":expiry,")) == 2
+  end
+
+  test "warns and leaves an existing do-block relationship to another resource" do
+    recipe =
+      expiry_with_relationship("""
+          has_many :expiry, #{inspect(Lease)}, public?: true do
+            destination_attribute :contract_id
+          end
+      """)
+
+    assert [warning] = recipe.warnings
+    assert warning =~ "#{inspect(Contract)} already has a relationship named :expiry"
+
+    source = source!(recipe, "#{@fixtures}/contract.ex")
+    assert source =~ "has_many :expiry, #{inspect(Lease)}"
+    refute source =~ "has_one :expiry"
+  end
+
   test "a subject has at most one expiry", %{tmp_dir: tmp_dir} do
     recipe = expiry_for_contracts(tmp_dir)
     contract = contract(recipe)

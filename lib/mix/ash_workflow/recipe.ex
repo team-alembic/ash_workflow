@@ -172,7 +172,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
             igniter,
             subject,
             {name, code},
-            {:relationships, [:has_one, :has_many, :belongs_to, :many_to_many], [2, 3]},
+            {:relationships, [:has_one, :has_many, :belongs_to, :many_to_many], [2, 3, 4]},
             &same_destination?/2,
             &ResourceIgniter.add_relationship/3
           )
@@ -183,7 +183,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
           igniter,
           subject,
           {name, code},
-          {:calculations, [:calculate], [3, 4]},
+          {:calculations, [:calculate], [3, 4, 5]},
           &same_definition?/2,
           &ResourceIgniter.add_calculation/3
         )
