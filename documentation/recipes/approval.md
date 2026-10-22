@@ -15,7 +15,7 @@ mix ash_workflow.gen.approval MyApp.Expenses.Expense \
 |---|---|---|
 | `--approver` | required | The actor resource. Decisions and the requester belong to it. |
 | `--module` | `<Subject>Approval` | Name of the generated approval resource. |
-| `--domain` | the subject's domain | Domain for a subject the task creates. Required only when the subject does not exist. |
+| `--domain` | none | Domain for a subject the task creates. Required when the subject does not exist, and ignored when it does: the approval resources then join the subject's domain. |
 | `--required-approvals` | `1` | Number of approvals a request needs. Each request stores the count, and the `:request` action does not accept it, so a requester cannot lower their own quorum. |
 | `--overdue-after` | none | Moves a waiting request to `:overdue` after this long. Accepts `30m`, `12h`, `2d` and `2w`. Without it, no `:overdue` step is generated. |
 | `--transition-log` | `true` | Also runs `mix ash_workflow.gen.transition_log` for the approval resource, recording the approver as the actor. Pass `--no-transition-log` to skip it. |
@@ -24,13 +24,14 @@ When the subject does not exist, the task creates it with `mix ash.gen.resource`
 
 ## What it generates
 
-For the command above, the task writes four modules and edits the subject:
+For the command above, the task writes six modules, edits the subject and adds the three new resources to the subject's domain. With `--no-transition-log` it writes five modules and adds two resources.
 
 - `MyApp.Expenses.ExpenseApproval` runs the workflow. It belongs to the expense and to the user who requested it. Each foreign key takes the type of the primary key it points at. The task reports an issue for a subject or approver with a composite primary key.
 - `MyApp.Expenses.ExpenseApprovalDecision` holds one row for each approval or rejection. An identity stops an approver deciding the same request twice.
 - `MyApp.Expenses.ExpenseApproval.Changes.RecordDecision` writes the decision row when `:approve` or `:reject` runs.
 - `MyApp.Expenses.ExpenseApproval.Checks.CanRequest` decides who may open a request on a subject. It denies everyone as generated.
 - `MyApp.Expenses.ExpenseApproval.Checks.CanApprove` decides who may approve. It denies everyone as generated.
+- `MyApp.Expenses.ExpenseApprovalTransition` logs each transition of the approval with the user who made it. `mix ash_workflow.gen.transition_log` writes it.
 - `MyApp.Expenses.Expense` gains `has_many :approvals`, `has_one :latest_approval` and an `approved?` calculation. The task adds no change, argument or policy to the subject's actions.
 
 The approval is a separate resource rather than a `workflow` block on the subject. A subject that already runs a workflow keeps it, and a rejected expense that is submitted again gets a new approval row. The old row keeps the rejection and who made it.

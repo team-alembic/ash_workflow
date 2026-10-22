@@ -491,10 +491,28 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ApprovalTest do
     assert byte_size(name) == 63
   end
 
-  test "--no-transition-log generates no transition log" do
-    recipe = generate([inspect(Expense), "--approver", inspect(User), "--no-transition-log"])
+  describe "the modules written" do
+    @approval_dir "lib/ash_workflow_test/recipe_fixtures/approval"
+    @modules [
+      "#{@approval_dir}/expense_approval.ex",
+      "#{@approval_dir}/expense_approval_decision.ex",
+      "#{@approval_dir}/expense_approval/changes/record_decision.ex",
+      "#{@approval_dir}/expense_approval/checks/can_request.ex",
+      "#{@approval_dir}/expense_approval/checks/can_approve.ex"
+    ]
 
-    refute Enum.any?(Map.keys(recipe.changed), &String.ends_with?(&1, "_transition.ex"))
+    test "are six with the default transition log" do
+      recipe = generate([inspect(Expense), "--approver", inspect(User)])
+
+      assert Enum.sort(Map.keys(recipe.changed) -- @files) ==
+               Enum.sort(["#{@approval_dir}/expense_approval_transition.ex" | @modules])
+    end
+
+    test "are five with --no-transition-log" do
+      recipe = generate([inspect(Expense), "--approver", inspect(User), "--no-transition-log"])
+
+      assert Enum.sort(Map.keys(recipe.changed) -- @files) == Enum.sort(@modules)
+    end
   end
 
   test "reports an issue for a missing subject without --domain" do

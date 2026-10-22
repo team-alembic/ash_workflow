@@ -33,7 +33,7 @@ mix ash_workflow.gen.approval MyApp.Expenses.Expense \
 |---|---|---|
 | `--approver` | required | The actor resource. Decisions and the requester `belongs_to` it. |
 | `--module` | `<Subject>Approval` | Name of the generated approval resource. |
-| `--domain` | the subject's domain | Domain for a subject the generator creates. Required only when the subject does not exist. |
+| `--domain` | none | Domain for a subject the generator creates. Required when the subject does not exist, and ignored when it does. |
 | `--required-approvals` | `1` | Number of approvals a request needs. Stored per request, but not accepted by `:request`. |
 | `--overdue-after` | none | Move a waiting request to `:overdue`. Omitted means no `:overdue` step. |
 | `--transition-log` | `true` | Composes `ash_workflow.gen.transition_log` with `--actor` set to the approver. `--no-transition-log` skips it. |
