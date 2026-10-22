@@ -137,7 +137,7 @@ authorize_if actor_attribute_equals(:role, :finance_manager)
 
 ### Open a request
 
-Call `request/2` wherever a request should start, such as a submit action or a LiveView event. The actor becomes the requester. The generated `:request` action has no policy, so add one to the approval resource if your application restricts who can open a request:
+Call `request/2` wherever a request should start, such as a submit action or a LiveView event. The actor becomes the requester:
 
 ```elixir
 MyApp.Expenses.ExpenseApproval.request(expense.id, actor: current_user)
