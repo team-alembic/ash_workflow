@@ -46,7 +46,9 @@ defmodule AshWorkflow.Transformers.AddActions do
   """
   use Spark.Dsl.Transformer
 
+  alias Ash.Resource.Actions.Emit, as: ActionEmit
   alias Ash.Resource.Builder
+  alias Ash.Resource.Change
   alias Ash.Resource.Dsl, as: ResourceDsl
   alias Ash.Resource.Info, as: ResourceInfo
   alias AshStateMachine.BuiltinChanges
@@ -55,6 +57,7 @@ defmodule AshWorkflow.Transformers.AddActions do
   alias AshWorkflow.Changes.RecordEvent
   alias AshWorkflow.Changes.RefuseStaleTransition
   alias AshWorkflow.Changes.UndoTransition
+  alias AshWorkflow.Entities.Emit
   alias AshWorkflow.Entities.Every
   alias AshWorkflow.Entities.Step
   alias AshWorkflow.Entities.Timeout
@@ -80,6 +83,7 @@ defmodule AshWorkflow.Transformers.AddActions do
       |> add_every_changes(steps)
       |> add_on_error_actions(steps)
       |> add_undo_action()
+      |> declare_emits(steps)
 
     {:ok, dsl}
   end
@@ -521,6 +525,156 @@ defmodule AshWorkflow.Transformers.AddActions do
     end)
   end
 
+  # Puts each `RecordEvent`'s emit plan into its opts, and declares the plan's
+  # signals as dynamic emits on the action, since `Ash.Signals.emit_many/5`
+  # refuses a signal the action does not declare. Runs last so it sees every
+  # `RecordEvent` the steps above injected.
+  defp declare_emits(dsl, steps) do
+    case Info.signals(dsl) do
+      nil ->
+        dsl
+
+      signals ->
+        state_plan = state_change_plan(dsl, steps)
+        action_plans = action_plans(steps)
+
+        dsl
+        |> declare_initial_emits(signals, state_plan)
+        |> declare_action_emits(signals, state_plan, action_plans)
+    end
+  end
+
+  defp declare_initial_emits(dsl, signals, state_plan) do
+    dsl =
+      Transformer.replace_entity(
+        dsl,
+        [:changes],
+        dsl
+        |> Transformer.get_entities([:changes])
+        |> Enum.find(&record_event?/1)
+        |> put_emit_plan(state_plan),
+        &record_event?/1
+      )
+
+    dsl
+    |> Transformer.get_entities([:actions])
+    |> Enum.filter(&(&1.type == :create))
+    |> Enum.reduce(dsl, &replace_action(&2, add_dynamic_emits(&1, signals, state_plan)))
+  end
+
+  defp declare_action_emits(dsl, signals, state_plan, action_plans) do
+    dsl
+    |> Transformer.get_entities([:actions])
+    |> Enum.filter(&Enum.any?(Map.get(&1, :changes, []), fn change -> record_event?(change) end))
+    |> Enum.reduce(dsl, fn action, dsl ->
+      {changes, plans} =
+        Enum.map_reduce(
+          action.changes,
+          [],
+          &plan_change(&1, &2, action.name, state_plan, action_plans)
+        )
+
+      replace_action(dsl, add_dynamic_emits(%{action | changes: changes}, signals, plans))
+    end)
+  end
+
+  defp plan_change(change, plans, action_name, state_plan, action_plans) do
+    if record_event?(change) do
+      {RecordEvent, opts} = change.change
+      action_plan = Map.get(action_plans, action_name, [])
+
+      plan =
+        if Keyword.get(opts, :touch_state_entered_at, true),
+          do: state_plan ++ action_plan,
+          else: action_plan
+
+      {put_emit_plan(change, plan), plans ++ plan}
+    else
+      {change, plans}
+    end
+  end
+
+  defp state_change_plan(dsl, steps) do
+    workflow_emits =
+      dsl
+      |> Transformer.get_entities([:workflow])
+      |> Enum.filter(&match?(%Emit{}, &1))
+      |> Enum.map(&emit_plan_entry(&1, :state_change))
+
+    step_emits =
+      Enum.flat_map(steps, fn step ->
+        Enum.map(step.emits, &emit_plan_entry(&1, {&1.on, step.name}))
+      end)
+
+    workflow_emits ++ step_emits
+  end
+
+  defp action_plans(steps) do
+    transition_entries =
+      for step <- steps,
+          Step.manual?(step),
+          transition <- step.transitions,
+          emit <- transition.emits,
+          do: {transition.name, emit_plan_entry(emit, {:from, step.name})}
+
+    timeout_entries =
+      for step <- steps,
+          timeout <- step.timeouts,
+          emit <- timeout.emits do
+        if timeout.transition_to,
+          do: {timeout_action_name(step, timeout), emit_plan_entry(emit, :always)},
+          else: {timeout.action, emit_plan_entry(emit, {:from, step.name})}
+      end
+
+    every_entries =
+      for step <- steps,
+          every <- step.everys,
+          emit <- every.emits,
+          do: {every.action, emit_plan_entry(emit, {:from, step.name})}
+
+    Enum.group_by(
+      transition_entries ++ timeout_entries ++ every_entries,
+      &elem(&1, 0),
+      &elem(&1, 1)
+    )
+  end
+
+  defp emit_plan_entry(emit, condition) do
+    %{signal: emit.name, fields: emit.fields, values: emit.values, when: condition}
+  end
+
+  defp record_event?(%Change{change: {RecordEvent, _opts}}), do: true
+  defp record_event?(_), do: false
+
+  defp put_emit_plan(%{change: {RecordEvent, opts}} = change, plan),
+    do: %{change | change: {RecordEvent, Keyword.put(opts, :emits, plan)}}
+
+  defp add_dynamic_emits(action, signals, plan) do
+    declared =
+      plan
+      |> Enum.map(& &1.signal)
+      |> Enum.uniq()
+      |> Enum.map(
+        &%ActionEmit{
+          signal_module: signals,
+          signal: &1,
+          dynamic?: true,
+          phase: :after_action
+        }
+      )
+
+    %{action | emits: Enum.uniq_by(action.emits ++ declared, &{&1.signal_module, &1.signal})}
+  end
+
+  defp replace_action(dsl, action) do
+    Transformer.replace_entity(
+      dsl,
+      [:actions],
+      action,
+      &(&1.name == action.name && &1.type == action.type)
+    )
+  end
+
   # Expands `defaults [...]` into real actions and marks primaries. Running
   # before it means asking whether a primary read exists while the answer is
   # still being decided, which is how this transformer used to generate a
@@ -534,5 +688,6 @@ defmodule AshWorkflow.Transformers.AddActions do
   def before?(AshOban.Transformers.SetDefaults), do: true
   def before?(AshOban.Transformers.DefineSchedulers), do: true
   def before?(AshOban.Transformers.DefineActionWorkers), do: true
+  def before?(Ash.Resource.Transformers.SetSignalsOut), do: true
   def before?(_), do: false
 end

@@ -4,6 +4,7 @@ defmodule AshWorkflow.Info do
   """
 
   alias Ash.Resource.Info, as: ResourceInfo
+  alias AshWorkflow.Entities.Emit
   alias AshWorkflow.Entities.Every
   alias AshWorkflow.Entities.Step
   alias AshWorkflow.Entities.Timeout
@@ -350,6 +351,48 @@ defmodule AshWorkflow.Info do
 
   defp column?(resource, field) do
     ResourceInfo.attribute(resource, field) != nil
+  end
+
+  @doc """
+  Returns the `Ash.Signals` module named by the workflow's `signals` option,
+  or `nil` if none is set.
+  """
+  @spec signals(Ash.Resource.t() | map()) :: module() | nil
+  def signals(resource) do
+    Extension.get_opt(resource, [:workflow], :signals, nil)
+  end
+
+  @doc """
+  Returns the `emit` entities declared directly on the workflow, which fire on
+  every state change.
+  """
+  @spec emits(Ash.Resource.t() | map()) :: [Emit.t()]
+  def emits(resource) do
+    resource
+    |> Extension.get_entities([:workflow])
+    |> Enum.filter(&match?(%Emit{}, &1))
+  end
+
+  @doc """
+  Returns the names of the workflow signals the given action may emit, or `[]`
+  if the action emits none.
+
+  These are the dynamic emits `AshWorkflow.Transformers.AddActions` declares on
+  the action for the `signals` module.
+  """
+  @spec action_signals(Ash.Resource.t(), atom()) :: [atom()]
+  def action_signals(resource, action_name) do
+    signals = signals(resource)
+
+    case ResourceInfo.action(resource, action_name) do
+      nil ->
+        []
+
+      action ->
+        for %{signal_module: ^signals, dynamic?: true, signal: signal} <-
+              Map.get(action, :emits, []),
+            do: signal
+    end
   end
 
   @doc """

@@ -72,5 +72,7 @@ defmodule AshWorkflowTest.Domain do
     resource AshWorkflowTest.PreciseRetryWorkflow
     resource AshWorkflowTest.PreciseActionTimeoutWorkflow
     resource AshWorkflowTest.PreciseRevisitWorkflow
+    resource AshWorkflowTest.SignalWorkflow
+    resource AshWorkflowTest.SignalListener
   end
 end

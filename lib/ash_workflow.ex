@@ -9,6 +9,25 @@ defmodule AshWorkflow do
 
   alias AshWorkflow.Entities
 
+  @emit %Spark.Dsl.Entity{
+    name: :emit,
+    describe: "Fires a signal from the workflow's `signals` module when this runs.",
+    target: Entities.Emit,
+    args: [:name],
+    schema: Entities.Emit.attribute_schema(),
+    transform: {Entities.Emit, :transform, []}
+  }
+
+  @step_emit %Spark.Dsl.Entity{
+    name: :emit,
+    describe:
+      "Fires a signal from the workflow's `signals` module when the record enters or leaves this step.",
+    target: Entities.Emit,
+    args: [:name],
+    schema: Entities.Emit.step_attribute_schema(),
+    transform: {Entities.Emit, :transform, []}
+  }
+
   @route %Spark.Dsl.Entity{
     name: :route,
     describe: "A conditional target for a transition. Evaluated at runtime.",
@@ -57,7 +76,8 @@ defmodule AshWorkflow do
     args: [:name],
     schema: Entities.Transition.attribute_schema(),
     entities: [
-      routes: [@route]
+      routes: [@route],
+      emits: [@emit]
     ]
   }
 
@@ -82,7 +102,8 @@ defmodule AshWorkflow do
     args: [:name],
     schema: Entities.Timeout.attribute_schema(),
     entities: [
-      retry: [@retry]
+      retry: [@retry],
+      emits: [@emit]
     ],
     singleton_entity_keys: [:retry]
   }
@@ -95,7 +116,8 @@ defmodule AshWorkflow do
     args: [:name, {:optional, :interval}],
     schema: Entities.Every.attribute_schema(),
     entities: [
-      retry: [@retry]
+      retry: [@retry],
+      emits: [@emit]
     ],
     singleton_entity_keys: [:retry]
   }
@@ -146,7 +168,8 @@ defmodule AshWorkflow do
       timeouts: [@timeout],
       everys: [@every],
       on_success: [@on_success],
-      retry: [@retry]
+      retry: [@retry],
+      emits: [@step_emit]
     ],
     singleton_entity_keys: [:retry]
   }
@@ -184,6 +207,13 @@ defmodule AshWorkflow do
 
         See `AshWorkflow.Scheduler` for the behaviour an implementation
         satisfies.
+        """
+      ],
+      signals: [
+        type: :atom,
+        doc: """
+        The `Ash.Signals` module that declares every signal this workflow's
+        `emit` entities name. Required once anything declares `emit`.
         """
       ],
       queue: [
@@ -234,7 +264,7 @@ defmodule AshWorkflow do
         """
       ]
     ],
-    entities: [@step, @transition_log, @undo]
+    entities: [@step, @transition_log, @undo, @emit]
   }
 
   use Spark.Dsl.Extension,
@@ -260,6 +290,7 @@ defmodule AshWorkflow do
       AshWorkflow.Verifiers.ValidateRetry,
       AshWorkflow.Verifiers.ValidateTransitionLog,
       AshWorkflow.Verifiers.ValidateUndo,
-      AshWorkflow.Verifiers.ValidateStepPolicies
+      AshWorkflow.Verifiers.ValidateStepPolicies,
+      AshWorkflow.Verifiers.ValidateSignals
     ]
 end

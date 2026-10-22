@@ -13,7 +13,8 @@ defmodule AshWorkflow.Entities.Step do
     timeouts: [],
     everys: [],
     on_success: [],
-    retry: nil
+    retry: nil,
+    emits: []
   ]
 
   @type t :: %__MODULE__{
@@ -27,7 +28,8 @@ defmodule AshWorkflow.Entities.Step do
           transitions: [AshWorkflow.Entities.Transition.t()],
           timeouts: [AshWorkflow.Entities.Timeout.t()],
           everys: [AshWorkflow.Entities.Every.t()],
-          retry: AshWorkflow.Entities.Retry.t() | nil
+          retry: AshWorkflow.Entities.Retry.t() | nil,
+          emits: [AshWorkflow.Entities.Emit.t()]
         }
 
   @schema [
