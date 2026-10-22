@@ -150,6 +150,24 @@ defmodule Mix.Tasks.AshWorkflow.Gen.VerificationTest do
       assert document.verified?
       assert length(document.verifications) == 2
     end
+
+    test "is not verified while a new verification of a verified subject runs", %{
+      tmp_dir: tmp_dir
+    } do
+      recipe = verification_for_documents(tmp_dir)
+      document = document(recipe, "genuine")
+
+      {:ok, _verified} = recipe |> submit(document) |> transition(:begin)
+      Timeline.run_due(recipe.modules[IdentityDocumentVerification])
+      assert Ash.load!(document, :verified?).verified?
+
+      {:ok, resubmitted} = recipe |> submit(document) |> transition(:begin)
+      assert resubmitted.state == :verifying
+      refute Ash.load!(document, :verified?).verified?
+
+      Timeline.run_due(recipe.modules[IdentityDocumentVerification])
+      assert Ash.load!(document, :verified?).verified?
+    end
   end
 
   test "creates a missing subject in the given domain and verifies against it", %{

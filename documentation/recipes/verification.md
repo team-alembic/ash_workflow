@@ -133,7 +133,7 @@ end
 
 ### Use the outcome
 
-`verified?` on the subject is true when its latest verification is in `:verified`. Gating a subject action on it is up to you, for example with a policy on the subject:
+`verified?` on the subject is true when its latest verification is in `:verified`. It reads `latest_verification` only. Submitting a new verification for a verified subject turns `verified?` false until the new verification reaches `:verified`. Gating a subject action on it is up to you, for example with a policy on the subject:
 
 ```elixir
 policy action(:withdraw) do
