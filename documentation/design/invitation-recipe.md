@@ -180,7 +180,7 @@ end
 
 ## Code shared with approval and expiry
 
-`gen.invitation` uses `Mix.AshWorkflow.Recipe` as it stands: `parse_duration/2`, `ensure_subject/5` with `storage_like/2`, `add_subject_edits/4`, `compose_transition_log/3`, and the rendering helpers. `postgres_block/3` takes the `identity_index_names` and `identity_wheres_to_sql` lines as its `extra` argument. Nothing is added to the shared module.
+`gen.invitation` uses `Mix.AshWorkflow.Recipe` as it stands: `parse_duration/2`, `ensure_subject/5` with the invitee as the resource whose storage a created subject copies, `key_type/3`, `belongs_to/3`, `add_subject_edits/4`, `compose_transition_log/3`, and the rendering helpers. `postgres_block/3` takes the `identity_index_names` and `identity_wheres_to_sql` lines as its `extra` argument. Nothing is added to the shared module.
 
 ## Open questions
 
