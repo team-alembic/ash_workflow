@@ -50,8 +50,12 @@ defmodule AshWorkflow.Verifiers.ValidateTimeoutFiredFields do
 
     every_fields =
       Enum.flat_map(steps, fn step ->
-        Enum.map(step.everys, fn every ->
-          {Every.last_fired_field(step.name, every), "every :#{every.name} on step :#{step.name}"}
+        Enum.flat_map(step.everys, fn every ->
+          owner = "every :#{every.name} on step :#{step.name}"
+
+          [Every.last_fired_field(step.name, every), Every.fires_field(step.name, every)]
+          |> Enum.reject(&is_nil/1)
+          |> Enum.map(&{&1, owner})
         end)
       end)
 
