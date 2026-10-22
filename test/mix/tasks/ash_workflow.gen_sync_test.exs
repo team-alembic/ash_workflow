@@ -83,6 +83,32 @@ defmodule Mix.Tasks.AshWorkflow.Gen.SyncTest do
     |> Scheduler.execute(reload(sync), attempt: attempt)
   end
 
+  # A named timeline with nothing to sweep, so async tests do not share one.
+  defp start_timeline do
+    name = Module.concat(__MODULE__, "Timeline#{System.unique_integer([:positive])}")
+    start_supervised!({Timeline, name: name, resources: [], look_ahead_ms: 60_000})
+
+    name
+  end
+
+  # What `AshWorkflow.Scheduler.Precise` does when a sync enters :syncing.
+  defp arm(timeline, sync) do
+    works =
+      sync.__struct__ |> AshWorkflow.Info.scheduled_work() |> Enum.filter(&(&1.step == :syncing))
+
+    Timeline.deadline_changed(sync, works, timeline)
+  end
+
+  defp await_state(sync, state, timeout_ms \\ 5_000) do
+    deadline = System.monotonic_time(:millisecond) + timeout_ms
+
+    Stream.repeatedly(fn ->
+      Process.sleep(10)
+      reload(sync).state
+    end)
+    |> Enum.find(&(&1 == state or System.monotonic_time(:millisecond) > deadline))
+  end
+
   defp resync(sync, actor \\ @operator) do
     sync
     |> Ash.Changeset.for_update(:resync, %{}, actor: actor)
@@ -220,7 +246,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.SyncTest do
     } do
       recipe = sync_for_customers(tmp_dir)
       {:ok, sync} = start_sync(recipe)
-      FakePush.respond([:error, :error])
+      FakePush.respond(sync, [:error, :error])
 
       assert {:retry, 30_000} = push(sync, 1)
       assert %{state: :syncing, last_synced_at: nil} = reload(sync)
@@ -233,7 +259,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.SyncTest do
     test "a push that fails on every attempt moves the sync to failed", %{tmp_dir: tmp_dir} do
       recipe = sync_for_customers(tmp_dir)
       {:ok, sync} = start_sync(recipe)
-      FakePush.respond([:error, :error, :error])
+      FakePush.respond(sync, [:error, :error, :error])
 
       assert {:retry, _delay} = push(sync, 1)
       assert {:retry, _delay} = push(sync, 2)
@@ -264,16 +290,23 @@ defmodule Mix.Tasks.AshWorkflow.Gen.SyncTest do
       assert DateTime.after?(resynced.last_synced_at, first_synced_at)
     end
 
+    # The timeline numbers each attempt and re-arms a failed one after the
+    # backoff, so the attempt count here comes from the library.
     test "returns a failed sync to syncing with a fresh set of attempts", %{tmp_dir: tmp_dir} do
-      recipe = sync_for_customers(tmp_dir)
+      recipe = sync_for_customers(tmp_dir, ["--max-attempts", "3", "--backoff", "1s"])
+      timeline = start_timeline()
       {:ok, sync} = start_sync(recipe)
-      FakePush.respond([:error, :error, :error, :error])
+      FakePush.respond(sync, [:error, :error, :error, :error, :ok])
 
-      Enum.each(1..3, &push(sync, &1))
-      assert {:ok, %{state: :syncing}} = sync |> reload() |> resync()
+      arm(timeline, sync)
+      assert await_state(sync, :failed) == :failed
+      assert FakePush.remaining(sync) == [:error, :ok]
 
-      assert {:retry, _delay} = push(sync, 1)
-      assert {:ok, %{state: :synced}} = push(sync, 2)
+      assert {:ok, %{state: :syncing} = resynced} = sync |> reload() |> resync()
+      arm(timeline, resynced)
+
+      assert await_state(sync, :synced) == :synced
+      assert FakePush.remaining(sync) == []
 
       assert recipe |> log() |> Enum.map(& &1.to_state) |> Enum.sort() ==
                [:failed, :synced, :syncing, :syncing]
