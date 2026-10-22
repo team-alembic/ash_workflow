@@ -36,7 +36,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.Approval.Docs do
       subject's name with `Approval` appended.
     * `--domain` - the domain for a subject the task creates. Required only
       when the subject does not exist.
-    * `--required-approvals` - the default number of approvals a request
+    * `--required-approvals` - the number of approvals a request
       needs. Defaults to `1`.
     * `--overdue-after` - moves a request nobody has decided to `:overdue`
       after this long, given as `30m`, `12h`, `2d` or `2w`. Without it, no
@@ -306,7 +306,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
         defaults [:read]
 
         create :request do
-          accept [:subject_id, :required_approvals]
+          accept [:subject_id]
           change relate_actor(:requested_by)
           change set_attribute(:requested_at, &DateTime.utc_now/0)
         end

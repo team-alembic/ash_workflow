@@ -16,7 +16,7 @@ mix ash_workflow.gen.approval MyApp.Expenses.Expense \
 | `--approver` | required | The actor resource. Decisions and the requester belong to it. |
 | `--module` | `<Subject>Approval` | Name of the generated approval resource. |
 | `--domain` | the subject's domain | Domain for a subject the task creates. Required only when the subject does not exist. |
-| `--required-approvals` | `1` | Default number of approvals a request needs. Each request stores its own count, so a caller can override it. |
+| `--required-approvals` | `1` | Number of approvals a request needs. Each request stores the count, and the `:request` action does not accept it, so a requester cannot lower their own quorum. |
 | `--overdue-after` | none | Moves a waiting request to `:overdue` after this long. Accepts `30m`, `12h`, `2d` and `2w`. Without it, no `:overdue` step is generated. |
 | `--transition-log` | `true` | Also runs `mix ash_workflow.gen.transition_log` for the approval resource, recording the approver as the actor. Pass `--no-transition-log` to skip it. |
 
@@ -124,8 +124,9 @@ Call `request/2` wherever a request should start, such as a submit action or a L
 
 ```elixir
 MyApp.Expenses.ExpenseApproval.request(expense.id, actor: current_user)
-MyApp.Expenses.ExpenseApproval.request(expense.id, %{required_approvals: 3}, actor: current_user)
 ```
+
+The `:request` action accepts only `subject_id`. A quorum that varies by request belongs in a change on `:request` that sets `required_approvals` from the subject, such as the expense amount, rather than from caller input.
 
 ### Approve, reject or cancel
 

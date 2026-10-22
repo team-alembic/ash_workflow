@@ -1,6 +1,7 @@
 defmodule Mix.Tasks.AshWorkflow.Gen.ApprovalTest do
   use AshWorkflow.RecipeCase, async: true
 
+  alias Ash.Error.Invalid.NoSuchInput
   alias AshWorkflow.Scheduler.Precise.Timeline
   alias AshWorkflowTest.RecipeFixtures.Approval.Domain
   alias AshWorkflowTest.RecipeFixtures.Approval.Expense
@@ -58,11 +59,9 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ApprovalTest do
     |> Ash.create!()
   end
 
-  defp request(recipe, subject, requester, input \\ %{}) do
+  defp request(recipe, subject, requester) do
     recipe.modules[ExpenseApproval]
-    |> Ash.Changeset.for_create(:request, Map.put(input, :subject_id, subject.id),
-      actor: requester
-    )
+    |> Ash.Changeset.for_create(:request, %{subject_id: subject.id}, actor: requester)
     |> Ash.create!()
   end
 
@@ -74,11 +73,9 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ApprovalTest do
     |> Ash.update()
   end
 
-  defp requested_days_ago(recipe, subject, requester, days, input \\ %{}) do
+  defp requested_days_ago(recipe, subject, requester, days) do
     recipe.modules[ExpenseApproval]
-    |> Ash.Changeset.for_create(:request, Map.put(input, :subject_id, subject.id),
-      actor: requester
-    )
+    |> Ash.Changeset.for_create(:request, %{subject_id: subject.id}, actor: requester)
     |> Ash.Changeset.force_change_attribute(
       :requested_at,
       DateTime.add(DateTime.utc_now(), -days, :day)
@@ -246,13 +243,14 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ApprovalTest do
       assert {:ok, %{state: :approved}} = decide(approval, :approve, user(recipe))
     end
 
-    test "can be lowered for one request", %{tmp_dir: tmp_dir} do
+    test "cannot be lowered by the requester", %{tmp_dir: tmp_dir} do
       recipe = approval_for_expenses(tmp_dir, ["--required-approvals", "2"])
+      input = %{subject_id: expense(recipe).id, required_approvals: 1}
 
-      approval =
-        request(recipe, expense(recipe), user(recipe, :employee), %{required_approvals: 1})
-
-      assert {:ok, %{state: :approved}} = decide(approval, :approve, user(recipe))
+      assert {:error, %Ash.Error.Invalid{errors: [%NoSuchInput{input: :required_approvals}]}} =
+               recipe.modules[ExpenseApproval]
+               |> Ash.Changeset.for_create(:request, input, actor: user(recipe, :employee))
+               |> Ash.create()
     end
 
     test "one rejection rejects the request", %{tmp_dir: tmp_dir} do
@@ -284,11 +282,10 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ApprovalTest do
     end
 
     test "a partial approval does not restart the overdue clock", %{tmp_dir: tmp_dir} do
-      recipe = approval_for_expenses(tmp_dir, ["--overdue-after", "2d"])
-      employee = user(recipe, :employee)
+      recipe =
+        approval_for_expenses(tmp_dir, ["--overdue-after", "2d", "--required-approvals", "2"])
 
-      approval =
-        requested_days_ago(recipe, expense(recipe), employee, 3, %{required_approvals: 2})
+      approval = requested_days_ago(recipe, expense(recipe), user(recipe, :employee), 3)
 
       assert {:ok, %{state: :pending} = approval} = decide(approval, :approve, user(recipe))
 
