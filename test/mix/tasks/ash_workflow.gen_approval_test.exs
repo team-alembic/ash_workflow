@@ -130,19 +130,27 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ApprovalTest do
       refute Ash.load!(expense, :approved?).approved?
     end
 
-    test "records each decision and transition with its approver", %{tmp_dir: tmp_dir} do
+    test "records each decision and transition with the actor who made it", %{
+      tmp_dir: tmp_dir
+    } do
       recipe = approval_for_expenses(tmp_dir)
+      requester = user(recipe, :employee)
       approver = user(recipe)
 
       {:ok, _approved} =
-        recipe |> request(expense(recipe), user(recipe, :employee)) |> decide(:approve, approver)
+        recipe |> request(expense(recipe), requester) |> decide(:approve, approver)
 
       assert [decision] = Ash.read!(recipe.modules[ExpenseApprovalDecision])
       assert {decision.approver_id, decision.decision} == {approver.id, :approved}
       assert decision.comment == "approve"
 
-      log = recipe.modules[ExpenseApprovalTransition] |> Ash.read!() |> Enum.map(& &1.to_state)
-      assert Enum.sort(log) == [:approved, :pending]
+      log =
+        recipe.modules[ExpenseApprovalTransition]
+        |> Ash.Query.sort(occurred_at: :asc, id: :asc)
+        |> Ash.read!()
+        |> Enum.map(&{&1.to_state, &1.user_id})
+
+      assert log == [pending: requester.id, approved: approver.id]
     end
   end
 
@@ -259,6 +267,17 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ApprovalTest do
       assert {:ok, approval} = decide(approval, :approve, approver)
       assert {:error, %Ash.Error.Forbidden{}} = decide(approval, :approve, approver)
       assert {:error, %Ash.Error.Forbidden{}} = decide(approval, :reject, approver)
+
+      # Past the policy, the decision's :unique_approver identity still refuses it.
+      assert {:error, %Ash.Error.Invalid{errors: [identity_error]}} =
+               approval
+               |> Ash.Changeset.for_update(:reject, %{}, actor: approver, authorize?: false)
+               |> Ash.update()
+
+      assert %Ash.Error.Changes.InvalidChanges{
+               fields: [:approval_id, :approver_id],
+               message: "has already been taken"
+             } = identity_error
     end
 
     test "only the requester can cancel", %{tmp_dir: tmp_dir} do
