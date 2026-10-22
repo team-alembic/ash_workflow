@@ -151,7 +151,7 @@ A generic action taking `person_ids` was the alternative. Its `subject_id` argum
 
 The alternative was a plain create that fails on the identity. Every caller adding a new starter would then have to read the existing rows and subtract them first, which is the race the identity exists to close.
 
-`AshWorkflow.Changes.RecordEvent` runs on every create and appended an `:initial` log row each time, including on an upsert that returned an existing row. A repeated `request` then logged the person as entering their current step a second time. This PR fixes it in the library: `RecordEvent` writes no log row when a create's record carries `upsert_action: :update` metadata, which both `Ash.DataLayer.Ets` and AshPostgres set on an upsert that found an existing row.
+The upsert relies on `AshWorkflow.Changes.RecordEvent` as fixed in #147, and on Ash 3.29 or later. Before #147, `RecordEvent` appended an `:initial` log row on every create, including an upsert that returned an existing row. A repeated `request` then logged the person as entering their current step a second time. After #147, `RecordEvent` writes no log row and leaves the scheduler alone when a create's record carries `upsert_action: :update` metadata. AshPostgres sets that metadata on an upsert that found an existing row, and `Ash.DataLayer.Ets` sets it from Ash 3.29. #147 tests the Postgres upsert in the library's own suite. The recipe's tests run on ETS, because the Postgres fixture resources set `migrate? false`.
 
 A person acknowledges a subject once. A terms update that must be acknowledged again is a new subject row, such as a new version of the terms, not a second acknowledgement of the old one.
 
