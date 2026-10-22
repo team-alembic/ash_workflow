@@ -310,15 +310,37 @@ defmodule Mix.Tasks.AshWorkflow.Gen.PublicationTest do
     end
 
     test "only the transitions in the diagram are allowed from each step", %{recipe: recipe} do
-      draft = draft!(recipe)
+      allowed = %{
+        draft: [:schedule, :publish_now],
+        scheduled: [:reschedule, :unschedule, :publish_now],
+        published: [:unpublish],
+        unpublished: [:republish]
+      }
 
-      for action <- [:reschedule, :unschedule, :unpublish, :republish] do
-        assert {:error, _error} = move(draft, action, %{publish_at: hours_from_now(1)})
+      for {step, actions} <- allowed,
+          action <- [:schedule, :reschedule, :unschedule, :publish_now, :unpublish, :republish],
+          action not in actions do
+        publication = recipe |> draft!() |> in_step(step)
+
+        assert {:error, error} = move(publication, action, valid_params(action)),
+               "#{action} was allowed from #{step}"
+
+        assert invalid_transition?(error), Exception.message(error)
+        assert reload(publication).state == step
       end
-
-      published = move!(draft, :publish_now)
-      assert {:error, _error} = move(published, :schedule, %{publish_at: hours_from_now(1)})
     end
+  end
+
+  defp valid_params(action) when action in [:schedule, :reschedule],
+    do: %{publish_at: hours_from_now(24)}
+
+  defp valid_params(_action), do: %{}
+
+  # `publish_now` leaves two steps, so AshWorkflow routes it and reports a
+  # step with no route instead of AshStateMachine's NoMatchingTransition.
+  defp invalid_transition?(error) do
+    Exception.message(error) =~
+      ~r/NoMatchingTransition|No matching condition for transition :publish_now/
   end
 
   describe "the deadlines" do
