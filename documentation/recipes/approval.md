@@ -154,7 +154,7 @@ MyApp.Expenses.ExpenseApproval.cancel(approval, actor: current_user)
 
 ### Use the outcome
 
-`approved?` on the subject is true when its latest approval is approved. Gating a subject action on it is up to you, for example with a policy on the subject:
+`approved?` on the subject is `true` when its latest approval is approved, and `false` otherwise, including for a subject with no approval. Gating a subject action on it is up to you, for example with a policy on the subject:
 
 ```elixir
 policy action(:reimburse) do

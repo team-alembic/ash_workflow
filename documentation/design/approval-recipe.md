@@ -55,9 +55,9 @@ The subject gains, by `Ash.Resource.Igniter` edits, and nothing else:
 
 - `has_many :approvals, MyApp.Expenses.ExpenseApproval`
 - `has_one :latest_approval`, sorted by `inserted_at` descending
-- `calculate :approved?, :boolean, expr(latest_approval.state == :approved)`
+- `calculate :approved?, :boolean, expr(latest_approval.state == :approved || false)`
 
-The calculation has no `public?: true`. `Ash.Resource.Igniter.defines_calculation/3` only matches a three-argument `calculate`, so a fourth argument would make a second run add the calculation again.
+`|| false` turns the `nil` that a subject with no approval reads into `false`. The calculation has no `public?: true`. `Ash.Resource.Igniter.defines_calculation/3` only matches a three-argument `calculate`, so a fourth argument would make a second run add the calculation again.
 
 The generator adds no change, argument or policy to the subject's actions. Gating a subject action on `approved?` is an application decision.
 

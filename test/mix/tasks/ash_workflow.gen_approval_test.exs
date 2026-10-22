@@ -120,14 +120,16 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ApprovalTest do
       recipe = approval_for_expenses(tmp_dir)
       expense = expense(recipe)
 
+      assert Ash.load!(expense, :approved?).approved? == false
+
       approval = request(recipe, expense, user(recipe, :employee))
-      refute Ash.load!(expense, :approved?).approved?
+      assert Ash.load!(expense, :approved?).approved? == false
 
       assert {:ok, %{state: :approved}} = decide(approval, :approve, user(recipe))
-      assert Ash.load!(expense, :approved?).approved?
+      assert Ash.load!(expense, :approved?).approved? == true
 
       request(recipe, expense, user(recipe, :employee))
-      refute Ash.load!(expense, :approved?).approved?
+      assert Ash.load!(expense, :approved?).approved? == false
     end
 
     test "records each decision and transition with the actor who made it", %{

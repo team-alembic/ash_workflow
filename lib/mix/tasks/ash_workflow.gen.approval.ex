@@ -272,7 +272,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       |> ResourceIgniter.add_new_calculation(
         names.subject,
         :approved?,
-        "calculate :approved?, :boolean, expr(latest_approval.state == :approved)"
+        "calculate :approved?, :boolean, expr(latest_approval.state == :approved || false)"
       )
     end
 
