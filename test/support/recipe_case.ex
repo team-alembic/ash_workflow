@@ -12,6 +12,8 @@ defmodule AshWorkflow.RecipeCase do
 
   import ExUnit.Assertions
 
+  alias AshWorkflow.RecipeCase.ModuleRenamer
+
   @scaffold "lib/ash_workflow.ex"
 
   defstruct [:igniter, changed: %{}, notices: [], warnings: [], modules: %{}]
@@ -75,17 +77,21 @@ defmodule AshWorkflow.RecipeCase do
     namespace = "RecipeRun#{System.unique_integer([:positive])}"
     sources = sources(recipe)
 
-    renames =
+    originals =
       sources
       |> Map.values()
-      |> Enum.flat_map(&defined_modules/1)
-      |> Map.new(&{&1, Module.concat([namespace | Module.split(&1)])})
+      |> Enum.flat_map(&ModuleRenamer.defined_modules/1)
+      |> MapSet.new()
+
+    renames = Map.new(originals, &{&1, Module.concat([namespace | Module.split(&1)])})
 
     files =
       Enum.map(sources, fn {path, content} ->
+        renamed = ModuleRenamer.rename(content, namespace, originals)
+        refute_original_references(path, renamed, originals)
         file = Path.join(tmp_dir, path)
         File.mkdir_p!(Path.dirname(file))
-        File.write!(file, rename_modules(content, renames))
+        File.write!(file, renamed)
         file
       end)
 
@@ -140,24 +146,20 @@ defmodule AshWorkflow.RecipeCase do
         do: {path, content}
   end
 
-  defp defined_modules(content) do
-    {_ast, modules} =
-      content
-      |> Code.string_to_quoted!()
-      |> Macro.prewalk([], fn
-        {:defmodule, _, [{:__aliases__, _, parts} | _]} = node, acc ->
-          {node, [Module.concat(parts) | acc]}
+  defp refute_original_references(path, renamed, originals) do
+    case ModuleRenamer.references(renamed, originals) do
+      [] ->
+        :ok
 
-        node, acc ->
-          {node, acc}
-      end)
+      modules ->
+        flunk("""
+        #{path} still references #{Enum.map_join(modules, ", ", &inspect/1)} after renaming.
 
-    modules
-  end
+        RecipeCase could not rename these references. Write them as a plain or
+        aliased module name.
 
-  defp rename_modules(content, renames) do
-    Enum.reduce(renames, content, fn {from, to}, content ->
-      String.replace(content, ~r/(?<![\w.])#{Regex.escape(inspect(from))}(?!\w)/, inspect(to))
-    end)
+        #{renamed}
+        """)
+    end
   end
 end

@@ -47,4 +47,58 @@ defmodule AshWorkflow.RecipeCaseTest do
 
     assert record.title == "Broken scanner"
   end
+
+  test "renames references made through grouped, partial and nested-module aliases", %{
+    tmp_dir: tmp_dir
+  } do
+    files = %{
+      "lib/greeting/name.ex" => """
+      defmodule AshWorkflowTest.RecipeCaseFixtures.Greeting.Name do
+        def value, do: "Ada"
+      end
+      """,
+      "lib/greeting/punctuation.ex" => """
+      defmodule AshWorkflowTest.RecipeCaseFixtures.Greeting.Punctuation do
+        def mark, do: "!"
+      end
+      """,
+      "lib/greeting/greeter.ex" => """
+      defmodule AshWorkflowTest.RecipeCaseFixtures.Greeting.Greeter do
+        alias AshWorkflowTest.RecipeCaseFixtures.Greeting
+        alias AshWorkflowTest.RecipeCaseFixtures.Greeting.{Name, Punctuation}
+
+        defmodule Changes.Shout do
+          def call(text), do: String.upcase(text)
+        end
+
+        def greet, do: Changes.Shout.call("hello " <> Name.value() <> Punctuation.mark())
+
+        def name, do: Greeting.Name.value()
+      end
+      """
+    }
+
+    recipe = files |> recipe(Map.keys(files)) |> compile(tmp_dir)
+    greeter = recipe.modules[AshWorkflowTest.RecipeCaseFixtures.Greeting.Greeter]
+    shout = recipe.modules[AshWorkflowTest.RecipeCaseFixtures.Greeting.Greeter.Changes.Shout]
+
+    assert greeter.greet() == "HELLO ADA!"
+    assert greeter.name() == "Ada"
+    assert Module.split(shout) == Module.split(greeter) ++ ["Changes", "Shout"]
+    assert Code.ensure_loaded?(shout)
+  end
+
+  test "fails when a written file still references a renamed module", %{tmp_dir: tmp_dir} do
+    files = %{
+      "lib/lookup.ex" => """
+      defmodule AshWorkflowTest.RecipeCaseFixtures.Lookup do
+        def self, do: :"Elixir.AshWorkflowTest.RecipeCaseFixtures.Lookup"
+      end
+      """
+    }
+
+    assert_raise ExUnit.AssertionError,
+                 ~r/lib\/lookup.ex still references AshWorkflowTest.RecipeCaseFixtures.Lookup/,
+                 fn -> files |> recipe(Map.keys(files)) |> compile(tmp_dir) end
+  end
 end
