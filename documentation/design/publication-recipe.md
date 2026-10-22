@@ -27,7 +27,7 @@ The generator owns the publication lifecycle: the steps, the transitions, the tw
 
 The application owns three things:
 
-- When a publication is created. The application calls `PostPublication.create/2` with the subject, from the subject's create action or wherever a draft starts. The generated `create` action has no policy, and the application adds one if it needs it.
+- When a publication is created. The application calls `PostPublication.create/2` with the subject, from the subject's create action or wherever a draft starts. The generated `create` action is guarded by `Checks.CanCreate`, which denies everyone until the application defines who may create one.
 - Who may move a publication. This is one `Ash.Policy.Check` module, generated to deny everyone.
 - What happens on publishing or unpublishing, such as a cache purge or a notification. The generator adds no notifier.
 
@@ -175,10 +175,14 @@ No action checks that a datetime is in the future, for the reason expiry's `rene
 
 ## Who may publish
 
-The generator writes `MyApp.Blog.PostPublication.Checks.CanPublish`, which denies everyone. One policy covers every transition a person makes:
+The generator writes `MyApp.Blog.PostPublication.Checks.CanCreate` and `MyApp.Blog.PostPublication.Checks.CanPublish`, which both deny everyone. `CanCreate` guards `:create`, and one policy with `CanPublish` covers every transition a person makes:
 
 ```elixir
 policies do
+  policy action(:create) do
+    authorize_if MyApp.Blog.PostPublication.Checks.CanCreate
+  end
+
   policy action([:schedule, :reschedule, :unschedule, :publish_now, :unpublish, :republish]) do
     authorize_if MyApp.Blog.PostPublication.Checks.CanPublish
   end
@@ -187,7 +191,7 @@ end
 
 One check rather than one per transition, because the people who schedule a post are the people who take it down in most applications. An application that separates them splits the policy and adds a check of its own.
 
-`AshWorkflow.Transformers.AddPolicies` allows `create`, `read` and the scheduler's timeout transitions, so a publication can be created and can go live on schedule before the application has written `CanPublish`.
+`AshWorkflow.Transformers.AddPolicies` allows `read` and the scheduler's timeout transitions, so a publication that was created goes live on schedule before the application has written `CanPublish`.
 
 ## Code shared with other recipes
 

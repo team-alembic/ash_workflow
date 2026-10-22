@@ -19,9 +19,10 @@ When the subject does not exist, the task creates it with `mix ash.gen.resource`
 
 ## What it generates
 
-For the command above, the task writes two modules and edits the subject:
+For the command above, the task writes three modules and edits the subject:
 
 - `MyApp.Blog.PostPublication` runs the workflow. It belongs to the post and holds `publish_at` and `unpublish_at`. An identity on `subject_id` allows one publication per post.
+- `MyApp.Blog.PostPublication.Checks.CanCreate` decides who may create a publication. It denies everyone as generated.
 - `MyApp.Blog.PostPublication.Checks.CanPublish` decides who may schedule, publish and unpublish. It denies everyone as generated.
 - `MyApp.Blog.Post` gains `has_one :publication` and a `published?` calculation. The task adds no change, argument or policy to the subject's actions.
 
@@ -111,7 +112,20 @@ MyApp.Blog.PostPublication.create(post.id)
 
 A second publication for the same post fails on the `:unique_subject` identity.
 
-The generated `:create` action has no policy. Add one to the publication resource if your application restricts who can create a publication.
+`CanCreate` denies everyone, so no publication can be created until you change it. Replace its `match?/3`, or replace the `authorize_if` line in the `:create` policy with a built-in check:
+
+```elixir
+policies do
+  policy action(:create) do
+    authorize_if actor_attribute_equals(:role, :editor)
+  end
+end
+```
+
+Code that creates a publication on the application's behalf, such as the subject's create action, can pass `authorize?: false` instead.
+
+Reads stay open by default. `AshWorkflow` authorizes `:read` on the publication resource for every actor. Add a read policy if publications are private.
+
 ### Decide who may publish
 
 `CanPublish` denies everyone, so no transition a person makes succeeds until you change it. One policy covers `schedule`, `reschedule`, `unschedule`, `publish_now`, `unpublish` and `republish`. Replace `match?/3` in `CanPublish`, or replace the `authorize_if` line with a built-in check:

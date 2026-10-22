@@ -19,8 +19,9 @@ defmodule Mix.Tasks.AshWorkflow.Gen.Publication.Docs do
     calculation. When the subject does not exist, it is created with
     `mix ash.gen.resource` first.
 
-    Nobody may schedule, publish or unpublish until the application defines who
-    can, in the generated `Checks.CanPublish` module.
+    Nobody may create a publication until the application defines who can, in
+    the generated `Checks.CanCreate` module. Nobody may schedule, publish or
+    unpublish until it does the same in `Checks.CanPublish`.
 
     ## Example
 
@@ -82,6 +83,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       config = %{
         subject: subject,
         publication: publication,
+        can_create: Module.concat([publication, Checks, CanCreate]),
         can_publish: Module.concat([publication, Checks, CanPublish]),
         unpublish_at?: options[:with_unpublish_at],
         transition_log?: options[:transition_log]
@@ -141,14 +143,16 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
         config.publication,
         publication_contents(config, storage)
       )
+      |> ProjectModule.create_module(config.can_create, can_create_contents(config))
       |> ProjectModule.create_module(config.can_publish, can_publish_contents(config))
       |> DomainIgniter.add_resource_reference(storage.domain, config.publication)
       |> compose_transition_log(config)
       |> Igniter.add_notice("""
       Generated #{inspect(config.publication)} to publish #{inspect(config.subject)}.
 
-      Nobody can schedule, publish or unpublish yet. Define who may in \
-      #{inspect(config.can_publish)}, which denies everyone as generated.
+      Nobody can create, schedule, publish or unpublish yet. Define who may \
+      create a publication in #{inspect(config.can_create)} and who may \
+      publish in #{inspect(config.can_publish)}. Both deny everyone as generated.
       """)
     end
 
@@ -213,6 +217,8 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       end
 
       policies do
+        #{Recipe.create_policy(:create, config.can_create)}
+
         policy action([:schedule, :reschedule, :unschedule, :publish_now, :unpublish, :republish]) do
           authorize_if #{inspect(config.can_publish)}
         end
@@ -311,6 +317,13 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
 
     defp unpublish_at_attribute(true),
       do: "attribute :unpublish_at, :utc_datetime_usec, public?: true"
+
+    defp can_create_contents(config) do
+      Recipe.deny_check_contents(
+        "Decides who may create a `#{inspect(config.publication)}` for a subject.",
+        "actor may create a publication for this subject"
+      )
+    end
 
     defp can_publish_contents(config) do
       Recipe.deny_check_contents(

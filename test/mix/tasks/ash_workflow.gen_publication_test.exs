@@ -10,7 +10,8 @@ defmodule Mix.Tasks.AshWorkflow.Gen.PublicationTest do
 
   @fixtures "test/support/recipe_fixtures/publication"
   @files ["#{@fixtures}/domain.ex", "#{@fixtures}/post.ex"]
-  @can_publish "lib/ash_workflow_test/recipe_fixtures/publication/post_publication/checks/can_publish.ex"
+  @checks "lib/ash_workflow_test/recipe_fixtures/publication/post_publication/checks"
+  @deny_all "def match?(_actor, _context, _opts), do: false"
   @editor %{id: "editor", role: :editor}
 
   defp generate(files \\ @files, argv) do
@@ -22,17 +23,25 @@ defmodule Mix.Tasks.AshWorkflow.Gen.PublicationTest do
   defp publication_for_posts(tmp_dir, argv \\ ["--with-unpublish-at"]) do
     [inspect(Post) | argv]
     |> generate()
+    |> allow_creators()
     |> allow_editors()
     |> compile(tmp_dir)
   end
 
   # What an application does once it has generated the recipe: fill in
-  # CanPublish. Here anyone with the :editor role may publish.
+  # CanCreate and CanPublish. Here any actor may create a publication, and
+  # anyone with the :editor role may publish.
+  defp allow_creators(recipe, checks \\ @checks) do
+    edit_source(recipe, "#{checks}/can_create.ex", fn source ->
+      String.replace(source, @deny_all, "def match?(actor, _context, _opts), do: is_map(actor)")
+    end)
+  end
+
   defp allow_editors(recipe) do
-    edit_source(recipe, @can_publish, fn source ->
+    edit_source(recipe, "#{@checks}/can_publish.ex", fn source ->
       String.replace(
         source,
-        "def match?(_actor, _context, _opts), do: false",
+        @deny_all,
         "def match?(actor, _context, _opts), do: is_map(actor) and actor.role == :editor"
       )
     end)
@@ -55,7 +64,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.PublicationTest do
     subject = subject || post(recipe)
 
     recipe.modules[PostPublication]
-    |> Ash.Changeset.for_create(:create, %{subject_id: subject.id})
+    |> Ash.Changeset.for_create(:create, %{subject_id: subject.id}, actor: @editor)
     |> Ash.create()
   end
 
@@ -123,6 +132,9 @@ defmodule Mix.Tasks.AshWorkflow.Gen.PublicationTest do
     recipe =
       @files
       |> generate([inspect(Page), "--domain", inspect(Domain)])
+      |> allow_creators(
+        "lib/ash_workflow_test/recipe_fixtures/publication/page_publication/checks"
+      )
       |> compile(tmp_dir)
 
     page_module = recipe.modules[Page]
@@ -137,7 +149,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.PublicationTest do
 
     publication =
       publication_module
-      |> Ash.Changeset.for_create(:create, %{subject_id: page.id})
+      |> Ash.Changeset.for_create(:create, %{subject_id: page.id}, actor: @editor)
       |> Ash.create!()
 
     assert publication.state == :draft
@@ -159,6 +171,33 @@ defmodule Mix.Tasks.AshWorkflow.Gen.PublicationTest do
 
     assert {:ok, _publication} = draft(recipe, post)
     assert {:error, %Ash.Error.Invalid{}} = draft(recipe, post)
+  end
+
+  describe "CanCreate" do
+    test "denies creating a publication as generated", %{tmp_dir: tmp_dir} do
+      recipe =
+        [inspect(Post), "--with-unpublish-at"]
+        |> generate()
+        |> allow_editors()
+        |> compile(tmp_dir)
+
+      assert {:error, %Ash.Error.Forbidden{}} = draft(recipe)
+      assert recipe.modules[PostPublication] |> Ash.read!() |> Enum.empty?()
+    end
+
+    test "allows creating a publication once the application permits the actor", %{
+      tmp_dir: tmp_dir
+    } do
+      recipe = publication_for_posts(tmp_dir)
+      subject = post(recipe)
+
+      assert {:error, %Ash.Error.Forbidden{}} =
+               recipe.modules[PostPublication]
+               |> Ash.Changeset.for_create(:create, %{subject_id: subject.id}, actor: nil)
+               |> Ash.create()
+
+      assert {:ok, %{state: :draft}} = draft(recipe, subject)
+    end
   end
 
   describe "CanPublish" do
@@ -201,6 +240,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.PublicationTest do
       recipe =
         [inspect(Post), "--with-unpublish-at"]
         |> generate()
+        |> allow_creators()
         |> compile(tmp_dir)
 
       for {action, {step, _to, params}} <- @transitions do
@@ -212,7 +252,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.PublicationTest do
         assert reload(publication).state == step
       end
 
-      assert Enum.any?(recipe.notices, &String.contains?(&1, "Nobody can schedule, publish"))
+      assert Enum.any?(recipe.notices, &String.contains?(&1, "Nobody can create, schedule"))
     end
 
     test "allows every transition once the application permits the actor", %{tmp_dir: tmp_dir} do
