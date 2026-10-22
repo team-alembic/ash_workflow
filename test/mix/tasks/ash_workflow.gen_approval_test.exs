@@ -397,6 +397,51 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ApprovalTest do
     end
   end
 
+  describe "locking a decided request" do
+    test "on Postgres, locks the row before :approve routes and before :reject", %{
+      tmp_dir: tmp_dir
+    } do
+      recipe =
+        [
+          "test/support/recipe_fixtures/transition_log/postgres_domain.ex",
+          "test/support/recipe_fixtures/transition_log/postgres_ticket.ex"
+        ]
+        |> generate([
+          "AshWorkflowTest.RecipeFixtures.TransitionLog.PostgresTicket",
+          "--approver",
+          "AshWorkflowTest.RecipeFixtures.TransitionLog.Reviewer",
+          "--no-transition-log"
+        ])
+        |> compile(tmp_dir)
+
+      approval =
+        recipe.modules[AshWorkflowTest.RecipeFixtures.TransitionLog.PostgresTicketApproval]
+
+      lock_then_route = [
+        Ash.Resource.Change.GetAndLockForUpdate,
+        AshWorkflow.Changes.ConditionalTransition
+      ]
+
+      assert approval |> change_modules(:approve) |> Enum.filter(&(&1 in lock_then_route)) ==
+               lock_then_route
+
+      assert Ash.Resource.Change.GetAndLockForUpdate in change_modules(approval, :reject)
+    end
+
+    test "on ETS, takes no lock", %{tmp_dir: tmp_dir} do
+      approval = approval_for_expenses(tmp_dir).modules[ExpenseApproval]
+
+      for action <- [:approve, :reject] do
+        refute Ash.Resource.Change.GetAndLockForUpdate in change_modules(approval, action)
+      end
+    end
+  end
+
+  defp change_modules(resource, action) do
+    for %{change: {module, _opts}} <- Ash.Resource.Info.action(resource, action).changes,
+        do: module
+  end
+
   test "shortens a Postgres identity index name past 63 bytes", %{tmp_dir: tmp_dir} do
     recipe =
       [

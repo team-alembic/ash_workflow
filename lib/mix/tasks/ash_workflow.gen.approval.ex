@@ -317,13 +317,13 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
         update :approve do
           require_atomic? false
           argument :comment, :string
-          change {#{inspect(names.record_decision)}, decision: :approved}
+          #{lock_for_update(storage)}change {#{inspect(names.record_decision)}, decision: :approved}
         end
 
         update :reject do
           require_atomic? false
           argument :comment, :string
-          change {#{inspect(names.record_decision)}, decision: :rejected}
+          #{lock_for_update(storage)}change {#{inspect(names.record_decision)}, decision: :rejected}
         end
       end
 
@@ -524,6 +524,15 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       def match?(_actor, _context, _opts), do: false
       """
     end
+
+    # Two approvals of one request would otherwise both count the decisions
+    # before either writes its own, and both loop back to the current step.
+    # The lock's before_action runs ahead of the route's, which then reads
+    # approvals_remaining from the locked row.
+    defp lock_for_update(%{data_layer: AshPostgres.DataLayer}),
+      do: "change get_and_lock_for_update()\n"
+
+    defp lock_for_update(_storage), do: ""
 
     defp pre_check_with(%{data_layer: AshPostgres.DataLayer}), do: ""
     defp pre_check_with(storage), do: ", pre_check_with: #{inspect(storage.domain)}"

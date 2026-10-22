@@ -119,7 +119,7 @@ Routes read the record as it was when the call arrived, as `AshWorkflow.Changes.
 
 `ConditionalTransition` used to evaluate routes against the record exactly as the caller passed it, so an unloaded calculation read as `nil` and no route matched. It now loads the calculations, aggregates and related fields its routes reference before evaluating them, as the `:transition_targets` calculation already did. The decision row is written in an `after_action`, so the loaded count still excludes the current call.
 
-The count is read when each call arrives. Two approvals that arrive together can both read it before either decision row is written, and both loop back. The recipe page states this limit. Locking the approval row in the `:approve` action would close it, and is left to the application.
+The count is read when each call arrives. Two approvals that arrive together could both read it before either decision row is written, and both loop back. The decide-once policy would then stop both approvers deciding again, stranding the request. On AshPostgres the generator adds `change get_and_lock_for_update()` to `:approve` and `:reject`. `AshWorkflow.Transformers.AddActions` appends the transition changes after the action's own, so the lock's `before_action` runs first and replaces `changeset.data` with the locked row. `ConditionalTransition` then loads `approvals_remaining` inside the same transaction, after the lock. Other data layers get no lock, and the recipe page states the limit there.
 
 ## Decisions and the quorum
 

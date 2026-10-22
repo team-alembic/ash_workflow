@@ -168,4 +168,6 @@ On AshPostgres, run `mix ash.codegen add_expense_approval` to create the approva
 
 ## Limits
 
-Each approval reads the approval count when the call arrives. Two approvals that arrive at the same moment can both read the count before either decision row is written, and both loop back to the current step. The request then holds enough approvals but is still waiting. Serialise approvals of one request if your approvers are likely to decide together.
+On AshPostgres, `:approve` and `:reject` start with `change get_and_lock_for_update()`. The lock re-reads the approval row with `SELECT ... FOR UPDATE` before the route reads `approvals_remaining`, so a second approval of the same request waits until the first commits and then counts its decision.
+
+Other data layers take no lock. On them, two approvals that arrive at the same moment can both read the count before either decision row is written, and both loop back to the current step. The request then holds enough approvals but is still waiting, and the decide-once policy stops either approver trying again. Serialise approvals of one request if your approvers are likely to decide together.
