@@ -87,6 +87,21 @@ defmodule AshWorkflow.UpsertTest do
     assert id == record.id
   end
 
+  test "an upsert skipped by its upsert_condition logs nothing and does not tell the scheduler" do
+    first = "f" |> open() |> close()
+    flush_notifications(first.id)
+
+    skipped =
+      Workflow
+      |> Ash.Changeset.for_create(:open_while_open, %{code: "f"})
+      |> Ash.create!(return_skipped_upsert?: true)
+
+    assert skipped.id == first.id
+    assert skipped.__metadata__.upsert_skipped
+    assert log_states(first) == [:closed, :open]
+    refute_received {:state_change_notified, _id}
+  end
+
   test "an upsert onto an existing row still closes the span it opened" do
     first = "e" |> open() |> close()
     attach_span_handler()
