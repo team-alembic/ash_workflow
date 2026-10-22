@@ -6,6 +6,8 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
 
     alias Ash.Resource.Igniter, as: ResourceIgniter
     alias Ash.Resource.Info, as: ResourceInfo
+    alias Igniter.Code.Common
+    alias Igniter.Code.Function, as: CodeFunction
     alias Igniter.Project.Module, as: ProjectModule
 
     @type storage :: %{domain: module(), data_layer: module(), repo: module() | nil}
@@ -157,48 +159,102 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
 
     @doc """
     Adds each relationship and calculation to the subject unless one of the
-    same name is already there, in which case it warns and leaves that one as
-    it is.
+    same name is already there. It warns when that existing one is not the
+    recipe's: a relationship to another resource, or a calculation with
+    another expression.
     """
     @spec add_subject_edits(Igniter.t(), module(), keyword(String.t()), keyword(String.t())) ::
             Igniter.t()
     def add_subject_edits(igniter, subject, relationships, calculations) do
       igniter =
-        Enum.reduce(relationships, igniter, fn edit, igniter ->
+        Enum.reduce(relationships, igniter, fn {name, code}, igniter ->
           add_subject_edit(
             igniter,
             subject,
-            edit,
-            "relationship",
-            &ResourceIgniter.defines_relationship/3,
+            {name, code},
+            {:relationships, [:has_one, :has_many, :belongs_to, :many_to_many], [2, 3]},
+            &same_destination?/2,
             &ResourceIgniter.add_relationship/3
           )
         end)
 
-      Enum.reduce(calculations, igniter, fn edit, igniter ->
+      Enum.reduce(calculations, igniter, fn {name, code}, igniter ->
         add_subject_edit(
           igniter,
           subject,
-          edit,
-          "calculation",
-          &ResourceIgniter.defines_calculation/3,
+          {name, code},
+          {:calculations, [:calculate], [3, 4]},
+          &same_definition?/2,
           &ResourceIgniter.add_calculation/3
         )
       end)
     end
 
-    defp add_subject_edit(igniter, subject, {name, code}, kind, defines, add) do
-      case defines.(igniter, subject, name) do
-        {igniter, true} ->
-          Igniter.add_warning(igniter, """
-          #{inspect(subject)} already has a #{kind} named #{inspect(name)}, so the recipe left it as it is. It would have added:
+    defp add_subject_edit(igniter, subject, {name, code}, location, same?, add) do
+      case existing_definition(igniter, subject, name, location) do
+        {igniter, {:ok, zipper}} ->
+          if same?.(zipper, Sourceror.parse_string!(code)),
+            do: igniter,
+            else: warn_existing(igniter, subject, name, location, code)
 
-          #{code}
-          """)
-
-        {igniter, false} ->
+        {igniter, :error} ->
           add.(igniter, subject, code)
       end
+    end
+
+    defp existing_definition(igniter, subject, name, {section, calls, arities}) do
+      igniter
+      |> Spark.Igniter.find(subject, fn _module, zipper ->
+        with {:ok, zipper} <-
+               CodeFunction.move_to_function_call_in_current_scope(zipper, section, 1),
+             {:ok, zipper} <- Common.move_to_do_block(zipper) do
+          Enum.find_value(calls, :error, &find_named_call(zipper, &1, arities, name))
+        end
+      end)
+      |> case do
+        {:ok, igniter, _module, zipper} -> {igniter, {:ok, zipper}}
+        {:error, igniter} -> {igniter, :error}
+      end
+    end
+
+    defp find_named_call(zipper, call, arities, name) do
+      case CodeFunction.move_to_function_call_in_current_scope(
+             zipper,
+             call,
+             arities,
+             &CodeFunction.argument_equals?(&1, 0, name)
+           ) do
+        {:ok, zipper} -> {:ok, zipper}
+        :error -> nil
+      end
+    end
+
+    defp same_destination?(zipper, {_call, _meta, [_name, {:__aliases__, _, parts} | _rest]}) do
+      case CodeFunction.move_to_nth_argument(zipper, 1) do
+        {:ok, destination} -> Common.nodes_equal?(destination, Module.concat(parts))
+        :error -> false
+      end
+    end
+
+    defp same_definition?(zipper, recipe_ast) do
+      without_meta(Sourceror.Zipper.node(zipper)) == without_meta(recipe_ast)
+    end
+
+    defp without_meta(ast) do
+      Macro.prewalk(ast, fn
+        {form, _meta, args} -> {form, [], args}
+        other -> other
+      end)
+    end
+
+    defp warn_existing(igniter, subject, name, {section, _calls, _arities}, code) do
+      kind = section |> Atom.to_string() |> String.trim_trailing("s")
+
+      Igniter.add_warning(igniter, """
+      #{inspect(subject)} already has a #{kind} named #{inspect(name)} that differs from the recipe's, so the recipe left it as it is. It would have added:
+
+      #{code}
+      """)
     end
 
     @spec compose_transition_log(Igniter.t(), module(), module() | nil) :: Igniter.t()

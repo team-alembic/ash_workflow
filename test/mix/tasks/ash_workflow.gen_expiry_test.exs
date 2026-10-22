@@ -166,6 +166,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ExpiryTest do
     second = run_task(first.igniter, "ash_workflow.gen.expiry", argv)
 
     assert second.changed == %{}
+    assert second.warnings == []
   end
 
   test "warns and leaves an existing calculation of the same name as it is" do
@@ -197,16 +198,32 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ExpiryTest do
     refute source =~ "expiry.state == :expired"
   end
 
-  test "warns on a second run that the subject edits are already there" do
-    argv = [inspect(Contract)]
-    first = generate(argv)
-    second = run_task(first.igniter, "ash_workflow.gen.expiry", argv)
+  test "warns and leaves an existing relationship of the same name to another resource" do
+    contract =
+      "#{@fixtures}/contract.ex"
+      |> File.read!()
+      |> String.replace(
+        "  attributes do",
+        "  relationships do\n    has_many :expiry, #{inspect(Lease)}\n  end\n\n  attributes do"
+      )
 
-    assert Enum.any?(
-             second.warnings,
-             &(&1 =~ "#{inspect(Contract)} already has a relationship named :expiry" and
-                 &1 =~ "has_one :expiry")
-           )
+    recipe =
+      Igniter.Test.test_project(
+        app_name: :ash_workflow,
+        files:
+          @files
+          |> Map.new(&{&1, File.read!(&1)})
+          |> Map.put("#{@fixtures}/contract.ex", contract)
+      )
+      |> run_task("ash_workflow.gen.expiry", [inspect(Contract)])
+
+    assert [warning] = recipe.warnings
+    assert warning =~ "#{inspect(Contract)} already has a relationship named :expiry"
+    assert warning =~ "has_one :expiry, #{inspect(ContractExpiry)}"
+
+    source = source!(recipe, "#{@fixtures}/contract.ex")
+    assert source =~ "has_many(:expiry, #{inspect(Lease)})"
+    refute source =~ "has_one :expiry"
   end
 
   test "a subject has at most one expiry", %{tmp_dir: tmp_dir} do
