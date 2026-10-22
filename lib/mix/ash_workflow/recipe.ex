@@ -148,19 +148,48 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
 
     @doc """
     Adds each relationship and calculation to the subject unless one of the
-    same name is already there.
+    same name is already there, in which case it warns and leaves that one as
+    it is.
     """
     @spec add_subject_edits(Igniter.t(), module(), keyword(String.t()), keyword(String.t())) ::
             Igniter.t()
     def add_subject_edits(igniter, subject, relationships, calculations) do
       igniter =
-        Enum.reduce(relationships, igniter, fn {name, code}, igniter ->
-          ResourceIgniter.add_new_relationship(igniter, subject, name, code)
+        Enum.reduce(relationships, igniter, fn edit, igniter ->
+          add_subject_edit(
+            igniter,
+            subject,
+            edit,
+            "relationship",
+            &ResourceIgniter.defines_relationship/3,
+            &ResourceIgniter.add_relationship/3
+          )
         end)
 
-      Enum.reduce(calculations, igniter, fn {name, code}, igniter ->
-        ResourceIgniter.add_new_calculation(igniter, subject, name, code)
+      Enum.reduce(calculations, igniter, fn edit, igniter ->
+        add_subject_edit(
+          igniter,
+          subject,
+          edit,
+          "calculation",
+          &ResourceIgniter.defines_calculation/3,
+          &ResourceIgniter.add_calculation/3
+        )
       end)
+    end
+
+    defp add_subject_edit(igniter, subject, {name, code}, kind, defines, add) do
+      case defines.(igniter, subject, name) do
+        {igniter, true} ->
+          Igniter.add_warning(igniter, """
+          #{inspect(subject)} already has a #{kind} named #{inspect(name)}, so the recipe left it as it is. It would have added:
+
+          #{code}
+          """)
+
+        {igniter, false} ->
+          add.(igniter, subject, code)
+      end
     end
 
     @spec compose_transition_log(Igniter.t(), module(), module() | nil) :: Igniter.t()
