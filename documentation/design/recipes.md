@@ -54,6 +54,8 @@ A shared `AshWorkflow.RecipeCase` in `test/support` runs four stages:
 
 Each `compile/2` call renames every module it writes under its own namespace, `RecipeRunN`, where `N` is unique to the call. `RecipeRun12.AshWorkflowTest.RecipeFixtures.Approval.Expense` is one such name, and the test looks it up in `modules` by the name the task gave it. Compiled modules stay loaded for the rest of the run, so the unique namespace lets the tests run with `async: true` without redefining each other's modules.
 
+Renaming leaves Postgres table names unchanged, so two async tests that compile the same Postgres fixture share its table. A Postgres recipe test that reads or writes rows must give each test its own table, or run with `async: false`.
+
 Every recipe is tested in two cases: an existing subject with attributes and actions of its own, and a missing subject the generator creates. A third test runs the task twice and asserts the second run changes nothing.
 
 Stage 4 fires timeouts the same way the existing timeout tests do, so the overdue deadline is checked against the scheduler rather than by reading the generated `timeout` line.
