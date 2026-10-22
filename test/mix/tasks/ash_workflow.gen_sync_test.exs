@@ -70,6 +70,52 @@ defmodule Mix.Tasks.AshWorkflow.Gen.SyncTest do
     |> update_in([Access.key!(:igniter), Access.key!(:assigns), :test_files, path], fun)
   end
 
+  # The "Resync after the subject changes" pattern from the sync recipe page.
+  defp follow_subject_changes(recipe) do
+    sync = inspect(CustomerSync)
+
+    edit_source(recipe, @sync_file, fn source ->
+      source
+      |> String.replace("timestamps()", """
+      timestamps()
+      attribute :needs_resync?, :boolean, default: false, allow_nil?: false, public?: true
+      """)
+      |> String.replace("defaults([:read])", """
+      defaults([:read])
+
+      update :request_resync do
+        require_atomic? false
+        change set_attribute(:needs_resync?, true)
+      end
+
+      update :resync do
+        require_atomic? false
+        change set_attribute(:needs_resync?, false)
+      end
+      """)
+      |> String.replace("policies do", """
+      policies do
+        policy action(:request_resync) do
+          authorize_if always()
+        end
+      """)
+      |> String.replace("code_interface do", """
+      oban do
+        triggers do
+          trigger :resync_changed do
+            action :resync
+            where expr(needs_resync? and state in [:synced, :failed])
+            worker_module_name #{sync}.AshOban.Worker.ResyncChanged
+            scheduler_module_name #{sync}.AshOban.Scheduler.ResyncChanged
+          end
+        end
+      end
+
+      code_interface do
+      """)
+    end)
+  end
+
   defp customer(recipe) do
     recipe.modules[Customer]
     |> Ash.Changeset.for_create(:create, %{name: "Acme"})
@@ -350,6 +396,47 @@ defmodule Mix.Tasks.AshWorkflow.Gen.SyncTest do
 
       assert recipe |> log() |> Enum.map(& &1.to_state) |> Enum.sort() ==
                [:failed, :synced, :syncing, :syncing]
+    end
+
+    test "a flagged settled sync is resynced by the trigger and the flag is cleared", %{
+      tmp_dir: tmp_dir
+    } do
+      recipe =
+        [inspect(Customer)]
+        |> generate()
+        |> fill_in_push()
+        |> allow_creators()
+        |> allow_operators()
+        |> follow_subject_changes()
+        |> compile(tmp_dir)
+
+      sync_module = recipe.modules[CustomerSync]
+      {:ok, sync} = start_sync(recipe)
+
+      flagged =
+        sync
+        |> Ash.Changeset.for_update(:request_resync, %{}, actor: @creator)
+        |> Ash.update!()
+
+      assert %{state: :syncing, needs_resync?: true} = flagged
+      AshOban.Test.refute_would_schedule(flagged, :resync_changed)
+
+      assert Timeline.run_due(sync_module) == 1
+      settled = reload(sync)
+      assert %{state: :synced, needs_resync?: true} = settled
+      AshOban.Test.assert_would_schedule(settled, :resync_changed)
+
+      trigger = AshOban.Info.oban_trigger(sync_module, :resync_changed)
+
+      assert {:ok, %{state: :syncing, needs_resync?: false}} =
+               settled
+               |> Ash.Changeset.for_update(trigger.action, %{}, actor: @operator)
+               |> Ash.update()
+
+      assert Timeline.run_due(sync_module) == 1
+      resynced = reload(sync)
+      assert %{state: :synced, needs_resync?: false} = resynced
+      AshOban.Test.refute_would_schedule(resynced, :resync_changed)
     end
   end
 
