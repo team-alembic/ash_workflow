@@ -204,23 +204,35 @@ defmodule Mix.Tasks.AshWorkflow.Gen.AcknowledgementTest do
       {:ok, _acknowledged} = recipe |> request(policy, asked) |> acknowledge(asked)
       people = [asked, user(recipe, "new"), user(recipe, "newer")]
 
-      result =
-        acknowledgement_module.request_many(
-          policy.id,
-          Enum.map(people, &%{person_id: &1.id}),
-          bulk_options: [return_records?: true, return_errors?: true]
-        )
+      for listed <- [Enum.take(people, 2), people] do
+        result =
+          acknowledgement_module.request_many(
+            policy.id,
+            Enum.map(listed, &%{person_id: &1.id}),
+            bulk_options: [return_records?: true, return_errors?: true]
+          )
 
-      assert result.status == :success
+        assert result.status == :success
+      end
 
-      by_person =
-        acknowledgement_module |> Ash.read!() |> Map.new(&{&1.person_id, &1.state})
+      acknowledgements = Ash.read!(acknowledgement_module)
+      by_person = Map.new(acknowledgements, &{&1.person_id, &1.state})
 
       assert by_person == %{
                asked.id => :acknowledged,
                Enum.at(people, 1).id => :pending,
                Enum.at(people, 2).id => :pending
              }
+
+      person_by_acknowledgement = Map.new(acknowledgements, &{&1.id, &1.person_id})
+
+      initial_rows_by_person =
+        recipe.modules[PolicyAcknowledgementTransition]
+        |> Ash.read!()
+        |> Enum.filter(&(&1.triggered_by == :initial))
+        |> Enum.frequencies_by(&person_by_acknowledgement[&1.workflow_id])
+
+      assert initial_rows_by_person == Map.new(people, &{&1.id, 1})
     end
   end
 
