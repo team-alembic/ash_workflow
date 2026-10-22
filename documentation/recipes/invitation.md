@@ -117,6 +117,17 @@ end
 
 Accepting an invitation creates nothing else. Add a change to `:accept`, or a notifier, that creates the membership, RSVP or grant your application needs.
 
+### Restrict reads
+
+Reads stay open by default. `AshWorkflow` authorizes `:read` on the invitation resource for every actor, and each invitation row holds the invitee's `email`. Until you add a read policy, any actor can list every invitation's email across all teams. Add a policy that limits reads to the people an invitation concerns, for example the inviter and the invited address:
+
+```elixir
+policy action_type(:read) do
+  authorize_if relates_to_actor_via(:invited_by)
+  authorize_if expr(email == ^actor(:email))
+end
+```
+
 ### Generate the migrations
 
 On AshPostgres, run `mix ash.codegen add_team_invitation` to create the invitation and transition log tables.
