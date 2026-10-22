@@ -1,145 +1,140 @@
 defmodule Mix.Tasks.AshWorkflow.Gen.TransitionLogTest do
-  use ExUnit.Case, async: true
+  use AshWorkflow.RecipeCase, async: true
 
-  import Igniter.Test
+  alias AshWorkflowTest.RecipeFixtures.TransitionLog.PostgresTicket
+  alias AshWorkflowTest.RecipeFixtures.TransitionLog.Reviewer
+  alias AshWorkflowTest.RecipeFixtures.TransitionLog.Ticket
 
-  alias Igniter.Project.Module, as: ProjectModule
+  @fixtures "test/support/recipe_fixtures/transition_log"
+  @ets_files ["#{@fixtures}/domain.ex", "#{@fixtures}/ticket.ex", "#{@fixtures}/reviewer.ex"]
 
-  @moduletag :igniter
-
-  defp project(extra_files \\ %{}) do
-    files =
-      Map.merge(
-        %{
-          "test/support/domain.ex" => File.read!("test/support/domain.ex"),
-          "test/support/workflow.ex" => File.read!("test/support/workflow.ex")
-        },
-        extra_files
-      )
-
-    test_project(app_name: :ash_workflow, files: files)
+  defp generate(files, argv) do
+    files
+    |> project()
+    |> run_task("ash_workflow.gen.transition_log", argv)
   end
 
-  defp source!(igniter, module) do
-    {:ok, {igniter, source, _zipper}} = ProjectModule.find_module(igniter, module)
-    {igniter, Rewrite.Source.get(source, :content)}
+  defp open_ticket(ticket) do
+    ticket
+    |> Ash.Changeset.for_create(:create, %{title: "Broken printer"})
+    |> Ash.create!()
   end
 
-  test "generates a log resource matching the workflow's ETS data layer and domain" do
-    igniter =
-      project()
-      |> Igniter.compose_task("ash_workflow.gen.transition_log", [
-        "AshWorkflowTest.Workflow"
-      ])
-      |> apply_igniter!()
+  defp log_rows(log) do
+    log |> Ash.Query.sort(occurred_at: :asc, id: :asc) |> Ash.read!()
+  end
 
-    {igniter, content} = source!(igniter, AshWorkflowTest.WorkflowTransition)
+  test "the generated log resource records each transition of the workflow", %{tmp_dir: tmp_dir} do
+    recipe = @ets_files |> generate([inspect(Ticket)]) |> compile(tmp_dir)
 
-    assert content =~ "domain: AshWorkflowTest.Domain"
+    ticket = recipe.modules[Ticket]
+    log = recipe.modules[AshWorkflowTest.RecipeFixtures.TransitionLog.TicketTransition]
+
+    assert AshWorkflow.Info.transition_log(ticket).resource == log
+    assert log in Ash.Domain.Info.resources(Ash.Resource.Info.domain(ticket))
+
+    record = ticket |> open_ticket() |> Ash.update!(action: :close)
+
+    assert [initial, close] = log_rows(log)
+    assert {initial.from_state, initial.to_state, initial.triggered_by} == {nil, :open, :initial}
+    assert {close.from_state, close.to_state, close.transition_name} == {:open, :closed, :close}
+    assert close.triggered_by == :manual
+    assert close.workflow_id == record.id
+  end
+
+  test "the generated log resource uses the workflow's ETS data layer and domain" do
+    recipe = generate(@ets_files, [inspect(Ticket)])
+
+    content =
+      source!(recipe, "lib/ash_workflow_test/recipe_fixtures/transition_log/ticket_transition.ex")
+
+    assert content =~ "domain: AshWorkflowTest.RecipeFixtures.TransitionLog.Domain"
     assert content =~ "data_layer: Ash.DataLayer.Ets"
-    assert content =~ "attribute(:from_state, :atom"
-    assert content =~ "attribute(:to_state, :atom, allow_nil?: false"
-    assert content =~ "attribute(:transition_name, :atom, allow_nil?: false"
-    assert content =~ "attribute(:occurred_at, :utc_datetime_usec, allow_nil?: false"
-    assert content =~ "attribute(:triggered_by, :atom, allow_nil?: false"
-    assert content =~ "belongs_to(:workflow, AshWorkflowTest.Workflow"
     assert content =~ "belongs_to(:undoes, __MODULE__"
-    assert content =~ "create :create do"
-    assert content =~ ":workflow_id"
-    assert content =~ ":undoes_id"
 
-    {_igniter, domain_content} = source!(igniter, AshWorkflowTest.Domain)
-    assert domain_content =~ "AshWorkflowTest.WorkflowTransition"
+    assert Enum.any?(
+             recipe.notices,
+             &String.contains?(&1, "mix ash_workflow.backfill_transition_log")
+           )
   end
 
-  test "adds the transition_log entry to the workflow resource's workflow block" do
-    igniter =
-      project()
-      |> Igniter.compose_task("ash_workflow.gen.transition_log", [
-        "AshWorkflowTest.Workflow"
-      ])
-      |> apply_igniter!()
-
-    {_igniter, content} = source!(igniter, AshWorkflowTest.Workflow)
-
-    assert content =~ "transition_log(AshWorkflowTest.WorkflowTransition)"
-  end
-
-  test "respects --log-module" do
-    igniter =
-      project()
-      |> Igniter.compose_task("ash_workflow.gen.transition_log", [
-        "AshWorkflowTest.Workflow",
+  test "respects --log-module", %{tmp_dir: tmp_dir} do
+    recipe =
+      @ets_files
+      |> generate([
+        inspect(Ticket),
         "--log-module",
-        "AshWorkflowTest.CustomLog"
+        "AshWorkflowTest.RecipeFixtures.TransitionLog.CustomLog"
       ])
-      |> apply_igniter!()
+      |> compile(tmp_dir)
 
-    {_igniter, content} = source!(igniter, AshWorkflowTest.CustomLog)
-    assert content =~ "belongs_to(:workflow, AshWorkflowTest.Workflow"
+    log = recipe.modules[AshWorkflowTest.RecipeFixtures.TransitionLog.CustomLog]
 
-    {_igniter, workflow_content} = source!(igniter, AshWorkflowTest.Workflow)
-    assert workflow_content =~ "transition_log(AshWorkflowTest.CustomLog)"
+    assert AshWorkflow.Info.transition_log(recipe.modules[Ticket]).resource == log
+
+    recipe.modules[Ticket] |> open_ticket() |> Ash.update!(action: :close)
+
+    assert [%{to_state: :open}, %{to_state: :closed}] = log_rows(log)
   end
 
-  test "--actor adds belongs_to_actor and a matching relationship" do
-    igniter =
-      project(%{"test/support/reviewer.ex" => File.read!("test/support/reviewer.ex")})
-      |> Igniter.compose_task("ash_workflow.gen.transition_log", [
-        "AshWorkflowTest.Workflow",
-        "--actor",
-        "AshWorkflowTest.Reviewer"
-      ])
-      |> apply_igniter!()
+  test "--actor records the actor on each row", %{tmp_dir: tmp_dir} do
+    recipe =
+      @ets_files
+      |> generate([inspect(Ticket), "--actor", inspect(Reviewer)])
+      |> compile(tmp_dir)
 
-    {igniter, content} = source!(igniter, AshWorkflowTest.WorkflowTransition)
-    assert content =~ "belongs_to(:reviewer, AshWorkflowTest.Reviewer"
-    assert content =~ ":reviewer_id"
+    ticket = recipe.modules[Ticket]
+    log = recipe.modules[AshWorkflowTest.RecipeFixtures.TransitionLog.TicketTransition]
 
-    {_igniter, workflow_content} = source!(igniter, AshWorkflowTest.Workflow)
-    assert workflow_content =~ "belongs_to_actor(:reviewer, AshWorkflowTest.Reviewer)"
+    reviewer =
+      recipe.modules[Reviewer]
+      |> Ash.Changeset.for_create(:create, %{name: "Ada"})
+      |> Ash.create!()
+
+    ticket |> open_ticket() |> Ash.update!(action: :close, actor: reviewer)
+
+    assert [initial, close] = log_rows(log)
+    assert initial.reviewer_id == nil
+    assert close.reviewer_id == reviewer.id
   end
 
-  test "generates a Postgres-backed log resource reusing the workflow's table and repo" do
-    igniter =
-      project(%{
-        "test/support/postgres/domain.ex" => File.read!("test/support/postgres/domain.ex"),
-        "test/support/postgres/approval_workflow.ex" =>
-          File.read!("test/support/postgres/approval_workflow.ex")
-      })
-      |> Igniter.compose_task("ash_workflow.gen.transition_log", [
-        "AshWorkflowTest.Postgres.ApprovalWorkflow"
-      ])
-      |> apply_igniter!()
+  test "generates a Postgres-backed log resource reusing the workflow's table and repo", %{
+    tmp_dir: tmp_dir
+  } do
+    recipe =
+      ["#{@fixtures}/postgres_domain.ex", "#{@fixtures}/postgres_ticket.ex"]
+      |> generate([inspect(PostgresTicket)])
+      |> compile(tmp_dir)
 
-    {_igniter, content} =
-      source!(igniter, AshWorkflowTest.Postgres.ApprovalWorkflowTransition)
+    log = recipe.modules[AshWorkflowTest.RecipeFixtures.TransitionLog.PostgresTicketTransition]
 
-    assert content =~ "data_layer: AshPostgres.DataLayer"
-    assert content =~ "repo(AshWorkflowTest.Repo)"
-    assert content =~ "table(\"approval_workflows_transitions\")"
-    assert content =~ "index([:workflow_id, :occurred_at])"
+    assert AshPostgres.DataLayer.Info.repo(log) == AshWorkflowTest.Repo
+    assert AshPostgres.DataLayer.Info.table(log) == "recipe_fixture_tickets_transitions"
+
+    assert [%{fields: [:workflow_id, :occurred_at]}] =
+             AshPostgres.DataLayer.Info.custom_indexes(log)
   end
 
   test "warns instead of duplicating when a transition_log is already configured" do
-    igniter =
-      project(%{
-        "test/support/workflows/logged_workflow.ex" =>
-          File.read!("test/support/workflows/logged_workflow.ex"),
-        "test/support/workflows/logged_transition.ex" =>
-          File.read!("test/support/workflows/logged_transition.ex"),
-        "test/support/reviewer.ex" => File.read!("test/support/reviewer.ex")
-      })
-      |> Igniter.compose_task("ash_workflow.gen.transition_log", [
-        "AshWorkflowTest.LoggedWorkflow"
-      ])
+    recipe =
+      generate(
+        [
+          "test/support/workflows/logged_workflow.ex",
+          "test/support/workflows/logged_transition.ex",
+          "test/support/reviewer.ex",
+          "test/support/domain.ex"
+        ],
+        ["AshWorkflowTest.LoggedWorkflow"]
+      )
 
-    assert Enum.any?(igniter.warnings, &String.contains?(&1, "already has a `transition_log`"))
+    assert Enum.any?(recipe.warnings, &String.contains?(&1, "already has a `transition_log`"))
+    refute Map.has_key?(recipe.changed, "test/support/workflows/logged_workflow.ex")
   end
 
   test "reports an issue for a plain module that does not use AshWorkflow" do
     igniter =
-      project()
+      @ets_files
+      |> project()
       |> Igniter.compose_task("ash_workflow.gen.transition_log", ["String"])
 
     assert Enum.any?(
