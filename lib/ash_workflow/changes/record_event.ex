@@ -29,6 +29,11 @@ defmodule AshWorkflow.Changes.RecordEvent do
       this is how that firing re-arms its own trigger for the next interval
       without touching `state_entered_at`, which every other deadline on the
       step measures from.
+    * `:every_fires_field` (optional, defaults to `nil`) — the integer attribute
+      counting the `every`'s fires in the current step visit, named by
+      `AshWorkflow.Entities.Every.fires_field/2`. Incremented on each fire, and
+      restarted at 1 when `:every_field` holds a fire from before
+      `state_entered_at`, which belongs to an earlier visit.
     * `:timeout_fields` (optional, defaults to `%{}`) — the columns an action
       timeout's firing writes, as a map from step name to the
       `AshWorkflow.Entities.Timeout.fired_field/2` columns of that step's
@@ -112,6 +117,7 @@ defmodule AshWorkflow.Changes.RecordEvent do
     changeset
     |> touch_state_entered_at(opts)
     |> touch_fired_fields(opts)
+    |> touch_fires_field(opts)
     |> emit_start(opts)
     |> Ash.Changeset.after_action(fn changeset, record ->
       {:ok, finish(changeset, record, opts, context)}
@@ -137,6 +143,7 @@ defmodule AshWorkflow.Changes.RecordEvent do
     changeset
     |> fired_fields(opts)
     |> Enum.reduce(attrs, &Map.put(&2, &1, expr(now())))
+    |> put_atomic_fires(opts)
   end
 
   defp touch_state_entered_at(changeset, opts) do
@@ -153,6 +160,55 @@ defmodule AshWorkflow.Changes.RecordEvent do
     changeset
     |> fired_fields(opts)
     |> Enum.reduce(changeset, &Ash.Changeset.force_change_attribute(&2, &1, now))
+  end
+
+  defp touch_fires_field(changeset, opts) do
+    case every_fires_field(opts) do
+      nil ->
+        changeset
+
+      fires_field ->
+        last_fired_at = data_attribute(changeset, every_field(opts))
+        state_entered_at = data_attribute(changeset, :state_entered_at)
+
+        fires =
+          if this_visit?(last_fired_at, state_entered_at),
+            do: (data_attribute(changeset, fires_field) || 0) + 1,
+            else: 1
+
+        Ash.Changeset.force_change_attribute(changeset, fires_field, fires)
+    end
+  end
+
+  defp this_visit?(nil, _state_entered_at), do: false
+  defp this_visit?(_last_fired_at, nil), do: true
+
+  defp this_visit?(last_fired_at, state_entered_at),
+    do: DateTime.compare(last_fired_at, state_entered_at) != :lt
+
+  # Attribute references in an atomic update read the row as it was before the
+  # update, so this compares the previous fire against the current visit.
+  defp put_atomic_fires(attrs, opts) do
+    case every_fires_field(opts) do
+      nil ->
+        attrs
+
+      fires_field ->
+        last_fired_at = Ash.Expr.ref(every_field(opts))
+        fires = Ash.Expr.ref(fires_field)
+
+        Map.put(
+          attrs,
+          fires_field,
+          expr(
+            if not is_nil(^last_fired_at) and ^last_fired_at >= state_entered_at do
+              ^fires + 1
+            else
+              1
+            end
+          )
+        )
+    end
   end
 
   defp fired_fields(changeset, opts) do
@@ -182,6 +238,8 @@ defmodule AshWorkflow.Changes.RecordEvent do
   defp touch_state_entered_at?(opts), do: Keyword.get(opts, :touch_state_entered_at, true)
 
   defp every_field(opts), do: Keyword.get(opts, :every_field)
+
+  defp every_fires_field(opts), do: Keyword.get(opts, :every_fires_field)
 
   defp finish(changeset, record, opts, context) do
     record = append_log(changeset, record, opts, context)

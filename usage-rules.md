@@ -353,6 +353,19 @@ end
 
 `until` is measured against `state_entered_at` directly — `interval` measures against the `every`'s own last-fired column instead, so firing never moves it. `until` must be strictly longer than `interval`. See `usage-rules/timeouts.md` for the full explanation.
 
+`max_fires` bounds `every` to a number of fires in the current step visit, and `backoff` grows the gap after each fire. `backoff` takes a duration tuple or `:exponential`, the same values as `retry`'s `backoff`:
+
+```elixir
+every :follow_up do
+  interval {1, :days}
+  action :send_follow_up
+  max_fires 4
+  backoff {2, :days}
+end
+```
+
+This fires at day 1, 4, 7 and 10, then stops. After fire `n` the next gap is `interval` plus `AshWorkflow.Entities.Retry.delay_ms/2` for attempt `n`. Either option adds a `<step>_<every>_fires` integer column, so generate a migration. `max_fires` and `until` may be declared together, and whichever is reached first stops the firing.
+
 ### Transition Timeout (force state change)
 
 ```elixir

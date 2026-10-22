@@ -57,7 +57,31 @@ defmodule AshWorkflow.Entities.Every do
   Reaching the bound only stops the firing. It does not transition state —
   compose a second, ordinary timeout with a `fire_after` equal to the bound
   for "give up and move on".
+
+  ## Bounding an `every` with `max_fires`
+
+  `max_fires` stops it after a number of fires in the current step visit:
+
+      every :reminder do
+        interval {2, :days}
+        action :send_review_reminder
+        max_fires 3
+      end
+
+  ## Spacing fires out with `backoff`
+
+  `backoff` grows the gap between fires. The first fire still lands one
+  `interval` after entry. After fire `n`, the next lands `interval` plus
+  `AshWorkflow.Entities.Retry.delay_ms/2` for attempt `n` later, so a fixed
+  duration adds the same delay to every later gap and `:exponential` adds
+  Oban's `n^4 + 15` seconds.
+
+  Both options add a `<step>_<every>_fires` integer column holding the fires
+  in the current step visit. A fire recorded before `state_entered_at` belongs
+  to an earlier visit, so the count restarts on re-entry.
   """
+
+  alias AshWorkflow.Entities.Retry
 
   defstruct [
     :name,
@@ -66,6 +90,8 @@ defmodule AshWorkflow.Entities.Every do
     :until,
     :check_interval,
     :last_fired_field,
+    :max_fires,
+    :backoff,
     self_scheduled?: false,
     __spark_metadata__: nil,
     retry: nil
@@ -79,6 +105,8 @@ defmodule AshWorkflow.Entities.Every do
           until: AshWorkflow.Duration.t() | nil,
           check_interval: String.t() | nil,
           last_fired_field: atom() | nil,
+          max_fires: pos_integer() | nil,
+          backoff: AshWorkflow.Entities.Retry.backoff() | nil,
           self_scheduled?: boolean(),
           retry: AshWorkflow.Entities.Retry.t() | nil
         }
@@ -145,6 +173,23 @@ defmodule AshWorkflow.Entities.Every do
       `<step>_<every>_last_fired_at`. AshWorkflow adds this attribute and
       owns every write to it — see `AshWorkflow.Transformers.AddAttributes`.
       """
+    ],
+    max_fires: [
+      type: :pos_integer,
+      doc: """
+      Stop firing after this many fires in the current step visit. Adds a
+      `<step>_<every>_fires` integer column. May be combined with `until`, and
+      whichever bound is reached first stops the firing.
+      """
+    ],
+    backoff: [
+      type: {:or, [{:custom, AshWorkflow.Duration, :validate, []}, {:literal, :exponential}]},
+      doc: """
+      Grow the gap between fires. After fire `n`, the next fire lands
+      `interval` plus `AshWorkflow.Entities.Retry.delay_ms/2` for attempt `n`
+      later. A duration tuple adds a fixed delay, and `:exponential` adds
+      `n^4 + 15` seconds. Adds a `<step>_<every>_fires` integer column.
+      """
     ]
   ]
 
@@ -163,4 +208,57 @@ defmodule AshWorkflow.Entities.Every do
 
   def last_fired_field(step_name, %__MODULE__{name: name}),
     do: :"#{step_name}_#{name}_last_fired_at"
+
+  @doc """
+  The integer attribute counting this `every`'s fires in the current step
+  visit, `<step_name>_<every_name>_fires`, or `nil` when the `every` declares
+  neither `max_fires` nor `backoff` and so needs no count.
+  """
+  @spec fires_field(atom(), t()) :: atom() | nil
+  def fires_field(_step_name, %__MODULE__{max_fires: nil, backoff: nil}), do: nil
+  def fires_field(step_name, %__MODULE__{name: name}), do: :"#{step_name}_#{name}_fires"
+
+  @doc """
+  The gap in milliseconds between fire number `fires` and the next one.
+
+  `fires` of 0 is the gap from step entry to the first fire, which is
+  `interval` whatever the `backoff`.
+  """
+  @spec gap_ms(
+          AshWorkflow.Duration.t(),
+          Retry.backoff() | nil,
+          non_neg_integer()
+        ) ::
+          non_neg_integer()
+  def gap_ms(interval, nil, _fires), do: AshWorkflow.Duration.to_milliseconds(interval)
+  def gap_ms(interval, _backoff, 0), do: AshWorkflow.Duration.to_milliseconds(interval)
+
+  def gap_ms(interval, backoff, fires) do
+    AshWorkflow.Duration.to_milliseconds(interval) +
+      Retry.delay_ms(%Retry{backoff: backoff}, fires)
+  end
+
+  @doc """
+  The instant this `every` is next due, given the record's last-fired instant,
+  its fire count and its `state_entered_at`.
+
+  A `nil` last fire measures `interval` from `state_entered_at`. A last fire
+  from an earlier step visit counts as zero fires in this one.
+  """
+  @spec next_due_at(
+          AshWorkflow.Duration.t(),
+          Retry.backoff() | nil,
+          DateTime.t() | nil,
+          non_neg_integer() | nil,
+          DateTime.t()
+        ) :: DateTime.t()
+  def next_due_at(interval, backoff, nil, _fires, state_entered_at),
+    do: DateTime.add(state_entered_at, gap_ms(interval, backoff, 0), :millisecond)
+
+  def next_due_at(interval, backoff, last_fired_at, fires, state_entered_at) do
+    visit_fires =
+      if DateTime.compare(last_fired_at, state_entered_at) == :lt, do: 0, else: fires || 0
+
+    DateTime.add(last_fired_at, gap_ms(interval, backoff, visit_fires), :millisecond)
+  end
 end

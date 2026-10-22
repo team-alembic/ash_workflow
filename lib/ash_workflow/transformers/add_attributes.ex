@@ -42,6 +42,10 @@ defmodule AshWorkflow.Transformers.AddAttributes do
   `state_entered_at` instead, so a record entering the step fires one whole
   interval later and needs no backfill.
 
+  An `every` declaring `max_fires` or `backoff` also gets an integer column
+  named by `AshWorkflow.Entities.Every.fires_field/2`, defaulting to 0, which
+  `AshWorkflow.Changes.RecordEvent` increments on each fire.
+
   ## Action timeout fired columns
 
   Also adds one nilable `:utc_datetime_usec` attribute per action timeout,
@@ -86,8 +90,28 @@ defmodule AshWorkflow.Transformers.AddAttributes do
   end
 
   defp add_fired_fields(dsl) do
-    (every_fields(dsl) ++ timeout_fired_fields(dsl))
-    |> Enum.reduce({:ok, dsl}, fn field, {:ok, dsl} -> add_fired_field(dsl, field) end)
+    with {:ok, dsl} <-
+           (every_fields(dsl) ++ timeout_fired_fields(dsl))
+           |> Enum.reduce({:ok, dsl}, fn field, {:ok, dsl} -> add_fired_field(dsl, field) end) do
+      dsl
+      |> every_fires_fields()
+      |> Enum.reduce({:ok, dsl}, fn field, {:ok, dsl} -> add_fires_field(dsl, field) end)
+    end
+  end
+
+  defp add_fires_field(dsl, field) do
+    case ResourceInfo.attribute(dsl, field) do
+      nil ->
+        Builder.add_attribute(dsl, field, :integer,
+          allow_nil?: false,
+          default: 0,
+          writable?: false,
+          public?: true
+        )
+
+      _exists ->
+        {:ok, dsl}
+    end
   end
 
   # A `last_fired_field` naming the workflow's own state attribute is invalid
@@ -118,6 +142,13 @@ defmodule AshWorkflow.Transformers.AddAttributes do
     dsl
     |> steps()
     |> Enum.flat_map(fn step -> Enum.map(step.everys, &Every.last_fired_field(step.name, &1)) end)
+  end
+
+  defp every_fires_fields(dsl) do
+    dsl
+    |> steps()
+    |> Enum.flat_map(fn step -> Enum.map(step.everys, &Every.fires_field(step.name, &1)) end)
+    |> Enum.reject(&is_nil/1)
   end
 
   defp timeout_fired_fields(dsl) do
