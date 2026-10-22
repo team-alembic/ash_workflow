@@ -20,8 +20,9 @@ defmodule Mix.Tasks.AshWorkflow.Gen.Dormancy.Docs do
     and a `dormant?` calculation. When the subject does not exist, it is
     created with `mix ash.gen.resource` first.
 
-    Nobody may reactivate until the application defines who can, in the
-    generated `Checks.CanReactivate` module.
+    Nobody may create or reactivate a dormancy until the application defines
+    who can, in the generated `Checks.CanCreate` and `Checks.CanReactivate`
+    modules.
 
     ## Example
 
@@ -93,6 +94,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
         config = %{
           subject: subject,
           dormancy: dormancy,
+          can_create: Module.concat([dormancy, Checks, CanCreate]),
           can_reactivate: Module.concat([dormancy, Checks, CanReactivate]),
           dormant_after: dormant_after,
           archive_after: archive_after,
@@ -154,6 +156,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
     defp create_dormancy(igniter, config, storage) do
       igniter
       |> ProjectModule.create_module(config.dormancy, dormancy_contents(config, storage))
+      |> ProjectModule.create_module(config.can_create, can_create_contents(config))
       |> ProjectModule.create_module(config.can_reactivate, can_reactivate_contents(config))
       |> DomainIgniter.add_resource_reference(storage.domain, config.dormancy)
       |> compose_transition_log(config)
@@ -163,8 +166,9 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       Call record_activity whenever #{inspect(config.subject)} is used, or every \
       dormancy goes dormant #{format_duration(config.dormant_after)} after it is created.
 
-      Nobody can reactivate a dormancy yet. Define who may reactivate in \
-      #{inspect(config.can_reactivate)}, which denies everyone as generated.
+      Nobody can create or reactivate a dormancy yet. Define who may create one in \
+      #{inspect(config.can_create)} and who may reactivate in \
+      #{inspect(config.can_reactivate)}. Both deny everyone as generated.
       """)
     end
 
@@ -214,6 +218,8 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       end
 
       policies do
+        #{Recipe.create_policy(:create, config.can_create)}
+
         policy action(:reactivate) do
           authorize_if #{inspect(config.can_reactivate)}
         end
@@ -277,6 +283,13 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
         transition :reactivate, to: :active
       end
       """
+    end
+
+    defp can_create_contents(config) do
+      Recipe.deny_check_contents(
+        "Decides who may create an `#{inspect(config.dormancy)}` for a subject.",
+        "actor may create a dormancy for this subject"
+      )
     end
 
     defp can_reactivate_contents(config) do
