@@ -18,6 +18,10 @@ defmodule Mix.Tasks.AshWorkflow.Gen.SyncTest do
   @creator %{id: "creator", role: :account_manager}
   @operator %{id: "operator", role: :operator}
 
+  setup_all do
+    FakePush.start()
+  end
+
   defp generate(files \\ @files, argv) do
     files
     |> project()
