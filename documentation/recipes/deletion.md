@@ -152,7 +152,7 @@ The task generates no notification. Add a timeout with an `action` to the `:purg
 
 ### Use the outcome
 
-`pending_deletion?` on the subject is true while its deletion is in `:requested`, `:purging` or `:purge_failed`. Gating a subject action on it is up to you, for example with a policy on the subject:
+`pending_deletion?` on the subject is true while its deletion is in `:requested`, `:purging` or `:purge_failed`, and `false` otherwise, including for a subject with no deletion. Gating a subject action on it is up to you, for example with a policy on the subject:
 
 ```elixir
 policy action(:sign_in) do

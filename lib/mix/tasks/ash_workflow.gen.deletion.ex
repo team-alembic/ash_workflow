@@ -143,7 +143,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
           """
         ],
         pending_deletion?:
-          "calculate :pending_deletion?, :boolean, expr(deletion.state in [:requested, :purging, :purge_failed])"
+          "calculate :pending_deletion?, :boolean, expr(deletion.state in [:requested, :purging, :purge_failed] || false)"
       )
       |> then(fn igniter ->
         if exists?, do: igniter, else: create_deletion(igniter, config, storage)

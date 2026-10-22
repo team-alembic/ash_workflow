@@ -145,7 +145,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.DeletionTest do
       account = account(recipe)
       pending? = fn -> Ash.load!(account, :pending_deletion?).pending_deletion? end
 
-      refute pending?.()
+      assert pending?.() == false
 
       lapsed(recipe, account)
       assert pending?.()
@@ -154,7 +154,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.DeletionTest do
       assert pending?.()
 
       run_until_settled(recipe.modules[AccountDeletion])
-      refute pending?.()
+      assert pending?.() == false
     end
   end
 

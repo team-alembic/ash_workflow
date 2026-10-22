@@ -50,9 +50,9 @@ The generator adds `MyApp.Accounts.AccountDeletion` next to the subject, for the
 Deletion is a lifecycle recipe. A subject has one current deletion, not a history of them. The subject gains, by `Ash.Resource.Igniter` edits, and nothing else:
 
 - `has_one :deletion, MyApp.Accounts.AccountDeletion`
-- `calculate :pending_deletion?, :boolean, expr(deletion.state in [:requested, :purging, :purge_failed])`
+- `calculate :pending_deletion?, :boolean, expr(deletion.state in [:requested, :purging, :purge_failed] || false)`
 
-`pending_deletion?` is true from the request until the purge succeeds, including while a failed purge waits for a retry. That is the window in which the application should treat the subject as on its way out, such as hiding it from search or refusing a login. `:deleted` is excluded because the subject may no longer exist to ask, and `:restored` is excluded because a restored subject is in normal use again.
+`pending_deletion?` is true from the request until the purge succeeds, including while a failed purge waits for a retry. It is `false` for a subject with no deletion, never `nil`, so a filter or policy on it does not need to handle a missing row. That is the window in which the application should treat the subject as on its way out, such as hiding it from search or refusing a login. `:deleted` is excluded because the subject may no longer exist to ask, and `:restored` is excluded because a restored subject is in normal use again.
 
 `AccountDeletion` has the identity `:unique_subject` on `subject_id`. On a data layer without unique constraints, such as ETS, it sets `pre_check_with` to the domain. A second `request` for the same subject fails on the identity, so `has_one :deletion` never has two rows to choose between.
 
