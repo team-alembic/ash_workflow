@@ -1,10 +1,10 @@
 defmodule AshWorkflow.RecipeCase do
   @moduledoc """
-  Runs an Igniter task against fixture files, compiles what it generated, and
-  returns the compiled modules for the test to drive through Ash.
+  Runs an Igniter task against fixture files, compiles the resulting project,
+  and returns the compiled modules for the test to drive through Ash.
 
-  Compiled modules are renamed under a namespace unique to the test, so tests
-  stay `async: true` and never redefine a loaded fixture. Look them up in
+  Each `compile/2` call renames the modules under its own `RecipeRunN`
+  namespace, so tests stay `async: true` and never redefine a loaded fixture. Look them up in
   `modules` by the name the task gave them.
   """
 
@@ -12,7 +12,9 @@ defmodule AshWorkflow.RecipeCase do
 
   import ExUnit.Assertions
 
-  defstruct [:igniter, :changed, notices: [], warnings: [], modules: %{}]
+  @scaffold "lib/ash_workflow.ex"
+
+  defstruct [:igniter, changed: %{}, notices: [], warnings: [], modules: %{}]
 
   @type t :: %__MODULE__{
           igniter: Igniter.t(),
@@ -62,21 +64,25 @@ defmodule AshWorkflow.RecipeCase do
   end
 
   @doc """
-  Writes every `.ex` file the task created or changed into `tmp_dir` and
-  compiles them, failing on any error or warning.
+  Writes every `.ex` file in the project into `tmp_dir` and compiles them,
+  failing on any error or warning.
+
+  Fixtures the task left unchanged are compiled too, so a renamed resource
+  points at the renamed copy of its domain.
   """
   @spec compile(t(), Path.t()) :: t()
-  def compile(%__MODULE__{changed: changed} = recipe, tmp_dir) do
+  def compile(%__MODULE__{} = recipe, tmp_dir) do
     namespace = "RecipeRun#{System.unique_integer([:positive])}"
+    sources = sources(recipe)
 
     renames =
-      changed
+      sources
       |> Map.values()
       |> Enum.flat_map(&defined_modules/1)
       |> Map.new(&{&1, Module.concat([namespace | Module.split(&1)])})
 
     files =
-      Enum.map(changed, fn {path, content} ->
+      Enum.map(sources, fn {path, content} ->
         file = Path.join(tmp_dir, path)
         File.mkdir_p!(Path.dirname(file))
         File.write!(file, rename_modules(content, renames))
@@ -114,6 +120,16 @@ defmodule AshWorkflow.RecipeCase do
       diagnostics.compile_warnings ++ diagnostics.runtime_warnings,
       &(&1.message =~ "protocol has already been consolidated")
     )
+  end
+
+  # `project/1` names the app `:ash_workflow`, so the `mix new` scaffold
+  # defines `AshWorkflow` itself, which must not be renamed or recompiled.
+  defp sources(%__MODULE__{igniter: igniter, changed: changed}) do
+    for {path, content} <- igniter.assigns.test_files,
+        Path.extname(path) == ".ex",
+        path != @scaffold or Map.has_key?(changed, path),
+        into: %{},
+        do: {path, content}
   end
 
   defp changed_files(before, after_task) do

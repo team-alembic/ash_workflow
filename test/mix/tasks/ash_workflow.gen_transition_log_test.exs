@@ -87,7 +87,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.TransitionLogTest do
     log = recipe.modules[AshWorkflowTest.RecipeFixtures.TransitionLog.TicketTransition]
 
     reviewer =
-      Reviewer
+      recipe.modules[Reviewer]
       |> Ash.Changeset.for_create(:create, %{name: "Ada"})
       |> Ash.create!()
 
