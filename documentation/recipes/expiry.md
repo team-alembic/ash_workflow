@@ -11,7 +11,7 @@ mix ash_workflow.gen.expiry MyApp.Contracts.Contract --notice-period 30d
 | Option | Default | Effect |
 |---|---|---|
 | `--module` | `<Subject>Expiry` | Name of the generated expiry resource. |
-| `--domain` | the subject's domain | Domain for a subject the task creates. Required only when the subject does not exist. |
+| `--domain` | none | Domain for a subject the task creates. Required when the subject does not exist, and ignored when it does: the expiry resource then joins the subject's domain. |
 | `--notice-period` | none | Moves an expiry to `:expiring` this long before `expires_at`. Accepts `10s`, `30m`, `12h`, `2d` and `2w`. Without it, no `:expiring` step is generated. |
 | `--transition-log` | `true` | Also runs `mix ash_workflow.gen.transition_log` for the expiry resource. Pass `--no-transition-log` to skip it. |
 
