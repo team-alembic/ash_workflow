@@ -4,6 +4,7 @@ defmodule Mix.AshWorkflow.RecipeTest do
   alias AshWorkflowTest.RecipeFixtures.NoDataLayer.Domain
   alias AshWorkflowTest.RecipeFixtures.NoDataLayer.Invoice
   alias AshWorkflowTest.RecipeFixtures.NoDataLayer.User
+  alias Mix.AshWorkflow.Recipe
 
   @fixtures "test/support/recipe_fixtures/no_data_layer"
 
@@ -46,6 +47,27 @@ defmodule Mix.AshWorkflow.RecipeTest do
 
       assert {:error, _issues} = Igniter.Test.apply_igniter(igniter)
       assert Enum.filter(Rewrite.sources(igniter.rewrite), &Rewrite.Source.updated?/1) == []
+    end
+  end
+
+  describe "postgres_block/3" do
+    @storage %{domain: Domain, data_layer: AshPostgres.DataLayer, repo: AshWorkflowTest.Repo}
+
+    for {module, table} <- [
+          {MyApp.ExpenseApproval, "expense_approvals"},
+          {MyApp.ExpenseApprovalDecision, "expense_approval_decisions"},
+          {MyApp.ContractExpiry, "contract_expiries"},
+          {MyApp.Holiday, "holidays"},
+          {MyApp.Status, "statuses"},
+          {MyApp.Box, "boxes"},
+          {MyApp.Waltz, "waltzes"},
+          {MyApp.Batch, "batches"},
+          {MyApp.Wish, "wishes"}
+        ] do
+      test "names the table for #{inspect(module)} #{table}" do
+        assert Recipe.postgres_block(@storage, unquote(module)) =~
+                 "table #{inspect(unquote(table))}"
+      end
     end
   end
 end

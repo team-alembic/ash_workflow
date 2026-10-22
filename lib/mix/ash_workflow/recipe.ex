@@ -302,9 +302,11 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
     end
 
     defp plural(name) do
-      if Regex.match?(~r/[^aeiou]y$/, name),
-        do: String.replace_suffix(name, "y", "ies"),
-        else: name <> "s"
+      cond do
+        Regex.match?(~r/[^aeiou]y$/, name) -> String.replace_suffix(name, "y", "ies")
+        Regex.match?(~r/(s|x|z|ch|sh)$/, name) -> name <> "es"
+        true -> name <> "s"
+      end
     end
   end
 end
