@@ -14,7 +14,7 @@ defmodule AshWorkflowTest.UpsertWorkflow do
   end
 
   workflow do
-    scheduler AshWorkflow.Scheduler.Precise
+    scheduler AshWorkflowTest.NotifyingScheduler
     transition_log AshWorkflowTest.UpsertLog
 
     step :open do

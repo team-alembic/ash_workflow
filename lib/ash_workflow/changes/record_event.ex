@@ -73,6 +73,14 @@ defmodule AshWorkflow.Changes.RecordEvent do
   A timer armed before the commit could fire against a record still holding the
   old state.
 
+  ## Upserts
+
+  A create action that upserts onto an existing row leaves that row in the
+  step it was in. This change writes no log row for it and does not call
+  `AshWorkflow.Scheduler.notify_state_change/1`. The telemetry span still opens
+  and closes, because its `:start` event fires before the data layer reports
+  whether the row was inserted.
+
   ## Atomicity
 
   This change implements `atomic/3` rather than falling back to
@@ -183,14 +191,27 @@ defmodule AshWorkflow.Changes.RecordEvent do
 
   defp every_field(opts), do: Keyword.get(opts, :every_field)
 
+  # The `:start` event fired before the data layer reported whether the create
+  # inserted, so the span still closes on an upsert that entered no step.
   defp finish(changeset, record, opts, context) do
-    record = append_log(changeset, record, opts, context)
-
-    emit_stop(changeset, record)
-    Scheduler.notify_state_change(record)
+    if upserted_onto_existing_row?(changeset, record) do
+      emit_stop(changeset, record)
+    else
+      append_log(changeset, record, opts, context)
+      emit_stop(changeset, record)
+      Scheduler.notify_state_change(record)
+    end
 
     record
   end
+
+  # A create that upserts onto an existing row leaves it in the step it was in.
+  defp upserted_onto_existing_row?(%{action_type: :create}, %{
+         __metadata__: %{upsert_action: :update}
+       }),
+       do: true
+
+  defp upserted_onto_existing_row?(_changeset, _record), do: false
 
   # The span opens here rather than in the after_action hook because this is
   # where the action begins: `change/3` and `atomic/3` both run while the
@@ -287,11 +308,6 @@ defmodule AshWorkflow.Changes.RecordEvent do
   defp append_log(changeset, record, opts, context) do
     case Info.transition_log(changeset.resource) do
       nil ->
-        record
-
-      # A create that upserts onto an existing row leaves it in the step it
-      # was in, so there is no event to log.
-      _log when changeset.action_type == :create and record.__metadata__.upsert_action == :update ->
         record
 
       log ->
