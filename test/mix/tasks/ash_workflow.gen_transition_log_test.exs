@@ -21,7 +21,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.TransitionLogTest do
   end
 
   defp log_rows(log) do
-    log |> Ash.read!() |> Enum.sort_by(& &1.occurred_at, DateTime)
+    log |> Ash.Query.sort(occurred_at: :asc, id: :asc) |> Ash.read!()
   end
 
   test "the generated log resource records each transition of the workflow", %{tmp_dir: tmp_dir} do
