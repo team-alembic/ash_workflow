@@ -19,9 +19,10 @@ When the subject does not exist, the task creates it with `mix ash.gen.resource`
 
 ## What it generates
 
-For the command above, the task writes two modules and edits the subject:
+For the command above, the task writes three modules and edits the subject:
 
 - `MyApp.Accounts.IdentityDocumentVerification` runs the workflow. It belongs to the document and holds the provider's `outcome`, either `:passed` or `:failed`.
+- `MyApp.Accounts.IdentityDocumentVerification.Checks.CanSubmit` decides who may submit a verification. It denies everyone as generated.
 - `MyApp.Accounts.IdentityDocumentVerification.Checks.CanReview` decides who may approve or reject a verification in review. It denies everyone as generated.
 - `MyApp.Accounts.IdentityDocument` gains `has_many :verifications`, `has_one :latest_verification` and a `verified?` calculation. The task adds no change, argument or policy to the subject's actions.
 
@@ -75,16 +76,32 @@ The workflow has no timeouts. `:verifying` is bounded by its attempts, and `:nee
 
 ## What your application does next
 
+### Decide who may submit
+
+`CanSubmit` denies everyone, so no verification can be submitted until you change it. Replace its `match?/3`, or replace the `authorize_if` line in the `:submit` policy with a built-in check:
+
+```elixir
+policies do
+  policy action(:submit) do
+    authorize_if actor_attribute_equals(:role, :applicant)
+  end
+end
+```
+
+Code that submits a verification on the application's behalf, such as an import, can pass `authorize?: false` instead.
+
+Reads stay open by default. `AshWorkflow` authorizes `:read` on the verification resource for every actor. Add a read policy if verifications are private.
+
 ### Submit and begin a verification
 
 Call `submit/1` with the subject, then `begin/1` once the provider has what it needs, such as an uploaded file:
 
 ```elixir
-verification = MyApp.Accounts.IdentityDocumentVerification.submit!(document.id)
+verification = MyApp.Accounts.IdentityDocumentVerification.submit!(document.id, actor: current_user)
 MyApp.Accounts.IdentityDocumentVerification.begin!(verification)
 ```
 
-The generated `:submit` create action has no policy. Your application adds one if it needs to restrict who may submit a verification. `begin` is allowed by the default policy AshWorkflow adds for every transition, and a policy of your own replaces it.
+`begin` is allowed by the default policy AshWorkflow adds for every transition, and a policy of your own replaces it.
 
 ### Call your provider
 
@@ -133,7 +150,7 @@ end
 
 ### Use the outcome
 
-`verified?` on the subject is true when its latest verification is in `:verified`. It reads `latest_verification` only. Submitting a new verification for a verified subject turns `verified?` false until the new verification reaches `:verified`. Gating a subject action on it is up to you, for example with a policy on the subject:
+`verified?` on the subject is true when its latest verification is in `:verified`, and false otherwise, including when the subject has no verification. It reads `latest_verification` only. Submitting a new verification for a verified subject turns `verified?` false until the new verification reaches `:verified`. Gating a subject action on it is up to you, for example with a policy on the subject:
 
 ```elixir
 policy action(:withdraw) do

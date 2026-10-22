@@ -13,7 +13,10 @@ defmodule Mix.Tasks.AshWorkflow.Gen.VerificationTest do
   @fixtures "test/support/recipe_fixtures/verification"
   @files ["#{@fixtures}/domain.ex", "#{@fixtures}/identity_document.ex"]
   @verification "lib/ash_workflow_test/recipe_fixtures/verification/identity_document_verification.ex"
-  @can_review "lib/ash_workflow_test/recipe_fixtures/verification/identity_document_verification/checks/can_review.ex"
+  @checks "lib/ash_workflow_test/recipe_fixtures/verification/identity_document_verification/checks"
+  @can_review "#{@checks}/can_review.ex"
+  @deny_all "def match?(_actor, _context, _opts), do: false"
+  @submitter %{id: "submitter", role: :applicant}
   @reviewer %{id: "reviewer", role: :reviewer}
 
   defp generate(files \\ @files, argv) do
@@ -26,13 +29,15 @@ defmodule Mix.Tasks.AshWorkflow.Gen.VerificationTest do
     [inspect(IdentityDocument) | argv]
     |> generate()
     |> call_provider()
+    |> allow_submitters()
     |> allow_reviewers()
     |> compile(tmp_dir)
   end
 
   # What an application does once it has generated the recipe: fill in the
-  # :verify action with the provider call, and fill in CanReview. Here anyone
-  # with the :reviewer role may review.
+  # :verify action with the provider call, and fill in CanSubmit and
+  # CanReview. Here any actor may submit, and anyone with the :reviewer role
+  # may review.
   defp call_provider(recipe) do
     edit_source(recipe, @verification, fn source ->
       String.replace(
@@ -43,11 +48,17 @@ defmodule Mix.Tasks.AshWorkflow.Gen.VerificationTest do
     end)
   end
 
+  defp allow_submitters(recipe, checks \\ @checks) do
+    edit_source(recipe, "#{checks}/can_submit.ex", fn source ->
+      String.replace(source, @deny_all, "def match?(actor, _context, _opts), do: is_map(actor)")
+    end)
+  end
+
   defp allow_reviewers(recipe) do
     edit_source(recipe, @can_review, fn source ->
       String.replace(
         source,
-        "def match?(_actor, _context, _opts), do: false",
+        @deny_all,
         "def match?(actor, _context, _opts), do: is_map(actor) and actor.role == :reviewer"
       )
     end)
@@ -67,9 +78,14 @@ defmodule Mix.Tasks.AshWorkflow.Gen.VerificationTest do
   end
 
   defp submit(recipe, subject) do
+    {:ok, verification} = submit(recipe, subject, @submitter)
+    verification
+  end
+
+  defp submit(recipe, subject, actor) do
     recipe.modules[IdentityDocumentVerification]
-    |> Ash.Changeset.for_create(:submit, %{subject_id: subject.id})
-    |> Ash.create!()
+    |> Ash.Changeset.for_create(:submit, %{subject_id: subject.id}, actor: actor)
+    |> Ash.create()
   end
 
   defp started(recipe, number) do
@@ -129,6 +145,12 @@ defmodule Mix.Tasks.AshWorkflow.Gen.VerificationTest do
                names(Ash.Resource.Info.calculations(IdentityDocument)) == [:verified?]
     end
 
+    test "is not verified, rather than nil, without a verification", %{tmp_dir: tmp_dir} do
+      recipe = verification_for_documents(tmp_dir)
+
+      assert Ash.load!(document(recipe, "genuine"), :verified?).verified? == false
+    end
+
     test "is verified once its latest verification is", %{tmp_dir: tmp_dir} do
       recipe = verification_for_documents(tmp_dir)
       document = document(recipe, "forged")
@@ -176,6 +198,9 @@ defmodule Mix.Tasks.AshWorkflow.Gen.VerificationTest do
     recipe =
       @files
       |> generate([inspect(Passport), "--domain", inspect(Domain)])
+      |> allow_submitters(
+        "lib/ash_workflow_test/recipe_fixtures/verification/passport_verification/checks"
+      )
       |> compile(tmp_dir)
 
     passport_module = recipe.modules[Passport]
@@ -190,7 +215,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.VerificationTest do
 
     verification =
       verification_module
-      |> Ash.Changeset.for_create(:submit, %{subject_id: passport.id})
+      |> Ash.Changeset.for_create(:submit, %{subject_id: passport.id}, actor: @submitter)
       |> Ash.create!()
 
     assert verification.state == :submitted
@@ -276,6 +301,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.VerificationTest do
       recipe =
         [inspect(IdentityDocument), "--max-attempts", "1"]
         |> generate()
+        |> allow_submitters()
         |> compile(tmp_dir)
 
       verification = started(recipe, "genuine")
@@ -294,12 +320,53 @@ defmodule Mix.Tasks.AshWorkflow.Gen.VerificationTest do
     end
   end
 
+  describe "CanSubmit" do
+    test "denies everyone as generated", %{tmp_dir: tmp_dir} do
+      recipe =
+        [inspect(IdentityDocument)]
+        |> generate()
+        |> call_provider()
+        |> allow_reviewers()
+        |> compile(tmp_dir)
+
+      document = document(recipe, "genuine")
+
+      assert {:error, %Ash.Error.Forbidden{}} = submit(recipe, document, @submitter)
+      assert {:error, %Ash.Error.Forbidden{}} = submit(recipe, document, nil)
+      assert Ash.read!(recipe.modules[IdentityDocumentVerification]) == []
+
+      assert Enum.any?(
+               recipe.notices,
+               &String.contains?(&1, "Nobody can submit a verification")
+             )
+    end
+
+    test "lets a submitter submit once the application permits them", %{tmp_dir: tmp_dir} do
+      recipe = verification_for_documents(tmp_dir)
+      document = document(recipe, "genuine")
+
+      assert {:error, %Ash.Error.Forbidden{}} = submit(recipe, document, nil)
+      assert {:ok, %{state: :submitted}} = submit(recipe, document, @submitter)
+    end
+
+    test "leaves reads open to every actor", %{tmp_dir: tmp_dir} do
+      recipe = verification_for_documents(tmp_dir)
+      verification = submit(recipe, document(recipe, "genuine"))
+
+      for actor <- [nil, %{id: "other", role: :applicant}] do
+        assert [%{id: id}] = Ash.read!(recipe.modules[IdentityDocumentVerification], actor: actor)
+        assert id == verification.id
+      end
+    end
+  end
+
   describe "CanReview" do
     test "denies everyone as generated", %{tmp_dir: tmp_dir} do
       recipe =
         [inspect(IdentityDocument)]
         |> generate()
         |> call_provider()
+        |> allow_submitters()
         |> compile(tmp_dir)
 
       verification = in_review(recipe)
@@ -312,7 +379,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.VerificationTest do
 
       assert Enum.any?(
                recipe.notices,
-               &String.contains?(&1, "Nobody can decide a verification in review yet")
+               &String.contains?(&1, "decide one in review yet")
              )
     end
 
@@ -371,7 +438,10 @@ defmodule Mix.Tasks.AshWorkflow.Gen.VerificationTest do
         "0"
       ])
 
-    assert Enum.any?(igniter.issues, &String.contains?(&1, "--max-attempts must be a positive integer"))
+    assert Enum.any?(
+             igniter.issues,
+             &String.contains?(&1, "--max-attempts must be a positive integer")
+           )
   end
 
   test "reports an issue for a missing subject without --domain" do

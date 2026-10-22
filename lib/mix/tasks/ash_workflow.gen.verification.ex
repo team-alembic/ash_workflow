@@ -21,8 +21,9 @@ defmodule Mix.Tasks.AshWorkflow.Gen.Verification.Docs do
     `has_one :latest_verification` and a `verified?` calculation. When the
     subject does not exist, it is created with `mix ash.gen.resource` first.
 
-    Nobody may decide a verification in review until the application defines
-    who can, in the generated `Checks.CanReview` module.
+    Nobody may submit a verification, or decide one in review, until the
+    application defines who can, in the generated `Checks.CanSubmit` and
+    `Checks.CanReview` modules.
 
     ## Example
 
@@ -88,6 +89,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
           config = %{
             subject: subject,
             verification: verification,
+            can_submit: Module.concat([verification, Checks, CanSubmit]),
             can_review: Module.concat([verification, Checks, CanReview]),
             max_attempts: options[:max_attempts],
             transition_log?: options[:transition_log]
@@ -145,7 +147,8 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
           end
           """
         ],
-        verified?: "calculate :verified?, :boolean, expr(latest_verification.state == :verified)"
+        verified?:
+          "calculate :verified?, :boolean, expr(latest_verification.state == :verified || false)"
       )
       |> then(fn igniter ->
         if exists?, do: igniter, else: create_verification(igniter, config, storage)
@@ -158,6 +161,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
         config.verification,
         verification_contents(config, storage)
       )
+      |> ProjectModule.create_module(config.can_submit, can_submit_contents(config))
       |> ProjectModule.create_module(config.can_review, can_review_contents(config))
       |> DomainIgniter.add_resource_reference(storage.domain, config.verification)
       |> compose_transition_log(config)
@@ -167,8 +171,9 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       The :verify action is empty, so every verification lands in :needs_review. \
       Add the change that calls your provider and writes :outcome.
 
-      Nobody can decide a verification in review yet. Define who may in \
-      #{inspect(config.can_review)}, which denies everyone as generated.
+      Nobody can submit a verification or decide one in review yet. Define who \
+      may submit in #{inspect(config.can_submit)} and who may review in \
+      #{inspect(config.can_review)}. Both deny everyone as generated.
       """)
     end
 
@@ -231,6 +236,8 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       end
 
       policies do
+        #{Recipe.create_policy(:submit, config.can_submit)}
+
         policy action([:approve, :reject]) do
           authorize_if #{inspect(config.can_review)}
         end
@@ -261,6 +268,13 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
         max_attempts #{max_attempts}
       end
       """
+    end
+
+    defp can_submit_contents(config) do
+      Recipe.deny_check_contents(
+        "Decides who may submit an `#{inspect(config.verification)}` for a subject.",
+        "actor may submit a verification for this subject"
+      )
     end
 
     defp can_review_contents(config) do
