@@ -191,4 +191,36 @@ defmodule Mix.Tasks.AshWorkflow.Gen.TransitionLogTest do
              &String.contains?(&1, "does not use the AshWorkflow extension")
            )
   end
+
+  test "reports an issue for a workflow on disk that does not compile" do
+    workflow = AshWorkflowTest.RecipeFixtures.TransitionLog.Broken
+
+    igniter =
+      Igniter.Test.test_project(
+        app_name: :ash_workflow,
+        files:
+          @ets_files
+          |> Map.new(&{&1, File.read!(&1)})
+          |> Map.put("lib/broken.ex", """
+          defmodule #{inspect(workflow)} do
+            use Ash.Resource,
+              domain: AshWorkflowTest.RecipeFixtures.TransitionLog.Domain,
+              extensions: [AshWorkflow]
+
+            workflow do
+              step :drafting, terminal: true
+            end
+
+            attributes do
+              uuid_v7_primary_key :id
+              attribute :title, :not_a_type
+            end
+          end
+          """)
+      )
+      |> Igniter.compose_task("ash_workflow.gen.transition_log", [inspect(workflow)])
+
+    assert Enum.any?(igniter.issues, &String.contains?(&1, "Could not load #{inspect(workflow)}"))
+    assert Enum.any?(igniter.issues, &String.contains?(&1, "must already exist and compile"))
+  end
 end

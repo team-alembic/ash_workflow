@@ -121,17 +121,19 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
     defp compiled_postgres(_workflow_module, _data_layer), do: nil
 
     # A resource generated earlier in the same Igniter run, such as the one
-    # `ash_workflow.gen.approval` writes, exists only as source.
+    # `ash_workflow.gen.approval` writes, exists only as source. Igniter marks
+    # a file it read from disk `from: :file`, so a source not from a file was
+    # created in this run. A file from disk that did not load failed to compile.
     defp source_resource(igniter, workflow_module) do
-      case ProjectModule.find_module(igniter, workflow_module) do
-        {:ok, {igniter, _source, zipper}} ->
-          body =
-            zipper |> Sourceror.Zipper.node() |> Sourceror.to_string() |> Code.string_to_quoted!()
+      with {:ok, {igniter, source, zipper}} <- ProjectModule.find_module(igniter, workflow_module),
+           false <- Rewrite.Source.from?(source, :file) do
+        body =
+          zipper |> Sourceror.Zipper.node() |> Sourceror.to_string() |> Code.string_to_quoted!()
 
-          {:ok, igniter, resource_from_ast(body)}
-
-        {:error, igniter} ->
-          {:error, igniter}
+        {:ok, igniter, resource_from_ast(body)}
+      else
+        {:error, igniter} -> {:error, igniter}
+        true -> {:error, igniter}
       end
     end
 

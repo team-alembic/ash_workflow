@@ -186,7 +186,7 @@ The recommendation is generated code. Approval varies per application in the pol
 
 ## Composing the transition log
 
-`ash_workflow.gen.transition_log` loaded the workflow resource with `Code.ensure_compiled/1`. The approval resource exists only as source while the generator runs, so the task now falls back to reading the resource's source when the module is not compiled. It reads the domain, data layer, extensions, the Postgres `table` and `repo`, and whether the `workflow` block already has a `transition_log`.
+`ash_workflow.gen.transition_log` loaded the workflow resource with `Code.ensure_compiled/1`. The approval resource exists only as source while the generator runs, so the task now falls back to reading the resource's source when the module is not compiled and Igniter created its file in the same run. A module whose file Igniter read from disk but that did not compile still gets the "Could not load" issue, rather than a log generated from source that may not compile. It reads the domain, data layer, extensions, the Postgres `table` and `repo`, and whether the `workflow` block already has a `transition_log`.
 
 The generator composes the transition log only when it creates the approval resource. A second run finds the approval resource and skips it, which keeps the task idempotent.
 
