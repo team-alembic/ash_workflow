@@ -494,6 +494,52 @@ defmodule Mix.Tasks.AshWorkflow.Gen.DeletionTest do
     end
   end
 
+  # The Limits section of the recipe page gives this edit for a purge that
+  # destroys the subject.
+  test "the reference edit for a purge that destroys its subject reaches the migration snapshot",
+       %{tmp_dir: tmp_dir} do
+    deletion_path =
+      "lib/ash_workflow_test/recipe_fixtures/transition_log/postgres_ticket_deletion.ex"
+
+    recipe =
+      [
+        "test/support/recipe_fixtures/transition_log/postgres_domain.ex",
+        "test/support/recipe_fixtures/transition_log/postgres_ticket.ex"
+      ]
+      |> generate([
+        "AshWorkflowTest.RecipeFixtures.TransitionLog.PostgresTicket",
+        "--grace-period",
+        "7d"
+      ])
+      |> edit_source(deletion_path, fn source ->
+        source
+        |> String.replace(
+          "repo(AshWorkflowTest.Repo)\n",
+          "repo(AshWorkflowTest.Repo)\n\n    references do\n      reference :subject, on_delete: :nilify\n    end\n"
+        )
+        |> String.replace(
+          ~r/(belongs_to\(:subject,[^)]*)allow_nil\?: false/,
+          "\\1allow_nil?: true"
+        )
+      end)
+      |> compile(tmp_dir)
+
+    deletion =
+      recipe.modules[AshWorkflowTest.RecipeFixtures.TransitionLog.PostgresTicketDeletion]
+
+    [snapshot] =
+      AshPostgres.MigrationGenerator.take_snapshots(
+        recipe.modules[AshWorkflowTest.RecipeFixtures.TransitionLog.PostgresDomain],
+        AshWorkflowTest.Repo,
+        [deletion]
+      )
+
+    subject_id = Enum.find(snapshot.attributes, &(&1.source == :subject_id))
+
+    assert subject_id.allow_nil?
+    assert subject_id.references.on_delete == :nilify
+  end
+
   test "--no-transition-log generates no transition log" do
     recipe = generate([inspect(Account), "--grace-period", "30d", "--no-transition-log"])
 
