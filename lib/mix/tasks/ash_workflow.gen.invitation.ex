@@ -20,8 +20,10 @@ defmodule Mix.Tasks.AshWorkflow.Gen.Invitation.Docs do
     When the subject does not exist, it is created with `mix ash.gen.resource`
     first.
 
-    Nobody may accept or decline until the application defines how an actor
-    proves they are the invitee, in the generated `Checks.CanAccept` module.
+    Nobody may send an invitation until the application defines who may, in
+    the generated `Checks.CanInvite` module. Nobody may accept or decline
+    until the application defines how an actor proves they are the invitee,
+    in the generated `Checks.CanAccept` module.
 
     ## Example
 
@@ -91,6 +93,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
             subject: subject,
             invitee: invitee,
             invitation: invitation,
+            can_invite: Module.concat([invitation, Checks, CanInvite]),
             can_accept: Module.concat([invitation, Checks, CanAccept]),
             no_open_invitation: Module.concat([invitation, Validations, NoOpenInvitation]),
             set_expires_at: Module.concat([invitation, Changes, SetExpiresAt]),
@@ -161,6 +164,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
     defp create_invitation(igniter, config, storage) do
       igniter
       |> ProjectModule.create_module(config.invitation, invitation_contents(config, storage))
+      |> ProjectModule.create_module(config.can_invite, can_invite_contents(config))
       |> ProjectModule.create_module(config.can_accept, can_accept_contents(config))
       |> ProjectModule.create_module(
         config.no_open_invitation,
@@ -172,10 +176,10 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       |> Igniter.add_notice("""
       Generated #{inspect(config.invitation)} to invite people to #{inspect(config.subject)}.
 
-      Nobody can accept or decline an invitation yet. Define how an actor \
-      proves they are the invitee in #{inspect(config.can_accept)}, which \
-      denies everyone as generated. Delivering the invitation is up to the \
-      application.
+      Nobody can send, accept or decline an invitation yet. Define who may \
+      invite in #{inspect(config.can_invite)}, and how an actor proves they \
+      are the invitee in #{inspect(config.can_accept)}. Both deny everyone as \
+      generated. Delivering the invitation is up to the application.
       """)
     end
 
@@ -244,6 +248,8 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       end
 
       policies do
+        #{Recipe.create_policy(:invite, config.can_invite)}
+
         policy action([:accept, :decline]) do
           authorize_if #{inspect(config.can_accept)}
         end
@@ -314,6 +320,13 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
     end
 
     defp postgres_identities(_storage), do: ""
+
+    defp can_invite_contents(config) do
+      Recipe.deny_check_contents(
+        "Decides who may invite someone to the subject of an `#{inspect(config.invitation)}`.",
+        "actor may invite to this subject"
+      )
+    end
 
     defp can_accept_contents(config) do
       """

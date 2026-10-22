@@ -12,9 +12,10 @@ Team invites, event RSVPs and access grants share one workflow. Someone invites 
 
 The generator owns the invitation lifecycle: the states, the transitions, the expiry deadline, the rule that `resend` moves that deadline, and the rule that only the inviter may revoke or resend.
 
-The application owns four things:
+The application owns five things:
 
 - When an invitation is created. The application calls `TeamInvitation.invite/3` from wherever that makes sense: an "invite member" form, an admin import, a create action on the subject.
+- Who may send an invitation. This is one `Ash.Policy.Check` module, `CanInvite`, generated to deny everyone.
 - How the invitation reaches the invitee. The generator writes no token, no email and no notifier. The application sends the invitation on `invite` and on `resend`, for example with an Ash notifier on the invitation resource or with AshAuthentication's magic link.
 - How an actor proves they are the invitee. This is one `Ash.Policy.Check` module, `CanAccept`, generated to deny everyone.
 - What accepting grants, such as creating a membership row. The generator adds no change for it.
@@ -137,7 +138,7 @@ end
 
 `TeamInvitation.Changes.SetExpiresAt` sets `expires_at` to now plus `--expires-after`. It is a change module because Spark cannot store an anonymous function in the DSL, and a non-atomic `set_attribute` does not evaluate an expression. One module keeps the duration in one place for `:invite` and `:resend`.
 
-The generator adds no policy to `:invite`. Who may send an invitation is the application's decision.
+The generator gates `:invite` with `CanInvite`, which denies everyone. Who may send an invitation is the application's decision.
 
 `email` is a `:ci_string`, so `Alice@Example.com` and `alice@example.com` are one address. On AshPostgres this needs the `citext` extension, which the AshPostgres installer adds to `installed_extensions`.
 
@@ -158,10 +159,14 @@ On ETS the race stays. ETS is for tests and prototypes, where two concurrent inv
 
 ## Who may act
 
-The generator writes `MyApp.Teams.TeamInvitation.Checks.CanAccept`, which denies everyone, mirroring approval's `CanApprove`. The generator's notice says so.
+The generator writes `MyApp.Teams.TeamInvitation.Checks.CanInvite` and `MyApp.Teams.TeamInvitation.Checks.CanAccept`. Both deny everyone, mirroring approval's `CanRequest` and `CanApprove`. The generator's notice says so.
 
 ```elixir
 policies do
+  policy action(:invite) do
+    authorize_if MyApp.Teams.TeamInvitation.Checks.CanInvite
+  end
+
   policy action([:accept, :decline]) do
     authorize_if MyApp.Teams.TeamInvitation.Checks.CanAccept
   end
@@ -176,11 +181,11 @@ end
 
 `:revoke` and `:resend` need no deny-by-default check. The inviter is recorded on the row, so "only the inviter" is decidable by the generated code. An application that lets team admins revoke any invitation adds an `authorize_if` line.
 
-`AshWorkflow.Transformers.AddPolicies` allows `:invite`, reads and the scheduler's timeout transition, so an invitation can be sent and can lapse before the application has written `CanAccept`.
+`AshWorkflow.Transformers.AddPolicies` allows reads and the scheduler's timeout transition, so an invitation sent with `authorize?: false` can lapse before the application has written `CanAccept`. Reads stay open by default.
 
 ## Code shared with approval and expiry
 
-`gen.invitation` uses `Mix.AshWorkflow.Recipe` as it stands: `parse_duration/2`, `ensure_subject/5` with the invitee as the resource whose storage a created subject copies, `key_type/3`, `belongs_to/3`, `add_subject_edits/4`, `compose_transition_log/3`, and the rendering helpers. `postgres_block/3` takes the `identity_index_names` and `identity_wheres_to_sql` lines as its `extra` argument. Nothing is added to the shared module.
+`gen.invitation` uses `Mix.AshWorkflow.Recipe` as it stands: `parse_duration/2`, `ensure_subject/5` with the invitee as the resource whose storage a created subject copies, `key_type/3`, `belongs_to/3`, `deny_check_contents/2`, `create_policy/2`, `add_subject_edits/4`, `compose_transition_log/3`, and the rendering helpers. `postgres_block/3` takes the `identity_index_names` and `identity_wheres_to_sql` lines as its `extra` argument. Nothing is added to the shared module.
 
 ## Open questions
 

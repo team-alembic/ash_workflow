@@ -22,9 +22,10 @@ When the subject does not exist, the task creates it with `mix ash.gen.resource`
 
 ## What it generates
 
-For the command above, the task writes four modules and edits the subject:
+For the command above, the task writes five modules and edits the subject:
 
 - `MyApp.Teams.TeamInvitation` runs the workflow. It belongs to the team and to the user who sent it, and holds the invited `email` and `expires_at`.
+- `MyApp.Teams.TeamInvitation.Checks.CanInvite` decides who may send an invitation. It denies everyone as generated.
 - `MyApp.Teams.TeamInvitation.Checks.CanAccept` decides who may accept or decline. It denies everyone as generated.
 - `MyApp.Teams.TeamInvitation.Changes.SetExpiresAt` sets `expires_at` to now plus `--expires-after` on `invite` and `resend`.
 - `MyApp.Teams.TeamInvitation.Validations.NoOpenInvitation` refuses a second open invitation to the same email for the same team.
@@ -83,7 +84,18 @@ MyApp.Teams.TeamInvitation.invite(team.id, "ada@example.com", actor: current_use
 
 `email` is case-insensitive. A second invitation to the same address for the same team fails while the first is in `:sent`. On AshPostgres, `email` is a `citext` column, so the repo needs `"citext"` in its `installed_extensions`.
 
-The `:invite` create action has no policy, so any actor can send an invitation until you add a policy for it, for example one that only lets team admins invite.
+`CanInvite` gates `:invite` and denies everyone as generated, so nobody can send an invitation until you change it. Replace its `match?/3` with who may invite, for example team admins:
+
+```elixir
+def match?(actor, %{changeset: changeset}, _opts) do
+  team_id = Ash.Changeset.get_attribute(changeset, :subject_id)
+  MyApp.Teams.admin?(team_id, actor)
+end
+
+def match?(_actor, _context, _opts), do: false
+```
+
+Code that invites on the application's behalf, such as an import, can pass `authorize?: false` instead.
 
 ### Deliver the invitation
 

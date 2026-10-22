@@ -11,7 +11,8 @@ defmodule Mix.Tasks.AshWorkflow.Gen.InvitationTest do
 
   @fixtures "test/support/recipe_fixtures/invitation"
   @files ["#{@fixtures}/domain.ex", "#{@fixtures}/user.ex", "#{@fixtures}/team.ex"]
-  @can_accept "lib/ash_workflow_test/recipe_fixtures/invitation/team_invitation/checks/can_accept.ex"
+  @checks "lib/ash_workflow_test/recipe_fixtures/invitation/team_invitation/checks"
+  @deny_all "def match?(_actor, _context, _opts), do: false"
   @day 86_400
 
   defp generate(files \\ @files, argv) do
@@ -23,17 +24,25 @@ defmodule Mix.Tasks.AshWorkflow.Gen.InvitationTest do
   defp invitation_for_teams(tmp_dir, argv \\ []) do
     [inspect(Team), "--invitee", inspect(User) | argv]
     |> generate()
+    |> allow_inviters()
     |> allow_invitees()
     |> compile(tmp_dir)
   end
 
   # What an application does once it has generated the recipe: fill in
-  # CanAccept. Here an actor proves they are the invitee by their email.
+  # CanInvite and CanAccept. Here any actor may invite, and an actor proves
+  # they are the invitee by their email.
+  defp allow_inviters(recipe, checks \\ @checks) do
+    edit_source(recipe, "#{checks}/can_invite.ex", fn source ->
+      String.replace(source, @deny_all, "def match?(actor, _context, _opts), do: is_map(actor)")
+    end)
+  end
+
   defp allow_invitees(recipe) do
-    edit_source(recipe, @can_accept, fn source ->
+    edit_source(recipe, "#{@checks}/can_accept.ex", fn source ->
       String.replace(
         source,
-        "def match?(_actor, _context, _opts), do: false",
+        @deny_all,
         """
         def match?(%{email: email}, %{subject: %{data: invitation}}, _opts),
           do: Ash.CiString.compare(email, invitation.email) == :eq
@@ -126,6 +135,9 @@ defmodule Mix.Tasks.AshWorkflow.Gen.InvitationTest do
     recipe =
       ["#{@fixtures}/domain.ex", "#{@fixtures}/user.ex"]
       |> generate([inspect(Event), "--invitee", inspect(User), "--domain", inspect(Domain)])
+      |> allow_inviters(
+        "lib/ash_workflow_test/recipe_fixtures/invitation/event_invitation/checks"
+      )
       |> compile(tmp_dir)
 
     event_module = recipe.modules[Event]
@@ -156,11 +168,30 @@ defmodule Mix.Tasks.AshWorkflow.Gen.InvitationTest do
     assert second.warnings == []
   end
 
+  describe "CanInvite" do
+    test "denies everyone as generated", %{tmp_dir: tmp_dir} do
+      recipe =
+        [inspect(Team), "--invitee", inspect(User)]
+        |> generate()
+        |> allow_invitees()
+        |> compile(tmp_dir)
+
+      assert {:error, %Ash.Error.Forbidden{}} =
+               invite(recipe, team(recipe), user(recipe, "owner@example.com"), "ada@example.com")
+
+      assert Enum.any?(
+               recipe.notices,
+               &String.contains?(&1, "Nobody can send, accept or decline an invitation yet")
+             )
+    end
+  end
+
   describe "CanAccept" do
     test "denies everyone as generated", %{tmp_dir: tmp_dir} do
       recipe =
         [inspect(Team), "--invitee", inspect(User)]
         |> generate()
+        |> allow_inviters()
         |> compile(tmp_dir)
 
       invitee = user(recipe, "ada@example.com")
@@ -171,11 +202,6 @@ defmodule Mix.Tasks.AshWorkflow.Gen.InvitationTest do
       assert {:error, %Ash.Error.Forbidden{}} = act(invitation, :accept, invitee)
       assert {:error, %Ash.Error.Forbidden{}} = act(invitation, :decline, invitee)
       assert reload(invitation).state == :sent
-
-      assert Enum.any?(
-               recipe.notices,
-               &String.contains?(&1, "Nobody can accept or decline an invitation yet")
-             )
     end
 
     test "lets the invitee accept once the application permits them", %{tmp_dir: tmp_dir} do
@@ -383,6 +409,9 @@ defmodule Mix.Tasks.AshWorkflow.Gen.InvitationTest do
         "--invitee",
         "AshWorkflowTest.RecipeFixtures.TransitionLog.Reviewer"
       ])
+      |> allow_inviters(
+        "lib/ash_workflow_test/recipe_fixtures/transition_log/postgres_ticket_invitation/checks"
+      )
       |> compile(tmp_dir)
 
     for {module, table} <- [
