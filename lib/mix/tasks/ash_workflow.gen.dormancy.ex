@@ -150,8 +150,10 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
     end
 
     # An archived subject has been dormant for longer, so it counts as dormant.
-    defp dormant_expr(nil), do: "expr(dormancy.state == :dormant)"
-    defp dormant_expr(_archive_after), do: "expr(dormancy.state in [:dormant, :archived])"
+    defp dormant_expr(nil), do: "expr(dormancy.state == :dormant || false)"
+
+    defp dormant_expr(_archive_after),
+      do: "expr(dormancy.state in [:dormant, :archived] || false)"
 
     defp create_dormancy(igniter, config, storage) do
       igniter

@@ -116,6 +116,14 @@ defmodule Mix.Tasks.AshWorkflow.Gen.DormancyTest do
                names(Ash.Resource.Info.calculations(Account)) == [:dormant?]
     end
 
+    for argv <- [["--dormant-after", "30d"], ["--dormant-after", "30d", "--archive-after", "90d"]] do
+      test "is not dormant without a dormancy for #{Enum.join(argv, " ")}", %{tmp_dir: tmp_dir} do
+        recipe = dormancy_for_accounts(tmp_dir, unquote(argv))
+
+        assert Ash.load!(account(recipe), :dormant?).dormant? == false
+      end
+    end
+
     test "is dormant while its dormancy is dormant or archived", %{tmp_dir: tmp_dir} do
       recipe = dormancy_for_accounts(tmp_dir)
       dormancy_module = recipe.modules[AccountDormancy]
