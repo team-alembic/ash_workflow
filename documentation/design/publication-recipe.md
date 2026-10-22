@@ -44,6 +44,8 @@ mix ash_workflow.gen.publication MyApp.Blog.Post --with-unpublish-at
 | `--with-unpublish-at` | `false` | Generates the `unpublish_at` attribute and the timeout that moves `:published` to `:unpublished`. Without it, a publication stays published until someone unpublishes it. |
 | `--transition-log` | `true` | Composes `ash_workflow.gen.transition_log`. `--no-transition-log` skips it. |
 
+`--with-unpublish-at` is a boolean rather than a duration, because each record's `unpublish_at` is a date the caller sets when scheduling, not an offset the task can fix.
+
 There is no actor option, for the reason expiry has none. Nothing in the generated resource records who published, so the transition log is generated without `--actor`.
 
 When the subject module does not exist, the generator creates it with `ash.gen.resource` and takes the data layer from the first resource in `--domain` that uses ETS or Postgres, as expiry does. When no resource there uses either, the generator stops with an Igniter issue and writes nothing.
