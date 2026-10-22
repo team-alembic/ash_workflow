@@ -20,9 +20,10 @@ When the subject does not exist, the task creates it with `mix ash.gen.resource`
 
 ## What it generates
 
-For the command above, the task writes two modules and edits the subject:
+For the command above, the task writes three modules and edits the subject:
 
 - `MyApp.Accounts.AccountDormancy` runs the workflow. It belongs to the account and holds `last_activity_at`. An identity on `subject_id` allows one dormancy per account.
+- `MyApp.Accounts.AccountDormancy.Checks.CanCreate` decides who may create a dormancy. It denies everyone as generated.
 - `MyApp.Accounts.AccountDormancy.Checks.CanReactivate` decides who may reactivate. It denies everyone as generated.
 - `MyApp.Accounts.Account` gains `has_one :dormancy` and a `dormant?` calculation. The task adds no change, argument or policy to the subject's actions.
 
@@ -69,21 +70,37 @@ The `:archived` deadline is measured from `state_entered_at`, the moment the rec
 
 ## What your application does next
 
+### Decide who may create a dormancy
+
+`CanCreate` denies everyone, so no dormancy can be created until you change it. Replace its `match?/3`, or replace the `authorize_if` line in the `:create` policy with a built-in check:
+
+```elixir
+policies do
+  policy action(:create) do
+    authorize_if actor_attribute_equals(:role, :admin)
+  end
+end
+```
+
+Code that creates a dormancy on the application's behalf, such as an import, can pass `authorize?: false` instead.
+
+Reads stay open by default. `AshWorkflow` authorizes `:read` on the dormancy resource for every actor. Add a read policy if dormancies are private.
+
 ### Create the dormancy
 
 Call `create/2` wherever a subject starts to be tracked, such as the subject's create action, a sign-up step or an import:
 
 ```elixir
-MyApp.Accounts.AccountDormancy.create(account.id)
+MyApp.Accounts.AccountDormancy.create(account.id, actor: current_user)
 ```
 
 `last_activity_at` defaults to the time of creation. An import can pass the subject's real last use instead:
 
 ```elixir
-MyApp.Accounts.AccountDormancy.create(account.id, %{last_activity_at: last_seen_at})
+MyApp.Accounts.AccountDormancy.create(account.id, %{last_activity_at: last_seen_at}, authorize?: false)
 ```
 
-The generated `:create` action has no policy. Add one to the dormancy resource if your application restricts who can create a dormancy. A second dormancy for the same account fails on the `:unique_subject` identity.
+A second dormancy for the same account fails on the `:unique_subject` identity.
 
 ### Record activity
 

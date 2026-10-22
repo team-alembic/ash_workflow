@@ -10,7 +10,8 @@ defmodule Mix.Tasks.AshWorkflow.Gen.DormancyTest do
 
   @fixtures "test/support/recipe_fixtures/dormancy"
   @files ["#{@fixtures}/domain.ex", "#{@fixtures}/account.ex"]
-  @can_reactivate "lib/ash_workflow_test/recipe_fixtures/dormancy/account_dormancy/checks/can_reactivate.ex"
+  @checks "lib/ash_workflow_test/recipe_fixtures/dormancy/account_dormancy/checks"
+  @deny_all "def match?(_actor, _context, _opts), do: false"
   @argv ["--dormant-after", "30d", "--archive-after", "90d"]
   @support %{id: "support", role: :support}
 
@@ -23,17 +24,25 @@ defmodule Mix.Tasks.AshWorkflow.Gen.DormancyTest do
   defp dormancy_for_accounts(tmp_dir, argv \\ @argv) do
     [inspect(Account) | argv]
     |> generate()
+    |> allow_creators()
     |> allow_support()
     |> compile(tmp_dir)
   end
 
   # What an application does once it has generated the recipe: fill in
-  # CanReactivate. Here anyone with the :support role may reactivate.
+  # CanCreate and CanReactivate. Here any actor may create a dormancy, and
+  # anyone with the :support role may reactivate.
+  defp allow_creators(recipe) do
+    edit_source(recipe, "#{@checks}/can_create.ex", fn source ->
+      String.replace(source, @deny_all, "def match?(actor, _context, _opts), do: is_map(actor)")
+    end)
+  end
+
   defp allow_support(recipe) do
-    edit_source(recipe, @can_reactivate, fn source ->
+    edit_source(recipe, "#{@checks}/can_reactivate.ex", fn source ->
       String.replace(
         source,
-        "def match?(_actor, _context, _opts), do: false",
+        @deny_all,
         "def match?(actor, _context, _opts), do: is_map(actor) and actor.role == :support"
       )
     end)
@@ -52,12 +61,13 @@ defmodule Mix.Tasks.AshWorkflow.Gen.DormancyTest do
     |> Ash.create!()
   end
 
-  defp track(recipe, subject, last_active_days_ago \\ 0) do
+  defp track(recipe, subject, last_active_days_ago \\ 0, actor \\ @support) do
     recipe.modules[AccountDormancy]
-    |> Ash.Changeset.for_create(:create, %{
-      subject_id: subject.id,
-      last_activity_at: days_ago(last_active_days_ago)
-    })
+    |> Ash.Changeset.for_create(
+      :create,
+      %{subject_id: subject.id, last_activity_at: days_ago(last_active_days_ago)},
+      actor: actor
+    )
     |> Ash.create()
   end
 
@@ -143,7 +153,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.DormancyTest do
     dormancy =
       dormancy_module
       |> Ash.Changeset.for_create(:create, %{subject_id: project.id})
-      |> Ash.create!()
+      |> Ash.create!(authorize?: false)
 
     assert dormancy.state == :active
     assert Ash.load!(project, dormancy: :id).dormancy.id == dormancy.id
@@ -167,9 +177,31 @@ defmodule Mix.Tasks.AshWorkflow.Gen.DormancyTest do
     assert {:error, %Ash.Error.Invalid{}} = track(recipe, account)
   end
 
+  describe "CanCreate" do
+    test "denies everyone as generated", %{tmp_dir: tmp_dir} do
+      recipe = [inspect(Account) | @argv] |> generate() |> allow_support() |> compile(tmp_dir)
+
+      assert {:error, %Ash.Error.Forbidden{}} = track(recipe, account(recipe))
+      assert Ash.read!(recipe.modules[AccountDormancy]) == []
+
+      assert Enum.any?(
+               recipe.notices,
+               &String.contains?(&1, "Nobody can create or reactivate a dormancy yet")
+             )
+    end
+
+    test "lets a creator create once the application permits them", %{tmp_dir: tmp_dir} do
+      recipe = dormancy_for_accounts(tmp_dir)
+      account = account(recipe)
+
+      assert {:error, %Ash.Error.Forbidden{}} = track(recipe, account, 0, nil)
+      assert {:ok, %{state: :active}} = track(recipe, account)
+    end
+  end
+
   describe "CanReactivate" do
     test "denies everyone as generated", %{tmp_dir: tmp_dir} do
-      recipe = [inspect(Account) | @argv] |> generate() |> compile(tmp_dir)
+      recipe = [inspect(Account) | @argv] |> generate() |> allow_creators() |> compile(tmp_dir)
       {:ok, dormancy} = track(recipe, account(recipe), 31)
 
       Timeline.run_due(recipe.modules[AccountDormancy])
@@ -179,7 +211,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.DormancyTest do
 
       assert Enum.any?(
                recipe.notices,
-               &String.contains?(&1, "Nobody can reactivate a dormancy yet")
+               &String.contains?(&1, "Nobody can create or reactivate a dormancy yet")
              )
     end
 
