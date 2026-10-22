@@ -20,8 +20,9 @@ defmodule Mix.Tasks.AshWorkflow.Gen.Sync.Docs do
     exist, it is created with `mix ash.gen.resource` first.
 
     The generated `:push` action only stamps `last_synced_at`. Add the change
-    that calls the external system to it. Nobody may resync until the
-    application defines who can, in the generated `Checks.CanResync` module.
+    that calls the external system to it. Nobody may create or resync a sync
+    until the application defines who can, in the generated `Checks.CanCreate`
+    and `Checks.CanResync` modules.
 
     ## Example
 
@@ -88,6 +89,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
         config = %{
           subject: subject,
           sync: sync,
+          can_create: Module.concat([sync, Checks, CanCreate]),
           can_resync: Module.concat([sync, Checks, CanResync]),
           max_attempts: options[:max_attempts],
           backoff: backoff,
@@ -129,7 +131,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
           end
           """
         ],
-        synced?: "calculate :synced?, :boolean, expr(sync.state == :synced)"
+        synced?: "calculate :synced?, :boolean, expr(sync.state == :synced || false)"
       )
       |> then(fn igniter ->
         if exists?, do: igniter, else: create_sync(igniter, config, storage)
@@ -139,6 +141,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
     defp create_sync(igniter, config, storage) do
       igniter
       |> ProjectModule.create_module(config.sync, sync_contents(config, storage))
+      |> ProjectModule.create_module(config.can_create, can_create_contents(config))
       |> ProjectModule.create_module(config.can_resync, can_resync_contents(config))
       |> DomainIgniter.add_resource_reference(storage.domain, config.sync)
       |> compose_transition_log(config)
@@ -148,8 +151,9 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       The :push action only stamps last_synced_at, so every sync reaches \
       :synced until you add the change that calls the external system.
 
-      Nobody can resync yet. Define who may resync in \
-      #{inspect(config.can_resync)}, which denies everyone as generated.
+      Nobody can create or resync a sync yet. Define who may create one in \
+      #{inspect(config.can_create)} and who may resync in \
+      #{inspect(config.can_resync)}. Both deny everyone as generated.
       """)
     end
 
@@ -208,6 +212,8 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       end
 
       policies do
+        #{Recipe.create_policy(:create, config.can_create)}
+
         policy action(:resync) do
           authorize_if #{inspect(config.can_resync)}
         end
@@ -228,6 +234,13 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
         identity :unique_subject, [:subject_id]#{Recipe.pre_check_with(storage)}
       end
       """
+    end
+
+    defp can_create_contents(config) do
+      Recipe.deny_check_contents(
+        "Decides who may create a `#{inspect(config.sync)}` for a subject.",
+        "actor may create a sync for this subject"
+      )
     end
 
     defp can_resync_contents(config) do
