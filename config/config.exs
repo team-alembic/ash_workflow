@@ -40,6 +40,7 @@ if Mix.env() == :test do
   # `use Ash.Domain` to it. `test_helper.exs` leaves them out of the Oban
   # config, and the Postgres fixture sets `migrate? false`.
   recipe_fixture_domains = [
+    AshWorkflowTest.RecipeFixtures.Acknowledgement.Domain,
     AshWorkflowTest.RecipeFixtures.Approval.Domain,
     AshWorkflowTest.RecipeFixtures.Expiry.Domain,
     AshWorkflowTest.RecipeFixtures.TransitionLog.Domain,
