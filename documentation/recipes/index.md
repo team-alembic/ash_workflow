@@ -14,7 +14,7 @@ A recipe without a link has not been released yet. Each row links to its page on
 | [`gen.expiry`](expiry.md) | `active → expiring → expired`, with `renew` | Contracts, certifications, licences |
 | `gen.review` | `in_review → changes_requested → in_review → approved` | Content, design review, sign-off |
 | `gen.publication` | `draft → scheduled → published → unpublished` | Posts, announcements, listings |
-| `gen.invitation` | `sent → accepted \| declined \| expired`, with `resend` | Team invites, RSVPs, access grants |
+| [`gen.invitation`](invitation.md) | `sent → accepted \| declined \| expired \| revoked`, with `resend` | Team invites, RSVPs, access grants |
 | `gen.acknowledgement` | `pending → acknowledged \| overdue` | Policy attestations, terms updates |
 | `gen.deletion` | `requested → scheduled → deleted`, with `restore` | Account closure, GDPR erasure |
 | `gen.dormancy` | `active → dormant → archived` | Accounts, projects, leads |
