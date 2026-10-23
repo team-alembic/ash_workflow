@@ -33,11 +33,12 @@ defmodule Mix.Tasks.AshWorkflow.Gen.Dormancy.Docs do
     ## Options
 
     * `--dormant-after` - moves a dormancy to `:dormant` once
-      `last_activity_at` is this old, given as `10s`, `30m`, `12h`, `2d` or
-      `2w`.
+      `last_activity_at` is this old, given as `30m`, `12h`, `2d` or `2w`.
+      A duration under a minute needs `AshWorkflow.Scheduler.Precise`.
       Required.
     * `--archive-after` - moves a dormancy to `:archived` once it has been
-      `:dormant` this long. Without it, no `:archived` step is generated.
+      `:dormant` this long. Without it, no `:archived` step is generated. A
+      duration under a minute needs `AshWorkflow.Scheduler.Precise`.
     * `--module` - the dormancy resource's module name. Defaults to the
       subject's name with `Dormancy` appended.
     * `--domain` - the domain for a subject the task creates. Required only
@@ -88,7 +89,9 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       with {:ok, dormant_after} <-
              Recipe.parse_duration(options[:dormant_after], "--dormant-after"),
            {:ok, archive_after} <-
-             Recipe.parse_duration(options[:archive_after], "--archive-after") do
+             Recipe.parse_duration(options[:archive_after], "--archive-after"),
+           :ok <- Recipe.validate_interval(dormant_after, "--dormant-after"),
+           :ok <- Recipe.validate_interval(archive_after, "--archive-after") do
         dormancy = dormancy_module(subject, options[:module])
 
         config = %{

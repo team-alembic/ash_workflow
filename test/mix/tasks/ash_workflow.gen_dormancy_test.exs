@@ -360,7 +360,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.DormancyTest do
 
   describe "options" do
     for {flag, duration} <- [
-          {"10s", "{10, :seconds}"},
+          {"1m", "{1, :minutes}"},
           {"30m", "{30, :minutes}"},
           {"12h", "{12, :hours}"},
           {"2w", "{14, :days}"}
@@ -382,6 +382,16 @@ defmodule Mix.Tasks.AshWorkflow.Gen.DormancyTest do
         igniter = @files |> project() |> Igniter.compose_task("ash_workflow.gen.dormancy", argv)
 
         assert Enum.any?(igniter.issues, &String.contains?(&1, "#{unquote(flag)} must look like"))
+      end
+
+      test "reports an issue for a sub-minute #{flag} under the default scheduler" do
+        argv = [inspect(Account), "--dormant-after", "30d", unquote(flag), "10s"]
+        igniter = @files |> project() |> Igniter.compose_task("ash_workflow.gen.dormancy", argv)
+
+        assert Enum.any?(
+                 igniter.issues,
+                 &String.contains?(&1, "#{unquote(flag)} is shorter than")
+               )
       end
     end
   end
