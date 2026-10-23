@@ -148,6 +148,8 @@ A purge that fails is retried until `--max-attempts` attempts have failed, and t
 
 A failed purge cannot be restored. Part of the subject may already be gone, so returning it to normal use is a decision for the application to model, not a generated transition.
 
+A purge may destroy the subject itself. The recipe page tells an AshPostgres application to make `belongs_to :subject` nullable and add `reference :subject, on_delete: :nilify`, so Postgres sets `subject_id` to `NULL` and the deletion reaches `:deleted`. The tests check only that the migration snapshot records `on_delete: :nilify`. The fixture Postgres resources set `migrate? false`, so no test runs a purge that destroys the subject against a database. That path is reasoned from AshPostgres's `ON DELETE SET NULL` foreign key, not exercised.
+
 ## The resource
 
 `AccountDeletion` attributes: `subject_id` and `requested_at`, both required.
