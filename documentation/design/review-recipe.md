@@ -125,7 +125,7 @@ Three anchors were considered:
 
 `:request` runs a generated `Validations.NoOpenReview`, modelled on the invitation recipe's `NoOpenInvitation`. It refuses a request for a subject that has a review in `:in_review`, `:overdue` or `:changes_requested`. A second open review would become `latest_review`, so an article gated on `review_approved?` would stay blocked after its first review was approved.
 
-On AshPostgres the review also declares `identity :unique_open_subject, [:subject_id]` with a `where` on the open states, and `identity_wheres_to_sql` gives the partial index its SQL. The index closes the race between two requests that both pass the validation. Ash's identity pre-check ignores `where`, so other data layers get no identity and rely on the validation alone.
+On AshPostgres the review also declares `identity :unique_open_subject, [:subject_id]` with a `where` on the open states, and `identity_wheres_to_sql` gives the partial index its SQL. The index closes the race between two requests that both pass the validation. Ash's identity pre-check ignores `where`, so other data layers get no identity and rely on the validation alone. The index behaviour relies on `identity_wheres_to_sql` and is not exercised against a database in the recipe tests. The fixture Postgres resources set `migrate? false`, so the tests check the identity by introspection only.
 
 ## Rounds and decisions
 
