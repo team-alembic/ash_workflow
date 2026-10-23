@@ -169,7 +169,7 @@ On AshPostgres, run `mix ash.codegen add_account_deletion` to create the deletio
 
 The task records no actor. Nothing in the generated code says who requested or restored a deletion. Add a `requested_by` relationship, and pass `--no-transition-log` and run `mix ash_workflow.gen.transition_log` with `--actor`, if you need to record it.
 
-The deletion row stays after the purge, so the account's history survives its erasure. If the purge destroys the subject itself, the deletion row still references it. On AshPostgres the generated foreign key then blocks the destroy. The purge cannot clear the reference, because the generated `belongs_to :subject` sets `allow_nil? false`. Make the reference nullable and let Postgres clear it on delete, in the deletion resource:
+The deletion row stays after the purge, so the account's history survives its erasure. If the purge destroys the subject itself, the deletion row still references it. On AshPostgres the generated foreign key then blocks the destroy. The purge cannot clear the reference, because the generated `belongs_to :subject` sets `allow_nil? false`. Make the reference nullable and let Postgres clear it on delete, in the deletion resource. On the generated `belongs_to :subject`, change only `allow_nil?` to `true`. Keep the rest of the line as generated. For an integer or string key it also sets `attribute_type`, and dropping that changes the `subject_id` column to `uuid`:
 
 ```elixir
 postgres do
