@@ -363,21 +363,18 @@ defmodule Mix.Tasks.AshWorkflow.Gen.AcknowledgementTest do
     end
 
     for {flag, duration} <- [
-          {"10s", {10, :seconds}},
           {"30m", {30, :minutes}},
           {"12h", {12, :hours}},
           {"2d", {2, :days}},
           {"2w", {14, :days}}
         ] do
-      test "parses #{flag} as #{inspect(duration)}" do
-        recipe =
-          generate([inspect(Policy), "--person", inspect(User), "--overdue-after", unquote(flag)])
+      test "parses #{flag} as #{inspect(duration)}", %{tmp_dir: tmp_dir} do
+        recipe = acknowledgement_for_policies(tmp_dir, ["--overdue-after", unquote(flag)])
 
-        assert source!(
-                 recipe,
-                 "lib/ash_workflow_test/recipe_fixtures/acknowledgement/policy_acknowledgement.ex"
-               ) =~
-                 "fire_after: #{inspect(unquote(Macro.escape(duration)))}, field: :requested_at"
+        assert [%{fire_after: unquote(Macro.escape(duration)), field: :requested_at}] =
+                 recipe.modules[PolicyAcknowledgement]
+                 |> AshWorkflow.Info.steps()
+                 |> Enum.flat_map(& &1.timeouts)
       end
     end
 

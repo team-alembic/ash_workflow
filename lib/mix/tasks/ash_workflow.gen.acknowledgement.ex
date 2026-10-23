@@ -37,8 +37,9 @@ defmodule Mix.Tasks.AshWorkflow.Gen.Acknowledgement.Docs do
     * `--domain` - the domain for a subject the task creates. Required only
       when the subject does not exist.
     * `--overdue-after` - moves an unacknowledged request to `:overdue` this
-      long after it was requested, given as `10s`, `30m`, `12h`, `2d` or
-      `2w`. Without it, no `:overdue` step is generated.
+      long after it was requested, given as `30m`, `12h`, `2d` or `2w`. A
+      duration under a minute needs `AshWorkflow.Scheduler.Precise`. Without
+      it, no `:overdue` step is generated.
     * `--transition-log` - also generates a transition log for the
       acknowledgement with `mix ash_workflow.gen.transition_log`. Defaults to
       `true`.
@@ -83,34 +84,34 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       options = igniter.args.options
       subject = ProjectModule.parse(igniter.args.positional.subject)
 
-      case Recipe.parse_duration(options[:overdue_after], "--overdue-after") do
-        {:ok, overdue_after} ->
-          person = ProjectModule.parse(options[:person])
-          acknowledgement = acknowledgement_module(subject, options[:module])
+      with {:ok, overdue_after} <-
+             Recipe.parse_duration(options[:overdue_after], "--overdue-after"),
+           :ok <- Recipe.validate_interval(overdue_after, "--overdue-after") do
+        person = ProjectModule.parse(options[:person])
+        acknowledgement = acknowledgement_module(subject, options[:module])
 
-          config = %{
-            subject: subject,
-            person: person,
-            acknowledgement: acknowledgement,
-            can_request: Module.concat([acknowledgement, Checks, CanRequest]),
-            overdue_after: overdue_after,
-            transition_log?: options[:transition_log]
-          }
+        config = %{
+          subject: subject,
+          person: person,
+          acknowledgement: acknowledgement,
+          can_request: Module.concat([acknowledgement, Checks, CanRequest]),
+          overdue_after: overdue_after,
+          transition_log?: options[:transition_log]
+        }
 
-          # A created subject stores its records the same way the person does.
-          case Recipe.ensure_subject(
-                 igniter,
-                 subject,
-                 options[:domain],
-                 "acknowledgement",
-                 [person]
-               ) do
-            {:ok, igniter, storage} -> generate_with_key_types(igniter, config, storage)
-            {:error, igniter} -> igniter
-          end
-
-        {:error, message} ->
-          Igniter.add_issue(igniter, message)
+        # A created subject stores its records the same way the person does.
+        case Recipe.ensure_subject(
+               igniter,
+               subject,
+               options[:domain],
+               "acknowledgement",
+               [person]
+             ) do
+          {:ok, igniter, storage} -> generate_with_key_types(igniter, config, storage)
+          {:error, igniter} -> igniter
+        end
+      else
+        {:error, message} -> Igniter.add_issue(igniter, message)
       end
     end
 

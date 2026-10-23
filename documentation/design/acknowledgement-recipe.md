@@ -35,7 +35,7 @@ mix ash_workflow.gen.acknowledgement MyApp.Policies.Policy \
 | `--overdue-after` | none | Move an unacknowledged request to `:overdue` this long after `requested_at`. Omitted means no `:overdue` step. |
 | `--transition-log` | `true` | Composes `ash_workflow.gen.transition_log` with `--actor` set to the person. `--no-transition-log` skips it. |
 
-`--overdue-after` accepts `10s`, `30m`, `12h`, `2d` and `2w`, parsed by `Mix.AshWorkflow.Recipe.parse_duration/2` as approval's flag of the same name is.
+`--overdue-after` accepts `30m`, `12h`, `2d` and `2w`, parsed by `Mix.AshWorkflow.Recipe.parse_duration/2` as approval's flag of the same name is. A duration under a minute needs `AshWorkflow.Scheduler.Precise`.
 
 When the subject does not exist, the generator creates it with `ash.gen.resource`. The created subject takes its data layer from `--person`, as approval takes it from `--approver`, and falls back to the resources in `--domain` the same way. When neither has an ETS or Postgres data layer, the generator stops with an Igniter issue.
 
