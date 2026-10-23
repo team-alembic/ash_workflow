@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `AshWorkflow.Scheduler.Precise` arms a timeout whose `fire_at` or `field` names an expression calculation as soon as a record enters the step. `AshWorkflow.Scheduler.notify_state_change/1` handed `deadline_changed/2` the record without that calculation loaded, so `AshWorkflow.Scheduler.due_at/2` returned `nil`, no timer was armed, and only the recovery sweep caught the deadline, up to `look_ahead_ms` late. `notify_state_change/1` now loads the calculations returned by the new `AshWorkflow.Scheduler.Work.deadline_loads/1` before calling `deadline_changed/2`. `AshWorkflow.Scheduler.Oban` was not affected, because its trigger evaluates the calculation in the `where` clause.
+
 ## [0.10.0] - 2026-10-18
 
 ### Upgrading from 0.9.x
