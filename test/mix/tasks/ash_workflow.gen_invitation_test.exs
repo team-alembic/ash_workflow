@@ -276,15 +276,16 @@ defmodule Mix.Tasks.AshWorkflow.Gen.InvitationTest do
     test "resend moves expires_at a full period from now and re-arms the deadline", %{
       tmp_dir: tmp_dir
     } do
-      recipe = invitation_for_teams(tmp_dir, ["--expires-after", "1s"])
+      recipe = invitation_for_teams(tmp_dir, ["--expires-after", "3s"])
       inviter = user(recipe, "owner@example.com")
       invitation = invited_days_ago(recipe, team(recipe), inviter, "ada@example.com", 8)
 
+      before_resend = DateTime.utc_now()
       assert {:ok, %{state: :sent} = resent} = act(invitation, :resend, inviter)
+      after_resend = DateTime.utc_now()
 
-      assert_in_delta DateTime.diff(resent.expires_at, DateTime.utc_now(), :millisecond),
-                      1000,
-                      500
+      assert DateTime.compare(resent.expires_at, DateTime.add(before_resend, 3, :second)) != :lt
+      assert DateTime.compare(resent.expires_at, DateTime.add(after_resend, 3, :second)) != :gt
 
       assert Timeline.run_due(recipe.modules[TeamInvitation]) == 0
       assert reload(invitation).state == :sent
