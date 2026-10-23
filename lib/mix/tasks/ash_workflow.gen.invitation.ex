@@ -269,18 +269,11 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       relationships do
         #{Recipe.belongs_to(:subject, config.subject, config.key_types.subject)}
         #{Recipe.belongs_to(:invited_by, config.invitee, config.key_types.invitee)}
-        #{optional_belongs_to(:invitee, config.invitee, config.key_types.invitee)}
+        #{Recipe.belongs_to(:invitee, config.invitee, config.key_types.invitee, allow_nil?: true)}
       end
 
       #{postgres_identities(storage)}
       """
-    end
-
-    # The invitee is only known once someone accepts.
-    defp optional_belongs_to(name, destination, key_type) do
-      name
-      |> Recipe.belongs_to(destination, key_type)
-      |> String.replace("allow_nil?: false, ", "")
     end
 
     defp set_expires_at_contents(%{expires_after: {count, unit}} = config) do
