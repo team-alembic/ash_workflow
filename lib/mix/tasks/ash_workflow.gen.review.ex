@@ -39,8 +39,10 @@ defmodule Mix.Tasks.AshWorkflow.Gen.Review.Docs do
     * `--domain` - the domain for a subject the task creates. Required only
       when the subject does not exist.
     * `--overdue-after` - moves a review the reviewer has not decided to
-      `:overdue` this long after it was last submitted, given as `10s`,
-      `30m`, `12h`, `2d` or `2w`. Without it, no `:overdue` step is generated.
+      `:overdue` this long after it was last submitted, given as `30m`, `12h`,
+      `2d` or `2w`. A duration under a minute needs
+      `AshWorkflow.Scheduler.Precise`. Without it, no `:overdue` step is
+      generated.
     * `--transition-log` - also generates a transition log for the review
       with `mix ash_workflow.gen.transition_log`. Defaults to `true`.
     """
@@ -84,42 +86,42 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       options = igniter.args.options
       subject = ProjectModule.parse(igniter.args.positional.subject)
 
-      case Recipe.parse_duration(options[:overdue_after], "--overdue-after") do
-        {:ok, overdue_after} ->
-          review = review_module(subject, options[:module])
-          reviewer = ProjectModule.parse(options[:reviewer])
+      with {:ok, overdue_after} <-
+             Recipe.parse_duration(options[:overdue_after], "--overdue-after"),
+           :ok <- Recipe.validate_interval(overdue_after, "--overdue-after") do
+        review = review_module(subject, options[:module])
+        reviewer = ProjectModule.parse(options[:reviewer])
 
-          names = %{
-            subject: subject,
-            reviewer: reviewer,
-            review: review,
-            decision: Module.concat([inspect(review) <> "Decision"]),
-            can_request: Module.concat([review, Checks, CanRequest]),
-            can_review: Module.concat([review, Checks, CanReview]),
-            no_open_review: Module.concat([review, Validations, NoOpenReview]),
-            record_decision: Module.concat([review, Changes, RecordDecision])
-          }
+        names = %{
+          subject: subject,
+          reviewer: reviewer,
+          review: review,
+          decision: Module.concat([inspect(review) <> "Decision"]),
+          can_request: Module.concat([review, Checks, CanRequest]),
+          can_review: Module.concat([review, Checks, CanReview]),
+          no_open_review: Module.concat([review, Validations, NoOpenReview]),
+          record_decision: Module.concat([review, Changes, RecordDecision])
+        }
 
-          config = %{
-            names: names,
-            overdue_after: overdue_after,
-            transition_log?: options[:transition_log]
-          }
+        config = %{
+          names: names,
+          overdue_after: overdue_after,
+          transition_log?: options[:transition_log]
+        }
 
-          # A created subject stores its records the same way the reviewer does.
-          case Recipe.ensure_subject(
-                 igniter,
-                 subject,
-                 options[:domain],
-                 "review",
-                 [reviewer]
-               ) do
-            {:ok, igniter, storage} -> generate_with_key_types(igniter, config, storage)
-            {:error, igniter} -> igniter
-          end
-
-        {:error, message} ->
-          Igniter.add_issue(igniter, message)
+        # A created subject stores its records the same way the reviewer does.
+        case Recipe.ensure_subject(
+               igniter,
+               subject,
+               options[:domain],
+               "review",
+               [reviewer]
+             ) do
+          {:ok, igniter, storage} -> generate_with_key_types(igniter, config, storage)
+          {:error, igniter} -> igniter
+        end
+      else
+        {:error, message} -> Igniter.add_issue(igniter, message)
       end
     end
 

@@ -15,7 +15,7 @@ mix ash_workflow.gen.review MyApp.Content.Article \
 | `--reviewer` | required | The actor resource. Decisions and the requester belong to it. |
 | `--module` | `<Subject>Review` | Name of the generated review resource. |
 | `--domain` | the subject's domain | Domain for a subject the task creates. Required only when the subject does not exist. |
-| `--overdue-after` | none | Moves a review the reviewer has not decided to `:overdue` this long after it was last submitted. Accepts `10s`, `30m`, `12h`, `2d` and `2w`. Without it, no `:overdue` step is generated. |
+| `--overdue-after` | none | Moves a review the reviewer has not decided to `:overdue` this long after it was last submitted. Accepts `30m`, `12h`, `2d` and `2w`. A duration under a minute needs `AshWorkflow.Scheduler.Precise`. Without it, no `:overdue` step is generated. |
 | `--transition-log` | `true` | Also runs `mix ash_workflow.gen.transition_log` for the review resource, recording the reviewer as the actor. Pass `--no-transition-log` to skip it. |
 
 When the subject does not exist, the task creates it with `mix ash.gen.resource`, using the reviewer's data layer, or else the data layer of the first ETS or Postgres resource in `--domain`. When neither the reviewer nor any resource there uses ETS or Postgres, the task stops with an issue and writes nothing. Create the subject resource first, or pass a `--domain` that has one. Running the task again on the same subject changes nothing.

@@ -559,6 +559,21 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ReviewTest do
 
       assert Enum.any?(igniter.issues, &String.contains?(&1, "--overdue-after must look like"))
     end
+
+    test "reports an issue for a duration under the default scheduler's precision" do
+      igniter =
+        @files
+        |> project()
+        |> Igniter.compose_task("ash_workflow.gen.review", [
+          inspect(Article),
+          "--reviewer",
+          inspect(User),
+          "--overdue-after",
+          "30s"
+        ])
+
+      assert Enum.any?(igniter.issues, &String.contains?(&1, "--overdue-after is shorter than"))
+    end
   end
 
   test "generates Postgres-backed resources on the subject's repo", %{tmp_dir: tmp_dir} do
