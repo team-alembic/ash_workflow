@@ -17,7 +17,7 @@ The application owns four things:
 - When a verification is submitted. The application calls `IdentityDocumentVerification.submit/1` with the subject from wherever that makes sense: the subject's create action, an upload handler, a resubmission after a rejection.
 - When verification starts. The application calls `begin/1` once the verification has what the provider needs, such as an uploaded file.
 - What the provider call is. The generated `:verify` action is empty. The application adds the change that calls the provider and writes `outcome`.
-- Who may decide a verification in `:needs_review`. This is one `Ash.Policy.Check` module, generated to deny everyone.
+- Who may submit a verification, and who may decide one in `:needs_review`. These are two `Ash.Policy.Check` modules, `Checks.CanSubmit` and `Checks.CanReview`, generated to deny everyone.
 
 ## The command
 
@@ -32,7 +32,7 @@ mix ash_workflow.gen.verification MyApp.Accounts.IdentityDocument --max-attempts
 | `--max-attempts` | `3` | Attempts `:verify` gets before the verification moves to `:needs_review`. `1` generates no `retry` block. |
 | `--transition-log` | `true` | Composes `ash_workflow.gen.transition_log`. `--no-transition-log` skips it. |
 
-`--max-attempts` must be at least `1`. There is no backoff option. The generated `retry` block keeps the library's `:exponential` default, which an application changes by editing one line.
+`--max-attempts` must be a positive integer. Any other value stops the task with the issue `--max-attempts must be a positive integer, got: 0`. There is no backoff option. The generated `retry` block keeps the library's `:exponential` default, which an application changes by editing one line.
 
 There is no actor option, for the reason expiry has none. Nothing in the generated code records who submitted or who reviewed. An application that wants the reviewer recorded passes `--no-transition-log` and runs `ash_workflow.gen.transition_log` itself with `--actor`.
 
@@ -98,7 +98,7 @@ end
 
 `:submitted` is a manual step, not an automatic one. A verification is often created before the provider has what it needs: the row exists so that an upload can be attached to it. `begin` is the application's signal that the evidence is complete. A verification created and started in one go calls `submit/1` and then `begin/1`.
 
-The `:submit` create action has no generated policy. Who may create a verification is the application's decision, and it adds a policy if it needs one. `begin` has no generated policy either. `AshWorkflow.Transformers.AddPolicies` allows it, so the person who submitted can begin it. Beginning spends one provider call, and denying it by default would stop the happy path of every verification until the application wrote a check.
+The `:submit` create action is gated by `Checks.CanSubmit`, which denies everyone, mirroring expiry's `CanCreate`. Who may create a verification is the application's decision, and it fills in that check. `begin` has no generated policy either. `AshWorkflow.Transformers.AddPolicies` allows it, so the person who submitted can begin it. Beginning spends one provider call, and denying it by default would stop the happy path of every verification until the application wrote a check.
 
 ### `:verifying` routes on `outcome`
 
@@ -156,10 +156,14 @@ end
 
 ## Who may decide a review
 
-The generator writes `MyApp.Accounts.IdentityDocumentVerification.Checks.CanReview`, which denies everyone, mirroring approval's `CanApprove`. The generator's notice says so.
+The generator writes `MyApp.Accounts.IdentityDocumentVerification.Checks.CanSubmit` and `Checks.CanReview`, which deny everyone, mirroring expiry's `CanCreate` and approval's `CanApprove`. The generator's notice says so.
 
 ```elixir
 policies do
+  policy action(:submit) do
+    authorize_if MyApp.Accounts.IdentityDocumentVerification.Checks.CanSubmit
+  end
+
   policy action([:approve, :reject]) do
     authorize_if MyApp.Accounts.IdentityDocumentVerification.Checks.CanReview
   end
@@ -168,7 +172,7 @@ end
 
 ## Code shared with the other recipes
 
-The generator uses `ensure_subject/5`, `add_subject_edits/4`, `compose_transition_log/3` and the rendering helpers from `Mix.AshWorkflow.Recipe`.
+The generator uses `validate_max_attempts/1`, `ensure_subject/5`, `key_type/3`, `add_subject_edits/4`, `compose_transition_log/3`, `create_policy/2`, `belongs_to/4`, `deny_check_contents/2` and the rendering helpers from `Mix.AshWorkflow.Recipe`.
 
 It passes no `sources` to `ensure_subject/5`, as expiry does. `Mix.AshWorkflow.Recipe` is unchanged by this PR.
 
