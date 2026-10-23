@@ -31,6 +31,7 @@ defmodule AshWorkflowTest.Domain do
     resource AshWorkflowTest.FireAtWorkflow
     resource AshWorkflowTest.PreciseTimeoutWorkflow
     resource AshWorkflowTest.PreciseDeadlineWorkflow
+    resource AshWorkflowTest.PreciseCalculatedDeadlineWorkflow
     resource AshWorkflowTest.PreciseStatusWorkflow
     resource AshWorkflowTest.RaisingStepWorkflow
     resource AshWorkflowTest.SixtySecondsWorkflow

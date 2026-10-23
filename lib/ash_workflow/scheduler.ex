@@ -125,6 +125,8 @@ defmodule AshWorkflow.Scheduler do
 
   `works` is what remains ahead of the record in its new state. A registering
   implementation re-arms from this; a discovering one does not implement it.
+  The record has every calculation `works` reads its deadlines from loaded, so
+  `due_at/2` can compute them.
   """
   @callback deadline_changed(record :: Ash.Resource.record(), [Work.t()]) :: :ok
 
@@ -186,13 +188,32 @@ defmodule AshWorkflow.Scheduler do
 
     cond do
       works != [] and function_exported?(module, :deadline_changed, 2) ->
-        module.deadline_changed(record, works)
+        record
+        |> load_deadlines(works)
+        |> module.deadline_changed(works)
 
       works == [] and function_exported?(module, :cancel, 2) ->
         module.cancel(record, [])
 
       true ->
         :ok
+    end
+  end
+
+  # Loaded here, in the caller's process and transaction, because a registering
+  # scheduler computes the deadline in its own process, which may not be able to
+  # read the record yet. A load that fails leaves the deadline to that
+  # scheduler's recovery sweep rather than failing the state change.
+  defp load_deadlines(record, works) do
+    case works |> Enum.flat_map(&Work.deadline_loads/1) |> Enum.uniq() do
+      [] ->
+        record
+
+      loads ->
+        case Ash.load(record, loads, authorize?: false) do
+          {:ok, loaded} -> loaded
+          {:error, _error} -> record
+        end
     end
   end
 
