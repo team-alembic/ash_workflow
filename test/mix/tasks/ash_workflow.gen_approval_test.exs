@@ -199,6 +199,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ApprovalTest do
       ])
 
     assert second.changed == %{}
+    assert second.warnings == []
   end
 
   describe "CanRequest" do
