@@ -66,7 +66,7 @@ workflow do
 end
 ```
 
-The deadline reads `expires_at`, not `state_entered_at`. `resend` writes a new `expires_at` a full `--expires-after` from now, and both schedulers pick up the new deadline.
+The deadline reads `expires_at`, not `state_entered_at`. `resend` writes a new `expires_at` a full `--expires-after` from now, and both schedulers pick up the new deadline. The default Oban scheduler sweeps for due deadlines once a minute, so a short `--expires-after` such as `10s` moves the invitation to `:expired` up to a minute late. `AshWorkflow.Scheduler.Precise` fires it on time.
 
 Every outcome is terminal. To invite someone again after their invitation expired, was declined or was revoked, send a new invitation. The old row keeps its outcome.
 
