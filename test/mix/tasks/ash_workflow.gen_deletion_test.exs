@@ -491,6 +491,19 @@ defmodule Mix.Tasks.AshWorkflow.Gen.DeletionTest do
 
       assert Enum.any?(igniter.issues, &String.contains?(&1, "--grace-period must look like"))
     end
+
+    test "reports an issue for a sub-minute duration under the default scheduler" do
+      igniter =
+        @files
+        |> project()
+        |> Igniter.compose_task("ash_workflow.gen.deletion", [
+          inspect(Account),
+          "--grace-period",
+          "10s"
+        ])
+
+      assert Enum.any?(igniter.issues, &String.contains?(&1, "--grace-period is shorter than"))
+    end
   end
 
   test "generates a Postgres-backed resource on the subject's repo", %{tmp_dir: tmp_dir} do

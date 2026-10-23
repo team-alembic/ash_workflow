@@ -34,7 +34,8 @@ defmodule Mix.Tasks.AshWorkflow.Gen.Deletion.Docs do
     ## Options
 
     * `--grace-period` - required. How long a request waits before the purge
-      runs, given as `30m`, `12h`, `2d` or `2w`.
+      runs, given as `30m`, `12h`, `2d` or `2w`. A duration under a minute
+      needs `AshWorkflow.Scheduler.Precise`.
     * `--max-attempts` - how many times the purge runs before the deletion
       moves to `:purge_failed`. Defaults to `3`. With `1`, no `retry` block is
       generated.
@@ -87,6 +88,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
 
       with {:ok, grace_period} <-
              Recipe.parse_duration(options[:grace_period], "--grace-period"),
+           :ok <- Recipe.validate_interval(grace_period, "--grace-period"),
            :ok <- Recipe.validate_max_attempts(options[:max_attempts]) do
         deletion = deletion_module(subject, options[:module])
 
