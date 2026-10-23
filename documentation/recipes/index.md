@@ -16,7 +16,7 @@ A recipe without a link has not been released yet. Each row links to its page on
 | `gen.publication` | `draft → scheduled → published → unpublished` | Posts, announcements, listings |
 | `gen.invitation` | `sent → accepted \| declined \| expired`, with `resend` | Team invites, RSVPs, access grants |
 | `gen.acknowledgement` | `pending → acknowledged \| overdue` | Policy attestations, terms updates |
-| `gen.deletion` | `requested → scheduled → deleted`, with `restore` | Account closure, GDPR erasure |
+| [`gen.deletion`](deletion.md) | `requested → purging → deleted`, with `restore` | Account closure, GDPR erasure |
 | `gen.dormancy` | `active → dormant → archived` | Accounts, projects, leads |
 | `gen.verification` | `submitted → verifying → verified \| rejected` | Identity documents, registrations |
 | `gen.sync` | `pending → syncing → synced \| failed` | CRM push, payment provider, search index |
