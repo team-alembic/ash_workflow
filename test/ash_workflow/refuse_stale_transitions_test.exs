@@ -66,12 +66,12 @@ defmodule AshWorkflow.RefuseStaleTransitionsTest do
     assert %{state: :interviewing, note: "called back"} = reload(copy)
   end
 
-  test "does not pin a value read through a relationship" do
+  test "does not pin a value read through a relationship, and routes on its current value" do
     sponsor = Reviewer.create!(%{name: "Fast"})
     copy = create(%{sponsor_id: sponsor.id}) |> Ash.load!(:sponsor)
     Ash.update!(sponsor, %{name: "Slow"}, action: :rename)
 
-    assert Ash.update!(copy, action: :advance).state == :fast_track
+    assert Ash.update!(copy, action: :advance).state == :interviewing
   end
 
   test "refuses the second of two transitions from the same loaded copy, on the atomic path" do

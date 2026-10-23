@@ -7,9 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **A Workflows lens for Clarity.** With [Clarity](https://hex.pm/packages/clarity) installed, `AshWorkflow.Clarity.Lensmaker` adds a Workflows lens that lists each workflow resource with its steps. `AshWorkflow.Clarity.Introspector` adds an `AshWorkflow.Clarity.Vertex.Step` for each step. A workflow resource gets Workflow Overview, Workflow Diagram and Workflow Timing tabs, and a step gets Step Overview, Step Diagram and Step Timeline tabs. The timing tabs place each automatic action, retry attempt, timeout, `every` firing and undo window at its offset from entering the step, and say how long a record can stay in each step. Clarity is an optional dependency, so a project without it compiles none of these modules.
+
 ### Fixed
 
 - `AshWorkflow.Scheduler.Precise` arms a timeout whose `fire_at` or `field` names an expression calculation as soon as a record enters the step. `AshWorkflow.Scheduler.notify_state_change/1` handed `deadline_changed/2` the record without that calculation loaded, so `AshWorkflow.Scheduler.due_at/2` returned `nil`, no timer was armed, and only the recovery sweep caught the deadline, up to `look_ahead_ms` late. `notify_state_change/1` now loads the calculations returned by the new `AshWorkflow.Scheduler.Work.deadline_loads/1` before calling `deadline_changed/2`. `AshWorkflow.Scheduler.Oban` was not affected, because its trigger evaluates the calculation in the `where` clause.
+
+## [0.10.1] - 2026-10-19
+
+### Upgrading from 0.10.0
+
+- A conditional route that reads a related field, a calculation or an aggregate now loads it when the transition runs. A route that relied on an unloaded relationship reading as `nil`, such as `is_nil(sponsor.name)`, now sees the real value. A route on a relationship the caller had already loaded now reads the current value, not the loaded copy. `AshWorkflow.Info.transition_target/3` still loads nothing.
+
+### Fixed
+
+- A transition whose action the resource declares without `accept` no longer crashes `AshWorkflow.Transformers.AddActions` with `nil ++ []`. The action keeps Ash's `default_accept` unless the transition accepts attributes of its own.
+- A conditional route that references a calculation, an aggregate or a related field now reads its current value. `AshWorkflow.Changes.ConditionalTransition` loads those fields before evaluating routes, as the `:transition_targets` calculation already did. The action used to read them off the record it was called on, so an unloaded field read as `nil` and no route matched. A route over a relationship the caller had already loaded now reads the current value rather than the loaded copy.
 
 ## [0.10.0] - 2026-10-18
 

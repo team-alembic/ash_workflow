@@ -301,7 +301,7 @@ record.transition_targets
 ```
 
 - `transition_target/3` returns `{:ok, step}`, `{:ok, nil}` when the current step does not declare the transition or no route matches, and `{:error, error}` when a route fails to evaluate. It raises `ArgumentError` for a name no step declares.
-- It loads nothing. A route that reads an unloaded relationship sees `nil`, in the preview and in the real action alike.
+- It loads nothing. A route that reads an unloaded relationship or calculation sees `nil` in the preview. The real action loads what its routes reference.
 - A route that reads accepted input sees it only when the transition runs. Pass the input as the third argument to preview a particular call.
 - `:transition_targets` has one key per transition of the current step, is not filtered by authorization, and maps a transition to `nil` when no route matches or a route fails to evaluate. It is an empty map at an automatic or terminal step. It loads the fields its routes reference.
 

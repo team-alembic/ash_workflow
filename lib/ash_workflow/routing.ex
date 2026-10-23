@@ -68,4 +68,39 @@ defmodule AshWorkflow.Routing do
       {:error, _error} -> []
     end
   end
+
+  @doc """
+  The load statement for a reference: `relationship.field` becomes
+  `{:relationship, [:field]}`.
+  """
+  @spec load_path(struct()) :: atom() | tuple()
+  def load_path(%Ash.Query.Ref{relationship_path: path, attribute: attribute}) do
+    List.foldr(path, field_name(attribute), &{&1, [&2]})
+  end
+
+  @doc """
+  Loads the calculations, aggregates and related fields `routes` reference
+  onto `record`, so a condition does not read them as unloaded.
+  """
+  @spec load_references(Ash.Resource.record(), [Route.t()], keyword()) ::
+          {:ok, Ash.Resource.record()} | {:error, term()}
+  def load_references(%resource{} = record, routes, opts) do
+    routes
+    |> Enum.flat_map(&references(&1.when, resource))
+    |> Enum.reject(&own_attribute?/1)
+    |> Enum.map(&load_path/1)
+    |> Enum.uniq()
+    |> case do
+      [] -> {:ok, record}
+      loads -> Ash.load(record, loads, opts)
+    end
+  end
+
+  defp own_attribute?(%Ash.Query.Ref{relationship_path: [], attribute: attribute}),
+    do: match?(%Ash.Resource.Attribute{}, attribute)
+
+  defp own_attribute?(_ref), do: false
+
+  defp field_name(%{name: name}), do: name
+  defp field_name(name) when is_atom(name), do: name
 end
