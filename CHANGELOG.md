@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Transition and timeout actions that `AshWorkflow.Transformers.AddActions` generates on a workflow resource with a `pre_check_with` identity now set `require_atomic? false`. Ash adds a `before_action` for such an identity, so the generated actions failed with `MustBeAtomic`. Those actions now run non-atomically on that resource.
 
+### Security
+
+- The development lock now resolves `ash` 3.37.2, `ash_postgres` 2.15.2 and `plug_crypto` 2.2.1, which fix the advisories `mix hex.audit` reported against `ash` 3.34.6 (EEF-CVE-2026-96581, EEF-CVE-2026-114214), `ash_postgres` 2.13.1 (EEF-CVE-2026-115627, EEF-CVE-2026-115635) and `plug_crypto` 2.2.0 (EEF-CVE-2026-105963). The `ash ~> 3.0` requirement in `mix.exs` is unchanged, so applications pick their own versions. Upgrade them in your own lock to get the fixes.
+
 ## [0.10.1] - 2026-10-19
 
 ### Upgrading from 0.10.0
