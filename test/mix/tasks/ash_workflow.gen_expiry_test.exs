@@ -1,6 +1,8 @@
 defmodule Mix.Tasks.AshWorkflow.Gen.ExpiryTest do
   use AshWorkflow.RecipeCase, async: true
 
+  require Ash.Query
+
   alias AshWorkflow.Scheduler.Precise.Timeline
   alias AshWorkflowTest.RecipeFixtures.Expiry.Contract
   alias AshWorkflowTest.RecipeFixtures.Expiry.ContractExpiry
@@ -12,6 +14,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ExpiryTest do
   @fixtures "test/support/recipe_fixtures/expiry"
   @files Enum.map(~w(domain contract lease), &"#{@fixtures}/#{&1}.ex")
   @checks "lib/ash_workflow_test/recipe_fixtures/expiry/contract_expiry/checks"
+  @set_expiry Module.concat(ContractExpiry, Changes.SetExpiry)
   @deny_all "def match?(_actor, _context, _opts), do: false"
   @creator %{id: "creator", role: :account_manager}
   @renewer %{id: "renewer", role: :renewer}
@@ -99,7 +102,15 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ExpiryTest do
       subject = recipe.modules[Contract]
 
       assert attributes(subject) == attributes(Contract)
-      assert actions(subject) == actions(Contract)
+
+      assert actions(subject) -- actions(Contract) == [
+               {:set_expiry, :update, [], [{recipe.modules[@set_expiry], []}], [:expires_at]}
+             ]
+
+      assert actions(Contract) -- actions(subject) == []
+
+      assert Enum.map(Ash.Resource.Info.interfaces(subject), &{&1.name, &1.args}) ==
+               [set_expiry: [:expires_at]]
 
       assert names(Ash.Resource.Info.relationships(subject)) --
                names(Ash.Resource.Info.relationships(Contract)) == [:expiry]
@@ -344,6 +355,215 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ExpiryTest do
     end
   end
 
+  defp add_contract_actions(recipe, actions) do
+    edit_source(recipe, "#{@fixtures}/contract.ex", fn source ->
+      String.replace(source, "  actions do\n", "  actions do\n#{actions}\n", global: false)
+    end)
+  end
+
+  defp set_expiry(recipe, contract, expires_at, opts \\ [actor: @creator]) do
+    recipe.modules[Contract].set_expiry(contract, expires_at, opts)
+  end
+
+  defp expiry_of(contract), do: Ash.load!(contract, :expiry, authorize?: false).expiry
+
+  describe "set_expiry" do
+    test "creates an active expiry for a subject without one", %{tmp_dir: tmp_dir} do
+      recipe = expiry_for_contracts(tmp_dir)
+      contract = contract(recipe)
+      expires_at = days_from_now(30)
+
+      assert {:ok, _contract} = set_expiry(recipe, contract, expires_at)
+      assert %{state: :active, expires_at: ^expires_at} = expiry_of(contract)
+    end
+
+    test "renews an expired expiry to active", %{tmp_dir: tmp_dir} do
+      recipe = expiry_for_contracts(tmp_dir)
+      contract = contract(recipe)
+
+      assert {:ok, _contract} = set_expiry(recipe, contract, days_from_now(-1))
+      run_until_settled(recipe.modules[ContractExpiry])
+      assert %{state: :expired, id: id} = expiry_of(contract)
+
+      expires_at = days_from_now(90)
+      assert {:ok, _contract} = set_expiry(recipe, contract, expires_at, actor: @renewer)
+      assert %{state: :active, id: ^id, expires_at: ^expires_at} = expiry_of(contract)
+      assert [_one] = Ash.read!(recipe.modules[ContractExpiry])
+    end
+
+    test "is forbidden while CanCreate denies everyone, unless authorization is off", %{
+      tmp_dir: tmp_dir
+    } do
+      recipe =
+        [inspect(Contract)]
+        |> generate()
+        |> allow_renewers()
+        |> compile(tmp_dir)
+
+      contract = contract(recipe)
+
+      assert {:error, %Ash.Error.Forbidden{}} = set_expiry(recipe, contract, days_from_now(30))
+      assert Ash.read!(recipe.modules[ContractExpiry]) == []
+
+      assert {:ok, _contract} =
+               set_expiry(recipe, contract, days_from_now(30), authorize?: false)
+
+      assert %{state: :active} = expiry_of(contract)
+    end
+
+    test "backfills existing subjects through Ash.bulk_update/4", %{tmp_dir: tmp_dir} do
+      recipe = expiry_for_contracts(tmp_dir)
+      subject = recipe.modules[Contract]
+      [first, second] = [contract(recipe), contract(recipe)]
+      {:ok, _contract} = set_expiry(recipe, first, days_from_now(10))
+
+      expires_at = days_from_now(365)
+
+      assert %Ash.BulkResult{status: :success} =
+               subject
+               |> Ash.Query.filter(not exists(expiry, true))
+               |> Ash.bulk_update(:set_expiry, %{expires_at: expires_at},
+                 strategy: :stream,
+                 actor: @creator
+               )
+
+      assert expiry_of(first).expires_at != expires_at
+      assert expiry_of(second).expires_at == expires_at
+    end
+  end
+
+  describe "SetExpiry on another subject action" do
+    test "a term: option starts the clock on create", %{tmp_dir: tmp_dir} do
+      recipe =
+        [inspect(Contract)]
+        |> generate()
+        |> allow_creators()
+        |> edit_source("#{@fixtures}/contract.ex", fn source ->
+          String.replace(
+            source,
+            "create :create do\n      accept([:title])\n",
+            "create :create do\n      accept([:title])\n" <>
+              "      change({#{inspect(@set_expiry)}, term: {1, :day}})\n"
+          )
+        end)
+        |> compile(tmp_dir)
+
+      contract =
+        recipe.modules[Contract]
+        |> Ash.Changeset.for_create(:create, %{title: "Lease"}, actor: @creator)
+        |> Ash.create!()
+
+      assert %{state: :active, expires_at: expires_at} = expiry_of(contract)
+      assert_in_delta DateTime.diff(expires_at, DateTime.utc_now(), :second), 86_400, 60
+    end
+
+    test "works in an atomic update", %{tmp_dir: tmp_dir} do
+      recipe =
+        [inspect(Contract)]
+        |> generate()
+        |> allow_creators()
+        |> add_contract_actions("""
+            update :extend do
+              change({#{inspect(@set_expiry)}, term: {2, :week}})
+            end
+        """)
+        |> compile(tmp_dir)
+
+      contract = contract(recipe)
+
+      assert {:ok, _contract} =
+               contract
+               |> Ash.Changeset.for_update(:extend, %{}, actor: @creator)
+               |> Ash.update()
+
+      assert_in_delta DateTime.diff(expiry_of(contract).expires_at, DateTime.utc_now(), :day),
+                      14,
+                      1
+    end
+
+    test "without an expires_at argument or a term: option fails the action", %{
+      tmp_dir: tmp_dir
+    } do
+      recipe =
+        [inspect(Contract)]
+        |> generate()
+        |> allow_creators()
+        |> add_contract_actions("""
+            update :touch do
+              require_atomic?(false)
+              change(#{inspect(@set_expiry)})
+            end
+        """)
+        |> compile(tmp_dir)
+
+      contract = contract(recipe)
+
+      assert {:error, %Ash.Error.Invalid{} = error} =
+               contract
+               |> Ash.Changeset.for_update(:touch, %{}, actor: @creator)
+               |> Ash.update()
+
+      assert Exception.message(error) =~ "needs an :expires_at argument or a term: option"
+      assert expiry_of(contract) == nil
+    end
+  end
+
+  describe "the :set_expiry action" do
+    test "a different existing one is left alone with a warning" do
+      contract =
+        "#{@fixtures}/contract.ex"
+        |> File.read!()
+        |> String.replace(
+          "  actions do\n",
+          "  actions do\n    update :set_expiry do\n      accept [:title]\n    end\n\n"
+        )
+
+      recipe =
+        Igniter.Test.test_project(
+          app_name: :ash_workflow,
+          files:
+            @files
+            |> Map.new(&{&1, File.read!(&1)})
+            |> Map.put("#{@fixtures}/contract.ex", contract)
+        )
+        |> run_task("ash_workflow.gen.expiry", [inspect(Contract)])
+
+      assert [warning] = recipe.warnings
+      assert warning =~ "#{inspect(Contract)} already has an action named :set_expiry"
+
+      source = source!(recipe, "#{@fixtures}/contract.ex")
+      refute source =~ "require_atomic?(false)"
+    end
+
+    test "a subject with Ash.Policy.Authorizer gets a notice that it needs a policy" do
+      contract =
+        "#{@fixtures}/contract.ex"
+        |> File.read!()
+        |> String.replace(
+          "data_layer: Ash.DataLayer.Ets",
+          "data_layer: Ash.DataLayer.Ets,\n    authorizers: [Ash.Policy.Authorizer]"
+        )
+
+      recipe =
+        Igniter.Test.test_project(
+          app_name: :ash_workflow,
+          files:
+            @files
+            |> Map.new(&{&1, File.read!(&1)})
+            |> Map.put("#{@fixtures}/contract.ex", contract)
+        )
+        |> run_task("ash_workflow.gen.expiry", [inspect(Contract)])
+
+      assert Enum.any?(recipe.notices, &(&1 =~ ":set_expiry needs a policy"))
+      assert Enum.any?(recipe.notices, &(&1 =~ "policy action(:set_expiry) do"))
+
+      refute Enum.any?(
+               generate([inspect(Contract)]).notices,
+               &(&1 =~ ":set_expiry needs a policy")
+             )
+    end
+  end
+
   describe "the deadlines" do
     test "the notice period moves an expiry to expiring before it expires", %{tmp_dir: tmp_dir} do
       recipe = expiry_for_contracts(tmp_dir)
@@ -474,6 +694,17 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ExpiryTest do
       assert AshPostgres.DataLayer.Info.repo(resource) == AshWorkflowTest.Repo
       assert AshPostgres.DataLayer.Info.table(resource) == table
     end
+
+    ticket = recipe.modules[AshWorkflowTest.RecipeFixtures.TransitionLog.PostgresTicket]
+    set_expiry = Ash.Resource.Info.action(ticket, :set_expiry)
+
+    assert Enum.map(set_expiry.changes, & &1.change) == [
+             {recipe.modules[
+                AshWorkflowTest.RecipeFixtures.TransitionLog.PostgresTicketExpiry.Changes.SetExpiry
+              ], []}
+           ]
+
+    assert Ash.Resource.Info.interface(ticket, :set_expiry).args == [:expires_at]
   end
 
   test "--no-transition-log generates no transition log" do

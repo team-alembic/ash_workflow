@@ -15,8 +15,14 @@ defmodule Mix.Tasks.AshWorkflow.Gen.Expiry.Docs do
 
     Generates an expiry resource that moves to `:expired` once its
     `expires_at` passes, and back to `:active` when it is renewed. The subject
-    gains `has_one :expiry` and an `expired?` calculation. When the subject
-    does not exist, it is created with `mix ash.gen.resource` first.
+    gains `has_one :expiry`, an `expired?` calculation and a `:set_expiry`
+    update action. When the subject does not exist, it is created with
+    `mix ash.gen.resource` first.
+
+    A subject with no expiry never expires. `:set_expiry` creates the
+    subject's expiry, or renews the one it has, through the generated
+    `Changes.SetExpiry` change. Add that change with a `term:` option to
+    another subject action, such as `:create`, to start the clock there.
 
     Nobody may create or renew an expiry until the application defines who
     can, in the generated `Checks.CanCreate` and `Checks.CanRenew` modules.
@@ -52,6 +58,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
     use Igniter.Mix.Task
 
     alias Ash.Domain.Igniter, as: DomainIgniter
+    alias Ash.Resource.Igniter, as: ResourceIgniter
     alias Igniter.Project.Module, as: ProjectModule
     alias Mix.AshWorkflow.Recipe
 
@@ -86,6 +93,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
             expiry: expiry,
             can_create: Module.concat([expiry, Checks, CanCreate]),
             can_renew: Module.concat([expiry, Checks, CanRenew]),
+            set_expiry: Module.concat([expiry, Changes, SetExpiry]),
             notice_period: notice_period,
             transition_log?: options[:transition_log]
           }
@@ -120,6 +128,8 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
 
     defp generate(igniter, config, storage) do
       {exists?, igniter} = ProjectModule.module_exists(igniter, config.expiry)
+      {set_expiry_exists?, igniter} = ProjectModule.module_exists(igniter, config.set_expiry)
+      {igniter, set_expiry_action?} = defines_set_expiry?(igniter, config.subject)
 
       igniter
       |> Recipe.add_subject_edits(
@@ -132,11 +142,63 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
           end
           """
         ],
-        expired?: "calculate :expired?, :boolean, expr(expiry.state == :expired || false)"
+        [expired?: "calculate :expired?, :boolean, expr(expiry.state == :expired || false)"],
+        actions: [set_expiry: set_expiry_action(config)],
+        interfaces: [set_expiry: "define :set_expiry, args: [:expires_at]"]
       )
       |> then(fn igniter ->
         if exists?, do: igniter, else: create_expiry(igniter, config, storage)
       end)
+      |> then(fn igniter ->
+        if set_expiry_exists?,
+          do: igniter,
+          else:
+            ProjectModule.create_module(igniter, config.set_expiry, set_expiry_contents(config))
+      end)
+      |> then(fn igniter ->
+        if set_expiry_action?, do: igniter, else: notice_subject_policy(igniter, config)
+      end)
+    end
+
+    defp defines_set_expiry?(igniter, subject) do
+      {exists?, igniter} = ProjectModule.module_exists(igniter, subject)
+
+      if exists?,
+        do: ResourceIgniter.defines_action(igniter, subject, :set_expiry),
+        else: {igniter, false}
+    end
+
+    defp set_expiry_action(config) do
+      """
+      update :set_expiry do
+        argument :expires_at, :utc_datetime_usec, allow_nil?: false
+        require_atomic? false
+        change #{inspect(config.set_expiry)}
+      end
+      """
+    end
+
+    defp notice_subject_policy(igniter, config) do
+      case Spark.Igniter.has_extension(
+             igniter,
+             config.subject,
+             Ash.Resource,
+             :authorizers,
+             Ash.Policy.Authorizer
+           ) do
+        {igniter, true} ->
+          Igniter.add_notice(igniter, """
+          Added :set_expiry to #{inspect(config.subject)}. It uses Ash.Policy.Authorizer, \
+          so :set_expiry needs a policy there before anyone can call it, for example:
+
+              policy action(:set_expiry) do
+                authorize_if actor_attribute_equals(:role, :account_manager)
+              end
+          """)
+
+        {igniter, false} ->
+          igniter
+      end
     end
 
     defp create_expiry(igniter, config, storage) do
@@ -152,6 +214,11 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       Nobody can create or renew an expiry yet. Define who may create one in \
       #{inspect(config.can_create)} and who may renew in \
       #{inspect(config.can_renew)}. Both deny everyone as generated.
+
+      A #{inspect(config.subject)} with no expiry never expires. Call \
+      #{inspect(config.subject)}.set_expiry/3 to start one, or add `change \
+      {#{inspect(config.set_expiry)}, term: {30, :day}}` to the subject's \
+      create action.
       """)
     end
 
@@ -283,6 +350,98 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
     defp interval(:minutes), do: :minute
     defp interval(:hours), do: :hour
     defp interval(:days), do: :day
+
+    defp set_expiry_contents(config) do
+      ~S'''
+      @moduledoc """
+      Starts or renews the subject's expiry once a subject action succeeds.
+
+      `expires_at` is the action's `:expires_at` argument, or else now plus the
+      `term:` option, such as `{30, :day}`, in `:second`, `:minute`, `:hour`,
+      `:day` or `:week`. The actor and tenant pass through to
+      `EXPIRY.create/3` and `EXPIRY.renew/3`, so `Checks.CanCreate` and
+      `Checks.CanRenew` still decide.
+      """
+
+      use Ash.Resource.Change
+
+      require Ash.Query
+
+      alias EXPIRY
+
+      @units [:second, :minute, :hour, :day, :week]
+
+      @impl true
+      def init(opts) do
+        case Keyword.fetch(opts, :term) do
+          :error ->
+            {:ok, opts}
+
+          {:ok, {count, unit}} when is_integer(count) and count > 0 and unit in @units ->
+            {:ok, opts}
+
+          {:ok, term} ->
+            {:error,
+             "term must be {count, unit} with a positive count and a unit in " <>
+               "#{inspect(@units)}, got: #{inspect(term)}"}
+        end
+      end
+
+      @impl true
+      def change(changeset, opts, context) do
+        case expires_at(changeset, opts[:term]) do
+          {:ok, expires_at} ->
+            Ash.Changeset.after_action(changeset, fn _changeset, subject ->
+              with {:ok, _expiry} <- set_expiry(subject, expires_at, context) do
+                {:ok, subject}
+              end
+            end)
+
+          :error ->
+            Ash.Changeset.add_error(
+              changeset,
+              Ash.Error.Changes.InvalidChanges.exception(
+                fields: [:expires_at],
+                message:
+                  "needs an :expires_at argument or a term: option on " <>
+                    "#{inspect(__MODULE__)} to know when the expiry ends"
+              )
+            )
+        end
+      end
+
+      @impl true
+      def atomic(changeset, opts, context), do: {:ok, change(changeset, opts, context)}
+
+      defp expires_at(changeset, term) do
+        case Ash.Changeset.fetch_argument(changeset, :expires_at) do
+          {:ok, %DateTime{} = expires_at} -> {:ok, expires_at}
+          _missing -> from_term(term)
+        end
+      end
+
+      defp from_term(nil), do: :error
+      defp from_term({count, :week}), do: from_term({count * 7, :day})
+      defp from_term({count, unit}), do: {:ok, DateTime.add(DateTime.utc_now(), count, unit)}
+
+      defp set_expiry(subject, expires_at, context) do
+        opts = Ash.Context.to_opts(context)
+
+        # Read without the actor: whether an expiry exists decides between
+        # create and renew, and each of those is authorized on its own.
+        EXPIRY_ALIAS
+        |> Ash.Query.filter(subject_id == ^subject.id)
+        |> Ash.read_one(Keyword.merge(opts, authorize?: false))
+        |> case do
+          {:ok, nil} -> EXPIRY_ALIAS.create(subject.id, expires_at, opts)
+          {:ok, expiry} -> EXPIRY_ALIAS.renew(expiry, expires_at, opts)
+          {:error, error} -> {:error, error}
+        end
+      end
+      '''
+      |> String.replace("EXPIRY_ALIAS", config.expiry |> Module.split() |> List.last())
+      |> String.replace("EXPIRY", inspect(config.expiry))
+    end
 
     defp can_create_contents(config) do
       Recipe.deny_check_contents(

@@ -186,33 +186,41 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
     same name is already there. It warns when that existing one is not the
     recipe's: a relationship to another resource, or a calculation with
     another expression.
-    """
-    @spec add_subject_edits(Igniter.t(), module(), keyword(String.t()), keyword(String.t())) ::
-            Igniter.t()
-    def add_subject_edits(igniter, subject, relationships, calculations) do
-      igniter =
-        Enum.reduce(relationships, igniter, fn {name, code}, igniter ->
-          add_subject_edit(
-            igniter,
-            subject,
-            {name, code},
-            {:relationships, [:has_one, :has_many, :belongs_to, :many_to_many], [2, 3, 4]},
-            &same_destination?/2,
-            &ResourceIgniter.add_relationship/3
-          )
-        end)
 
-      Enum.reduce(calculations, igniter, fn {name, code}, igniter ->
-        add_subject_edit(
-          igniter,
-          subject,
-          {name, code},
-          {:calculations, [:calculate], [3, 4, 5]},
-          &same_definition?/2,
-          &ResourceIgniter.add_calculation/3
-        )
+    `opts` takes `:actions` and `:interfaces`, the subject's actions and code
+    interface definitions, which are added and compared as calculations are.
+    """
+    @spec add_subject_edits(
+            Igniter.t(),
+            module(),
+            keyword(String.t()),
+            keyword(String.t()),
+            actions: keyword(String.t()),
+            interfaces: keyword(String.t())
+          ) :: Igniter.t()
+    def add_subject_edits(igniter, subject, relationships, calculations, opts \\ []) do
+      [
+        {relationships,
+         {:relationships, [:has_one, :has_many, :belongs_to, :many_to_many], [2, 3, 4],
+          "a relationship"}, &same_destination?/2, &ResourceIgniter.add_relationship/3},
+        {calculations, {:calculations, [:calculate], [3, 4, 5], "a calculation"},
+         &same_definition?/2, &ResourceIgniter.add_calculation/3},
+        {Keyword.get(opts, :actions, []),
+         {:actions, [:create, :read, :update, :destroy, :action], [2, 3, 4], "an action"},
+         &same_definition?/2, &ResourceIgniter.add_action/3},
+        {Keyword.get(opts, :interfaces, []),
+         {:code_interface, [:define, :define_calculation], [1, 2], "a code interface"},
+         &same_definition?/2, &add_code_interface/3}
+      ]
+      |> Enum.reduce(igniter, fn {edits, location, same?, add}, igniter ->
+        Enum.reduce(edits, igniter, fn edit, igniter ->
+          add_subject_edit(igniter, subject, edit, location, same?, add)
+        end)
       end)
     end
+
+    defp add_code_interface(igniter, subject, code),
+      do: ResourceIgniter.add_block(igniter, subject, :code_interface, code)
 
     defp add_subject_edit(igniter, subject, {name, code}, location, same?, add) do
       case existing_definition(igniter, subject, name, location) do
@@ -226,7 +234,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       end
     end
 
-    defp existing_definition(igniter, subject, name, {section, calls, arities}) do
+    defp existing_definition(igniter, subject, name, {section, calls, arities, _kind}) do
       igniter
       |> Spark.Igniter.find(subject, fn _module, zipper ->
         with {:ok, zipper} <-
@@ -271,11 +279,9 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       end)
     end
 
-    defp warn_existing(igniter, subject, name, {section, _calls, _arities}, code) do
-      kind = section |> Atom.to_string() |> String.trim_trailing("s")
-
+    defp warn_existing(igniter, subject, name, {_section, _calls, _arities, kind}, code) do
       Igniter.add_warning(igniter, """
-      #{inspect(subject)} already has a #{kind} named #{inspect(name)} that differs from the recipe's, so the recipe left it as it is. It would have added:
+      #{inspect(subject)} already has #{kind} named #{inspect(name)} that differs from the recipe's, so the recipe left it as it is. It would have added:
 
       #{code}
       """)
