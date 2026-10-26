@@ -279,6 +279,29 @@ defmodule Mix.Tasks.AshWorkflow.Gen.DormancyTest do
       assert dormancy_of(recipe, account) == [dormancy]
     end
 
+    test "the documented backfill gives each existing subject a dormancy", %{tmp_dir: tmp_dir} do
+      recipe = [inspect(Account) | @argv] |> generate() |> compile(tmp_dir)
+      tracked = account(recipe)
+      [first, second] = [existing_account(recipe), existing_account(recipe)]
+
+      assert %Ash.BulkResult{status: :success} =
+               recipe.modules[Account]
+               |> Ash.Query.filter(not exists(dormancy, true))
+               |> Ash.stream!(authorize?: false)
+               |> Stream.map(&%{subject_id: &1.id, last_activity_at: &1.inserted_at})
+               |> Ash.bulk_create(recipe.modules[AccountDormancy], :create,
+                 authorize?: false,
+                 return_errors?: true
+               )
+
+      assert [%{state: :active}] = dormancy_of(recipe, tracked)
+
+      for account <- [first, second] do
+        assert [%{last_activity_at: last_activity_at}] = dormancy_of(recipe, account)
+        assert last_activity_at == account.inserted_at
+      end
+    end
+
     test "starts a dormancy while CanCreate still denies everyone", %{tmp_dir: tmp_dir} do
       recipe = [inspect(Account) | @argv] |> generate() |> compile(tmp_dir)
       account = account(recipe)

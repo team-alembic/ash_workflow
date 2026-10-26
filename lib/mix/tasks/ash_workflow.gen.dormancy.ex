@@ -15,14 +15,20 @@ defmodule Mix.Tasks.AshWorkflow.Gen.Dormancy.Docs do
 
     Generates a dormancy resource that moves to `:dormant` once its
     `last_activity_at` is older than `--dormant-after`, and back to `:active`
-    when it is reactivated. The application calls its `record_activity`
-    action whenever the subject is used. The subject gains `has_one :dormancy`
-    and a `dormant?` calculation. When the subject does not exist, it is
-    created with `mix ash.gen.resource` first.
+    when it is reactivated. The subject gains `has_one :dormancy`, a
+    `dormant?` calculation, and a `changes` block that runs the generated
+    `Changes.StartDormancy` on every create, so each new subject gets a
+    dormancy. Subjects created before the task ran need a backfill. When the
+    subject does not exist, it is created with `mix ash.gen.resource` first.
 
-    Nobody may create or reactivate a dormancy until the application defines
-    who can, in the generated `Checks.CanCreate` and `Checks.CanReactivate`
-    modules.
+    The application decides what counts as activity, by adding the generated
+    `Changes.RecordActivity` to subject actions or by calling the dormancy's
+    `record_activity` action.
+
+    Nobody may create a dormancy directly or reactivate one until the
+    application defines who can, in the generated `Checks.CanCreate` and
+    `Checks.CanReactivate` modules. `Changes.StartDormancy` does not consult
+    `Checks.CanCreate`.
 
     ## Example
 

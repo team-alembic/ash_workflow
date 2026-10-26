@@ -10,14 +10,15 @@ Accounts, projects and leads go quiet. Each application writes the same thing: a
 
 ## The split between generated code and the application
 
-The generator owns the dormancy lifecycle: the states, the two deadlines, the `record_activity` action that moves the first deadline, and the `reactivate` transition.
+The generator owns the dormancy lifecycle: the states, the two deadlines, the `record_activity` action that moves the first deadline, and the `reactivate` transition. It also starts each new subject's dormancy, through a `StartDormancy` change on the subject's create actions.
 
-The application owns four things:
+The application owns five things:
 
-- When a dormancy is created. The application calls `AccountDormancy.create/2` with the subject, from wherever that makes sense: the subject's create action, a sign-up step, an import.
-- What counts as activity. The application calls `AccountDormancy.record_activity/2` wherever the subject is used, such as a sign-in, an API request or an edit.
+- Dormancies for subjects that existed before the generator ran. These have none, and the application backfills them.
+- What counts as activity. The application attaches the generated `RecordActivity` change to the subject actions that count, or calls `AccountDormancy.record_activity/2` wherever the subject is used, such as a sign-in or an API request.
 - What happens on entering `:dormant` or `:archived`, such as a "we miss you" email or revoking access. The generator adds no notifier and no action timeout for it.
 - Who may reactivate. This is one `Ash.Policy.Check` module, generated to deny everyone.
+- Who may create a dormancy directly, outside `StartDormancy`. This is a second check module, also generated to deny everyone.
 
 ## The command
 
@@ -45,12 +46,29 @@ Dormancy is a lifecycle recipe. A subject has one current dormancy, and a reacti
 
 - `has_one :dormancy, MyApp.Accounts.AccountDormancy`
 - `calculate :dormant?, :boolean, expr(dormancy.state in [:dormant, :archived])`
+- `change MyApp.Accounts.AccountDormancy.Changes.StartDormancy, on: [:create]` in its `changes` block
 
 `dormant?` is true for an archived subject too. An archived account has been dormant for longer, and a policy that forbids a dormant account should not let an archived one through. Without `--archive-after`, there is no `:archived` state, and the calculation is `expr(dormancy.state == :dormant)`. An application that needs to tell the two apart reads `dormancy.state`.
 
 `AccountDormancy` has the identity `:unique_subject` on `subject_id`, with `pre_check_with` on a data layer without unique constraints, as expiry's does.
 
-The generator adds no change, argument or policy to the subject's actions. Calling `record_activity` from a subject action, and gating a subject action on `dormant?`, are application decisions.
+The generator adds no argument or policy to the subject's actions, and no change beyond `StartDormancy`. Attaching `RecordActivity` to a subject action, and gating a subject action on `dormant?`, are application decisions.
+
+## Starting the dormancy
+
+Dormancy needs no input to start: its clock starts at the subject's creation. A subject with no dormancy is never dormant, so leaving the create to the application left every subject untracked until the application remembered to call `AccountDormancy.create`. The generator writes `MyApp.Accounts.AccountDormancy.Changes.StartDormancy` and adds it to the subject's `changes` block with `on: [:create]`, which covers every create action on the subject, including one from `defaults [:create]`.
+
+In an `after_action` hook, `StartDormancy` calls `AccountDormancy.create/2` with the subject's id, so `last_activity_at` takes its default of now. An error from that create fails the subject create.
+
+- It passes `authorize?: false`, with the actor and tenant of the subject create. The dormancy row follows from a create the subject already authorized, and `CanCreate` denies everyone as generated, so checking it would fail every subject create.
+- It skips a create that upserted onto an existing subject, read from the record's `upsert_action: :update` or `upsert_skipped: true` metadata.
+- It skips a subject that already has a dormancy, found by a read with `authorize?: false`.
+
+`Ash.bulk_create/4` runs `after_action` hooks once per record, so each subject in a bulk create gets its own dormancy, whether or not the bulk create returns its records.
+
+Subjects that existed before the generator ran get no dormancy from `StartDormancy`. The recipe page shows a backfill through `Ash.bulk_create/4` with `authorize?: false`.
+
+`RecordActivity` is generated beside it but not attached. In an `after_action` hook, it calls `AccountDormancy.record_activity/2` for the subject's dormancy with `authorize?: false`, and does nothing for a subject with none. It defines `atomic/3`, so an atomic update can run it. Which subject actions count as activity is the application's decision, so the generator leaves attaching it to the application.
 
 When the subject module does not exist, the generator creates it with `ash.gen.resource` and takes the data layer from the first resource in `--domain` that uses `Ash.DataLayer.Ets` or `AshPostgres.DataLayer`, as expiry does. When no resource there uses either, `Mix.AshWorkflow.Recipe.ensure_subject/5` stops the task with an Igniter issue and nothing is written.
 
@@ -151,14 +169,18 @@ code_interface do
 end
 ```
 
-`create` accepts `last_activity_at` so an import or backfill can carry over when a subject was last used. `record_activity` and `reactivate` set `require_atomic? false` for the reason expiry's `renew` does: the `pre_check_with` identity on ETS adds a hook an atomic update cannot run.
+`create` accepts `last_activity_at` so a backfill can carry over when a subject was last used. `record_activity` and `reactivate` set `require_atomic? false` for the reason expiry's `renew` does: the `pre_check_with` identity on ETS adds a hook an atomic update cannot run.
 
 ## Who may act
 
-The generator writes `MyApp.Accounts.AccountDormancy.Checks.CanReactivate`, which denies everyone, mirroring expiry's `CanRenew`. The generator's notice says so.
+The generator writes `MyApp.Accounts.AccountDormancy.Checks.CanCreate` and `MyApp.Accounts.AccountDormancy.Checks.CanReactivate`, which deny everyone, mirroring expiry's `CanCreate` and `CanRenew`. The generator's notice says so.
 
 ```elixir
 policies do
+  policy action(:create) do
+    authorize_if MyApp.Accounts.AccountDormancy.Checks.CanCreate
+  end
+
   policy action(:reactivate) do
     authorize_if MyApp.Accounts.AccountDormancy.Checks.CanReactivate
   end
@@ -171,11 +193,11 @@ end
 
 `record_activity` is allowed for every caller. The application calls it from its own code as a side effect of a sign-in or an edit, often with the subject's own user as the actor, and a check that denied by default would leave every subject to go dormant until the application wrote one. Recording activity moves a deadline and changes no state, so allowing it gives a caller no transition it could not already reach. An application that exposes `record_activity` through an API should replace `always()` with its own check.
 
-The generated `:create` action has no policy. The application owns who may create a dormancy, and adds a policy if it needs one. `AshWorkflow.Transformers.AddPolicies` allows `create`, `read` and the scheduler's timeout transitions, so a dormancy can be created and can go dormant before the application has written `CanReactivate`.
+`CanCreate` gates only a direct call to `AccountDormancy.create`. `StartDormancy` creates the dormancy with `authorize?: false`, so a subject create succeeds while `CanCreate` still denies everyone. `AshWorkflow.Transformers.AddPolicies` allows `read` and the scheduler's timeout transitions, so a dormancy goes dormant before the application has written `CanReactivate`.
 
 ## Code shared with other recipes
 
-The task builds on `Mix.AshWorkflow.Recipe` and changes nothing in it. It passes no `sources` to `ensure_subject/5`, because it has no actor resource to take a data layer from.
+The task builds on `Mix.AshWorkflow.Recipe`. It added the `:changes` option to `Recipe.add_subject_edits/5`, which adds a `change` call to the subject's `changes` block, skipping an identical one and warning about one that differs. It passes no `sources` to `ensure_subject/5`, because it has no actor resource to take a data layer from.
 
 ## Open questions
 

@@ -20,12 +20,14 @@ When the subject does not exist, the task creates it with `mix ash.gen.resource`
 
 ## What it generates
 
-For the command above, the task writes three modules and edits the subject:
+For the command above, the task writes five modules and edits the subject:
 
 - `MyApp.Accounts.AccountDormancy` runs the workflow. It belongs to the account and holds `last_activity_at`. An identity on `subject_id` allows one dormancy per account.
-- `MyApp.Accounts.AccountDormancy.Checks.CanCreate` decides who may create a dormancy. It denies everyone as generated.
+- `MyApp.Accounts.AccountDormancy.Checks.CanCreate` decides who may create a dormancy directly. It denies everyone as generated.
 - `MyApp.Accounts.AccountDormancy.Checks.CanReactivate` decides who may reactivate. It denies everyone as generated.
-- `MyApp.Accounts.Account` gains `has_one :dormancy` and a `dormant?` calculation. The task adds no change, argument or policy to the subject's actions.
+- `MyApp.Accounts.AccountDormancy.Changes.StartDormancy` creates an account's dormancy when the account is created.
+- `MyApp.Accounts.AccountDormancy.Changes.RecordActivity` records activity on an account's dormancy after an account action. The task does not attach it to any action.
+- `MyApp.Accounts.Account` gains `has_one :dormancy`, a `dormant?` calculation, and a `changes` block that runs `StartDormancy` on every create action. The task adds no argument or policy to the subject's actions.
 
 The dormancy is a separate resource rather than a `workflow` block on the subject, so a subject that already runs a workflow keeps it.
 
@@ -70,9 +72,42 @@ The `:archived` deadline is measured from `state_entered_at`, the moment the rec
 
 ## What your application does next
 
-### Decide who may create a dormancy
+### New accounts get a dormancy
 
-`CanCreate` denies everyone, so no dormancy can be created until you change it. Replace its `match?/3`, or replace the `authorize_if` line in the `:create` policy with a built-in check:
+The task adds `StartDormancy` to the account's `changes` block, so every create action on the account starts a dormancy:
+
+```elixir
+changes do
+  change MyApp.Accounts.AccountDormancy.Changes.StartDormancy, on: [:create]
+end
+```
+
+After the account is created, `StartDormancy` calls `AccountDormancy.create` with the account's id, so `last_activity_at` starts at the time of creation. It passes the actor and tenant through with `authorize?: false`, because the account's create action already decided who may create the account. It runs once per record in `Ash.bulk_create/4` too.
+
+A create that upserts onto an existing account starts no second dormancy, and neither does a create for an account that already has one. An error from the dormancy create fails the account create, and on a data layer with transactions the account rolls back with it.
+
+### Backfill existing accounts
+
+Accounts created before the task ran have no dormancy, and `dormant?` is `false` for them. Create their dormancies with `Ash.bulk_create/4`:
+
+```elixir
+require Ash.Query
+
+MyApp.Accounts.Account
+|> Ash.Query.filter(not exists(dormancy, true))
+|> Ash.stream!(authorize?: false)
+|> Stream.map(&%{subject_id: &1.id, last_activity_at: &1.last_seen_at || DateTime.utc_now()})
+|> Ash.bulk_create(MyApp.Accounts.AccountDormancy, :create,
+  authorize?: false,
+  return_errors?: true
+)
+```
+
+`last_activity_at` takes the account's real last use from an existing column, here `last_seen_at`. An account last seen longer ago than `--dormant-after` goes dormant on the next scheduler pass. Leave `last_activity_at` out of the map to start every clock at the time of the backfill.
+
+### Decide who may create a dormancy directly
+
+`CanCreate` only gates direct calls to `AccountDormancy.create`, since `StartDormancy` and the backfill above skip authorization. It denies everyone, so no direct create succeeds until you change it. Replace its `match?/3`, or replace the `authorize_if` line in the `:create` policy with a built-in check:
 
 ```elixir
 policies do
@@ -82,29 +117,32 @@ policies do
 end
 ```
 
-Code that creates a dormancy on the application's behalf, such as an import, can pass `authorize?: false` instead.
+Code that creates a dormancy on the application's behalf, such as an import, can pass `authorize?: false` instead. A second dormancy for the same account fails on the `:unique_subject` identity.
 
 Reads stay open by default. `AshWorkflow` authorizes `:read` on the dormancy resource for every actor. Add a read policy if dormancies are private.
 
-### Create the dormancy
-
-Call `create/2` wherever a subject starts to be tracked, such as the subject's create action, a sign-up step or an import:
-
-```elixir
-MyApp.Accounts.AccountDormancy.create(account.id, actor: current_user)
-```
-
-`last_activity_at` defaults to the time of creation. An import can pass the subject's real last use instead:
-
-```elixir
-MyApp.Accounts.AccountDormancy.create(account.id, %{last_activity_at: last_seen_at}, authorize?: false)
-```
-
-A second dormancy for the same account fails on the `:unique_subject` identity.
-
 ### Record activity
 
-Call `record_activity/2` whenever the subject is used, such as on a sign-in, an API request or an edit:
+What counts as activity is up to the application. To count an account action as activity, add `RecordActivity` to it. In the account's `changes` block, it covers every update action:
+
+```elixir
+changes do
+  change MyApp.Accounts.AccountDormancy.Changes.StartDormancy, on: [:create]
+  change MyApp.Accounts.AccountDormancy.Changes.RecordActivity, on: [:update]
+end
+```
+
+To count only some actions, add it to those actions instead:
+
+```elixir
+update :sign_in do
+  change MyApp.Accounts.AccountDormancy.Changes.RecordActivity
+end
+```
+
+`RecordActivity` runs after the account action, without authorization, and does nothing for an account with no dormancy. It also works in an atomic update.
+
+Activity that is not an account action, such as an API request, calls `record_activity/2` on the dormancy:
 
 ```elixir
 MyApp.Accounts.AccountDormancy.record_activity(dormancy)
