@@ -153,11 +153,9 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
           end
           """
         ],
-        [dormant?: "calculate :dormant?, :boolean, #{dormant_expr(config.archive_after)}"],
-        changes: [
-          {config.start_dormancy, "change #{inspect(config.start_dormancy)}, on: [:create]"}
-        ]
+        dormant?: "calculate :dormant?, :boolean, #{dormant_expr(config.archive_after)}"
       )
+      |> Recipe.add_subject_change(config.subject, config.start_dormancy, on: [:create])
       |> then(fn igniter ->
         if exists?, do: igniter, else: create_dormancy(igniter, config, storage)
       end)
