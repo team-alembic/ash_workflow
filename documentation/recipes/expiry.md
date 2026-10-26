@@ -107,16 +107,16 @@ Reads stay open by default. `AshWorkflow` authorizes `:read` on the expiry resou
 MyApp.Contracts.Contract.set_expiry(contract, ~U[2027-06-30 00:00:00Z], actor: current_user)
 ```
 
-To give every new contract a default term, add `SetExpiry` with a `term:` option to the contract's create action:
+To give every new contract a default expiry, add `SetExpiry` with an `expires_in:` option to the contract's create action:
 
 ```elixir
 create :create do
   accept [:title]
-  change {MyApp.Contracts.ContractExpiry.Changes.SetExpiry, term: {365, :day}}
+  change {MyApp.Contracts.ContractExpiry.Changes.SetExpiry, expires_in: {365, :day}}
 end
 ```
 
-`term:` is `{count, unit}`, with a unit of `:second`, `:minute`, `:hour`, `:day` or `:week`. `expires_at` is the time the action runs plus the term. An action that has an `:expires_at` argument uses the argument instead. An action with neither fails with an error on `expires_at`.
+`expires_in:` is `{count, unit}`, with a unit of `:second`, `:minute`, `:hour`, `:day` or `:week`. `expires_at` is the time the action runs plus `expires_in:`. An action that has an `:expires_at` argument uses the argument instead. An action with neither fails with an error on `expires_at`.
 
 `SetExpiry` also works in an atomic update, so the action it is added to does not need `require_atomic? false`. It runs after the contract action, so its error fails the contract action, and on a data layer with transactions the contract change rolls back with it.
 

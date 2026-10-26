@@ -21,7 +21,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.Expiry.Docs do
 
     A subject with no expiry never expires. `:set_expiry` creates the
     subject's expiry, or renews the one it has, through the generated
-    `Changes.SetExpiry` change. Add that change with a `term:` option to
+    `Changes.SetExpiry` change. Add that change with an `expires_in:` option to
     another subject action, such as `:create`, to start the clock there.
 
     Nobody may create or renew an expiry until the application defines who
@@ -217,7 +217,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
 
       A #{inspect(config.subject)} with no expiry never expires. Call \
       #{inspect(config.subject)}.set_expiry/3 to start one, or add `change \
-      {#{inspect(config.set_expiry)}, term: {30, :day}}` to the subject's \
+      {#{inspect(config.set_expiry)}, expires_in: {30, :day}}` to the subject's \
       create action.
       """)
     end
@@ -357,8 +357,8 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       Starts or renews the subject's expiry once a subject action succeeds.
 
       `expires_at` is the action's `:expires_at` argument, or else now plus the
-      `term:` option, such as `{30, :day}`, in `:second`, `:minute`, `:hour`,
-      `:day` or `:week`. The actor and tenant pass through to
+      `expires_in:` option, such as `{30, :day}`, in `:second`, `:minute`,
+      `:hour`, `:day` or `:week`. The actor and tenant pass through to
       `EXPIRY.create/3` and `EXPIRY.renew/3`, so `Checks.CanCreate` and
       `Checks.CanRenew` still decide.
       """
@@ -373,23 +373,23 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
 
       @impl true
       def init(opts) do
-        case Keyword.fetch(opts, :term) do
+        case Keyword.fetch(opts, :expires_in) do
           :error ->
             {:ok, opts}
 
           {:ok, {count, unit}} when is_integer(count) and count > 0 and unit in @units ->
             {:ok, opts}
 
-          {:ok, term} ->
+          {:ok, expires_in} ->
             {:error,
-             "term must be {count, unit} with a positive count and a unit in " <>
-               "#{inspect(@units)}, got: #{inspect(term)}"}
+             "expires_in must be {count, unit} with a positive count and a unit in " <>
+               "#{inspect(@units)}, got: #{inspect(expires_in)}"}
         end
       end
 
       @impl true
       def change(changeset, opts, context) do
-        case expires_at(changeset, opts[:term]) do
+        case expires_at(changeset, opts[:expires_in]) do
           {:ok, expires_at} ->
             Ash.Changeset.after_action(changeset, fn _changeset, subject ->
               with {:ok, _expiry} <- set_expiry(subject, expires_at, context) do
@@ -403,7 +403,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
               Ash.Error.Changes.InvalidChanges.exception(
                 fields: [:expires_at],
                 message:
-                  "needs an :expires_at argument or a term: option on " <>
+                  "needs an :expires_at argument or an expires_in: option on " <>
                     "#{inspect(__MODULE__)} to know when the expiry ends"
               )
             )
@@ -413,16 +413,16 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       @impl true
       def atomic(changeset, opts, context), do: {:ok, change(changeset, opts, context)}
 
-      defp expires_at(changeset, term) do
+      defp expires_at(changeset, expires_in) do
         case Ash.Changeset.fetch_argument(changeset, :expires_at) do
           {:ok, %DateTime{} = expires_at} -> {:ok, expires_at}
-          _missing -> from_term(term)
+          _missing -> from_now(expires_in)
         end
       end
 
-      defp from_term(nil), do: :error
-      defp from_term({count, :week}), do: from_term({count * 7, :day})
-      defp from_term({count, unit}), do: {:ok, DateTime.add(DateTime.utc_now(), count, unit)}
+      defp from_now(nil), do: :error
+      defp from_now({count, :week}), do: from_now({count * 7, :day})
+      defp from_now({count, unit}), do: {:ok, DateTime.add(DateTime.utc_now(), count, unit)}
 
       defp set_expiry(subject, expires_at, context) do
         opts = Ash.Context.to_opts(context)

@@ -433,7 +433,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ExpiryTest do
   end
 
   describe "SetExpiry on another subject action" do
-    test "a term: option starts the clock on create", %{tmp_dir: tmp_dir} do
+    test "an expires_in: option starts the clock on create", %{tmp_dir: tmp_dir} do
       recipe =
         [inspect(Contract)]
         |> generate()
@@ -443,7 +443,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ExpiryTest do
             source,
             "create :create do\n      accept([:title])\n",
             "create :create do\n      accept([:title])\n" <>
-              "      change({#{inspect(@set_expiry)}, term: {1, :day}})\n"
+              "      change({#{inspect(@set_expiry)}, expires_in: {1, :day}})\n"
           )
         end)
         |> compile(tmp_dir)
@@ -464,7 +464,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ExpiryTest do
         |> allow_creators()
         |> add_contract_actions("""
             update :extend do
-              change({#{inspect(@set_expiry)}, term: {2, :week}})
+              change({#{inspect(@set_expiry)}, expires_in: {2, :week}})
             end
         """)
         |> compile(tmp_dir)
@@ -481,7 +481,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ExpiryTest do
                       1
     end
 
-    test "without an expires_at argument or a term: option fails the action", %{
+    test "without an expires_at argument or an expires_in: option fails the action", %{
       tmp_dir: tmp_dir
     } do
       recipe =
@@ -503,7 +503,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ExpiryTest do
                |> Ash.Changeset.for_update(:touch, %{}, actor: @creator)
                |> Ash.update()
 
-      assert Exception.message(error) =~ "needs an :expires_at argument or a term: option"
+      assert Exception.message(error) =~ "needs an :expires_at argument or an expires_in: option"
       assert expiry_of(contract) == nil
     end
   end
