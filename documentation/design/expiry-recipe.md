@@ -14,7 +14,7 @@ The generator owns the expiry lifecycle: the states, the two deadlines and the `
 
 The application owns three things:
 
-- When an expiry is created. The application calls `ContractExpiry.create/3` with the subject and its `expires_at`, from wherever that makes sense: the subject's create action, an activation step, an import.
+- When an expiry is created. The application calls the subject's `set_expiry/3`, or adds the generated `SetExpiry` change to a subject action of its own: the subject's create action, an activation step, an import.
 - What happens on entering `:expiring` or `:expired`, such as a reminder email or revoking access. The generator adds no notifier and no action timeout for it.
 - Who may renew. This is one `Ash.Policy.Check` module, generated to deny everyone.
 
@@ -43,12 +43,22 @@ Expiry is a lifecycle recipe. A subject has one current expiry, not a history of
 
 - `has_one :expiry, MyApp.Contracts.ContractExpiry`
 - `calculate :expired?, :boolean, expr(expiry.state == :expired)`
+- `update :set_expiry`, with an `expires_at` argument and the change `MyApp.Contracts.ContractExpiry.Changes.SetExpiry`
+- `define :set_expiry, args: [:expires_at]` in its `code_interface`
 
 `ContractExpiry` has the identity `:unique_subject` on `subject_id`. On a data layer without unique constraints, such as ETS, it sets `pre_check_with` to the domain. A second `create` for the same subject fails on the identity, so `has_one :expiry` never has two rows to choose between.
 
-The generator adds no change, argument or policy to the subject's actions. Gating a subject action on `expired?` is an application decision.
-
 When the subject module does not exist, the generator creates it with `ash.gen.resource` as approval does. Approval takes the created subject's data layer from the approver. Expiry has no actor resource, so it takes the data layer from the first resource in `--domain` that uses `Ash.DataLayer.Ets` or `AshPostgres.DataLayer`. When no resource in the domain uses either, the generator stops with an Igniter issue and writes nothing, rather than create a subject that cannot store records. `Mix.AshWorkflow.Recipe.ensure_subject/5` makes this check for every recipe.
+
+### Starting the clock from the subject
+
+A subject with no expiry row never expires, and its `expired?` is `false`. The first version of this recipe left creating the row to the application, through `ContractExpiry.create/3`. Nothing in the generated code called it, so a subject the application forgot about stayed unexpired with no sign that anything was missing.
+
+The subject now gains one additive action, `:set_expiry`. Its change, `SetExpiry`, runs in an `after_action` hook on the subject. It looks the expiry up by `subject_id`, calls `create` when there is none and `renew` when there is one. The lookup reads with `authorize?: false`, because whether a row exists only picks the call, and `create` and `renew` are each authorized with the subject action's actor and tenant. An error from either fails the subject action.
+
+`SetExpiry` is opt-in on every other subject action. The generator does not add it to the subject's create action, because only the application knows the term, and a subject created by an import may already have a date of its own. An application adds `change {SetExpiry, term: {365, :day}}` where a default term applies. `SetExpiry` defines `atomic/3` as well as `change/3`, so it can join an update that keeps `require_atomic? true`. The generated `:set_expiry` declares `require_atomic? false` anyway, so it does not depend on that.
+
+Recipe actions are additive. `:set_expiry` is a new action, and the generator leaves every action the subject already had as it was. Gating a subject action on `expired?` is an application decision. On a subject that uses `Ash.Policy.Authorizer`, `:set_expiry` is denied until the application writes a policy for it, and the generator prints a notice saying so.
 
 ## The workflow
 
@@ -181,7 +191,7 @@ end
 
 - `parse_duration/2` for `--overdue-after` and `--notice-period`.
 - `ensure_subject/5`, which checks an existing subject compiles or composes `ash.gen.resource` for a missing one, and returns the storage the recipe's resources use.
-- `add_subject_edits/4`, the subject relationship and calculation edits.
+- `add_subject_edits/5`, the subject relationship, calculation, action and code interface edits. Each is skipped when the subject already has the recipe's definition, and left with a warning when it has a different one of the same name.
 - `compose_transition_log/3`.
 - `key_type/3` and `belongs_to/3`, which type a foreign key after the primary key it references.
 - `deny_check_contents/2` and `create_policy/2`, for a deny-by-default check and the policy on the opening create action.
