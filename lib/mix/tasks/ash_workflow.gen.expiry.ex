@@ -22,7 +22,8 @@ defmodule Mix.Tasks.AshWorkflow.Gen.Expiry.Docs do
     A subject with no expiry never expires. `:set_expiry` creates the
     subject's expiry, or renews the one it has, through the generated
     `Changes.SetExpiry` change. Add that change with an `expires_in:` option to
-    another subject action, such as `:create`, to start the clock there.
+    another subject action to start the clock there. `--default-expiry` adds it
+    to every create of the subject.
 
     Nobody may create or renew an expiry until the application defines who
     can, in the generated `Checks.CanCreate` and `Checks.CanRenew` modules.
@@ -42,6 +43,14 @@ defmodule Mix.Tasks.AshWorkflow.Gen.Expiry.Docs do
     * `--notice-period` - moves an expiry to `:expiring` this long before
       `expires_at`, given as `10s`, `30m`, `12h`, `2d` or `2w`. Without it, no
       `:expiring` step is generated.
+    * `--default-expiry` - starts every new subject's expiry this long after
+      it is created, given as `10s`, `30m`, `12h`, `2d` or `2w`. The task adds
+      `change {Changes.SetExpiry, expires_in: ...}, on: [:create]` to the
+      subject's `changes` block. `SetExpiry` creates the expiry with the
+      subject create's actor, so `Checks.CanCreate` must let that actor
+      through, or the subject create fails. A subject create run with
+      `authorize?: false` creates its expiry with `authorize?: false` too.
+      Without the flag, nothing is added to the subject's create.
     * `--transition-log` - also generates a transition log for the expiry
       with `mix ash_workflow.gen.transition_log`. Defaults to `true`.
     """
@@ -73,6 +82,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
           module: :string,
           domain: :string,
           notice_period: :string,
+          default_expiry: :string,
           transition_log: :boolean
         ],
         defaults: [transition_log: true]
@@ -84,33 +94,35 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       options = igniter.args.options
       subject = ProjectModule.parse(igniter.args.positional.subject)
 
-      case Recipe.parse_duration(options[:notice_period], "--notice-period") do
-        {:ok, notice_period} ->
-          expiry = expiry_module(subject, options[:module])
+      with {:ok, notice_period} <-
+             Recipe.parse_duration(options[:notice_period], "--notice-period"),
+           {:ok, default_expiry} <-
+             Recipe.parse_duration(options[:default_expiry], "--default-expiry") do
+        expiry = expiry_module(subject, options[:module])
 
-          config = %{
-            subject: subject,
-            expiry: expiry,
-            can_create: Module.concat([expiry, Checks, CanCreate]),
-            can_renew: Module.concat([expiry, Checks, CanRenew]),
-            set_expiry: Module.concat([expiry, Changes, SetExpiry]),
-            notice_period: notice_period,
-            transition_log?: options[:transition_log]
-          }
+        config = %{
+          subject: subject,
+          expiry: expiry,
+          can_create: Module.concat([expiry, Checks, CanCreate]),
+          can_renew: Module.concat([expiry, Checks, CanRenew]),
+          set_expiry: Module.concat([expiry, Changes, SetExpiry]),
+          notice_period: notice_period,
+          default_expiry: default_expiry,
+          transition_log?: options[:transition_log]
+        }
 
-          case Recipe.ensure_subject(
-                 igniter,
-                 subject,
-                 options[:domain],
-                 "expiry",
-                 []
-               ) do
-            {:ok, igniter, storage} -> generate_with_key_type(igniter, config, storage)
-            {:error, igniter} -> igniter
-          end
-
-        {:error, message} ->
-          Igniter.add_issue(igniter, message)
+        case Recipe.ensure_subject(
+               igniter,
+               subject,
+               options[:domain],
+               "expiry",
+               []
+             ) do
+          {:ok, igniter, storage} -> generate_with_key_type(igniter, config, storage)
+          {:error, igniter} -> igniter
+        end
+      else
+        {:error, message} -> Igniter.add_issue(igniter, message)
       end
     end
 
@@ -158,6 +170,25 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       |> then(fn igniter ->
         if set_expiry_action?, do: igniter, else: notice_subject_policy(igniter, config)
       end)
+      |> add_default_expiry(config)
+    end
+
+    defp add_default_expiry(igniter, %{default_expiry: nil}), do: igniter
+
+    defp add_default_expiry(igniter, %{default_expiry: {count, unit}} = config) do
+      change =
+        "{#{inspect(config.set_expiry)}, expires_in: {#{count}, #{inspect(interval(unit))}}}"
+
+      igniter
+      |> Recipe.add_subject_change(config.subject, change, on: [:create])
+      |> Igniter.add_notice("""
+      Every create of #{inspect(config.subject)} now starts an expiry, through \
+      `change #{change}, on: [:create]`. \
+      The expiry is created with the subject create's actor, so until \
+      #{inspect(config.can_create)} lets that actor through, creating a \
+      #{inspect(config.subject)} fails. A create run with `authorize?: false` \
+      creates its expiry with `authorize?: false` too.
+      """)
     end
 
     defp defines_set_expiry?(igniter, subject) do
@@ -216,9 +247,8 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       #{inspect(config.can_renew)}. Both deny everyone as generated.
 
       A #{inspect(config.subject)} with no expiry never expires. Call \
-      #{inspect(config.subject)}.set_expiry/3 to start one, or add `change \
-      {#{inspect(config.set_expiry)}, expires_in: {30, :day}}` to the subject's \
-      create action.
+      #{inspect(config.subject)}.set_expiry/3 to start one, or rerun with \
+      --default-expiry to start one on every create.
       """)
     end
 

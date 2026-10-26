@@ -12,6 +12,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ExpiryTest do
   alias AshWorkflowTest.RecipeFixtures.Expiry.Licence
 
   @fixtures "test/support/recipe_fixtures/expiry"
+  @contract "#{@fixtures}/contract.ex"
   @files Enum.map(~w(domain contract lease), &"#{@fixtures}/#{&1}.ex")
   @checks "lib/ash_workflow_test/recipe_fixtures/expiry/contract_expiry/checks"
   @set_expiry Module.concat(ContractExpiry, Changes.SetExpiry)
@@ -505,6 +506,84 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ExpiryTest do
 
       assert Exception.message(error) =~ "needs an :expires_at argument or an expires_in: option"
       assert expiry_of(contract) == nil
+    end
+  end
+
+  describe "--default-expiry" do
+    test "starts an active expiry on every subject create once CanCreate lets the actor through",
+         %{tmp_dir: tmp_dir} do
+      recipe =
+        [inspect(Contract), "--default-expiry", "365d"]
+        |> generate()
+        |> allow_creators()
+        |> compile(tmp_dir)
+
+      assert Enum.any?(
+               recipe.notices,
+               &(&1 =~ "until #{inspect(ContractExpiry)}.Checks.CanCreate")
+             )
+
+      contract =
+        recipe.modules[Contract]
+        |> Ash.Changeset.for_create(:create, %{title: "Lease"}, actor: @creator)
+        |> Ash.create!()
+
+      assert %{state: :active, expires_at: expires_at} = expiry_of(contract)
+      assert_in_delta DateTime.diff(expires_at, DateTime.utc_now(), :second), 365 * 86_400, 60
+    end
+
+    test "fails the subject create while CanCreate denies everyone", %{tmp_dir: tmp_dir} do
+      recipe =
+        [inspect(Contract), "--default-expiry", "365d"]
+        |> generate()
+        |> compile(tmp_dir)
+
+      assert {:error, %Ash.Error.Forbidden{}} =
+               recipe.modules[Contract]
+               |> Ash.Changeset.for_create(:create, %{title: "Lease"}, actor: @creator)
+               |> Ash.create()
+
+      contract =
+        recipe.modules[Contract]
+        |> Ash.Changeset.for_create(:create, %{title: "Lease"}, authorize?: false)
+        |> Ash.create!(authorize?: false)
+
+      assert %{state: :active} = expiry_of(contract)
+    end
+
+    test "writes the change into the subject's changes block" do
+      source = source!(generate([inspect(Contract), "--default-expiry", "2w"]), @contract)
+
+      assert source =~ "changes do"
+
+      assert source =~
+               ~r/\{#{inspect(@set_expiry)},\s+expires_in: \{14, :day\}\},\s+on: \[:create\]/
+    end
+
+    test "without the flag the subject gains no changes entry" do
+      refute source!(generate([inspect(Contract)]), @contract) =~ "changes do"
+    end
+
+    test "running the task a second time with the flag changes nothing" do
+      argv = [inspect(Contract), "--default-expiry", "365d"]
+      first = generate(argv)
+      second = run_task(first.igniter, "ash_workflow.gen.expiry", argv)
+
+      assert second.changed == %{}
+      assert second.warnings == []
+    end
+
+    test "reports an issue for a duration it cannot parse" do
+      igniter =
+        @files
+        |> project()
+        |> Igniter.compose_task("ash_workflow.gen.expiry", [
+          inspect(Contract),
+          "--default-expiry",
+          "1y"
+        ])
+
+      assert Enum.any?(igniter.issues, &String.contains?(&1, "--default-expiry must look like"))
     end
   end
 
