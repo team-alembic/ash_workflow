@@ -99,6 +99,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
           dormancy: dormancy,
           can_create: Module.concat([dormancy, Checks, CanCreate]),
           can_reactivate: Module.concat([dormancy, Checks, CanReactivate]),
+          start_dormancy: Module.concat([dormancy, Changes, StartDormancy]),
           dormant_after: dormant_after,
           archive_after: archive_after,
           transition_log?: options[:transition_log]
@@ -145,11 +146,22 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
           end
           """
         ],
-        dormant?: "calculate :dormant?, :boolean, #{dormant_expr(config.archive_after)}"
+        [dormant?: "calculate :dormant?, :boolean, #{dormant_expr(config.archive_after)}"],
+        changes: [
+          {config.start_dormancy, "change #{inspect(config.start_dormancy)}, on: [:create]"}
+        ]
       )
       |> then(fn igniter ->
         if exists?, do: igniter, else: create_dormancy(igniter, config, storage)
       end)
+      |> create_missing_module(config.start_dormancy, start_dormancy_contents(config))
+    end
+
+    defp create_missing_module(igniter, module, contents) do
+      case ProjectModule.module_exists(igniter, module) do
+        {true, igniter} -> igniter
+        {false, igniter} -> ProjectModule.create_module(igniter, module, contents)
+      end
     end
 
     # An archived subject has been dormant for longer, so it counts as dormant.
@@ -168,11 +180,15 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       |> Igniter.add_notice("""
       Generated #{inspect(config.dormancy)} to track activity on #{inspect(config.subject)}.
 
+      Each new #{inspect(config.subject)} gets a dormancy through \
+      #{inspect(config.start_dormancy)}. One created before this task ran has none \
+      and is never dormant until it is backfilled, as the dormancy recipe shows.
+
       Call record_activity whenever #{inspect(config.subject)} is used, or every \
       dormancy goes dormant #{format_duration(config.dormant_after)} after it is created.
 
-      Nobody can create or reactivate a dormancy yet. Define who may create one in \
-      #{inspect(config.can_create)} and who may reactivate in \
+      Nobody can create a dormancy directly or reactivate one yet. Define who may \
+      create one in #{inspect(config.can_create)} and who may reactivate in \
       #{inspect(config.can_reactivate)}. Both deny everyone as generated.
       """)
     end
@@ -295,6 +311,65 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
         "Decides who may create an `#{inspect(config.dormancy)}` for a subject.",
         "actor may create a dormancy for this subject"
       )
+    end
+
+    defp start_dormancy_contents(config) do
+      ~S'''
+      @moduledoc """
+      Starts the subject's dormancy when the subject is created.
+
+      The dormancy is created without authorization, because the subject's own
+      create action already decided who may create the subject. A create that
+      upserts onto an existing subject, or a subject that already has a dormancy,
+      gets no new one.
+      """
+
+      use Ash.Resource.Change
+
+      require Ash.Query
+
+      alias DORMANCY
+
+      @impl true
+      def change(changeset, _opts, context) do
+        Ash.Changeset.after_action(changeset, fn _changeset, subject ->
+          if upserted_onto_existing_row?(subject),
+            do: {:ok, subject},
+            else: start_dormancy(subject, context)
+        end)
+      end
+
+      defp upserted_onto_existing_row?(%{__metadata__: %{upsert_action: :update}}), do: true
+      defp upserted_onto_existing_row?(%{__metadata__: %{upsert_skipped: true}}), do: true
+      defp upserted_onto_existing_row?(_subject), do: false
+
+      defp start_dormancy(subject, context) do
+        opts = context |> Ash.Context.to_opts() |> Keyword.put(:authorize?, false)
+
+        DORMANCY_ALIAS
+        |> Ash.Query.filter(subject_id == ^subject.id)
+        |> Ash.exists(opts)
+        |> case do
+          {:ok, true} ->
+            {:ok, subject}
+
+          {:ok, false} ->
+            with {:ok, _dormancy} <- DORMANCY_ALIAS.create(subject.id, opts) do
+              {:ok, subject}
+            end
+
+          {:error, error} ->
+            {:error, error}
+        end
+      end
+      '''
+      |> replace_dormancy(config)
+    end
+
+    defp replace_dormancy(contents, config) do
+      contents
+      |> String.replace("DORMANCY_ALIAS", config.dormancy |> Module.split() |> List.last())
+      |> String.replace("DORMANCY", inspect(config.dormancy))
     end
 
     defp can_reactivate_contents(config) do
