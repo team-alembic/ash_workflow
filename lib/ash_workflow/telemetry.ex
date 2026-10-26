@@ -64,6 +64,7 @@ defmodule AshWorkflow.Telemetry do
   * `:timeout` — a deadline fired
   * `:error_path` — a step failed and its `on_error` ran
   * `:undo` — a transition was rewound
+  * `:signal` — an `on_signal` handler received a signal
 
   ## Attaching a handler
 
@@ -84,7 +85,7 @@ defmodule AshWorkflow.Telemetry do
   event for one workflow instance.
   """
 
-  @type triggered_by :: :initial | :manual | :automatic | :timeout | :error_path | :undo
+  @type triggered_by :: :initial | :manual | :automatic | :timeout | :error_path | :undo | :signal
 
   @transition_start [:ash_workflow, :transition, :start]
   @transition_stop [:ash_workflow, :transition, :stop]

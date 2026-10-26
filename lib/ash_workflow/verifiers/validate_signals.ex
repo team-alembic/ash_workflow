@@ -59,7 +59,8 @@ defmodule AshWorkflow.Verifiers.ValidateSignals do
 
     Enum.map(step.emits, &{[:emit, &1.name], &1}) ++
       nested.(:transition, step.transitions) ++
-      nested.(:timeout, step.timeouts) ++ nested.(:every, step.everys)
+      nested.(:timeout, step.timeouts) ++
+      nested.(:every, step.everys) ++ nested.(:on_signal, step.on_signals)
   end
 
   defp validate_signals_module(_module, _signals, []), do: :ok

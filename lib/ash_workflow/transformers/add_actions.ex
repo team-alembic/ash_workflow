@@ -20,6 +20,11 @@ defmodule AshWorkflow.Transformers.AddActions do
     a hidden update action named `__timeout_<step>_<name>` that transitions to the
     target state and records the event (`triggered_by: :timeout`).
 
+  - **`on_signal` handlers** — for each `on_signal`, a read action
+    `:__signal_<step>_<signal>_read` that selects only records in the step, a
+    transition action `:__signal_<step>_<signal>` (`triggered_by: :signal`) or `RecordEvent` on the
+    handler's own `action`, and a `signals_in` listener joining them.
+
   - **`every` action injection** — appends `AshWorkflow.Changes.RecordEvent`
     (`triggered_by: :timeout`, writing the `every`'s own last-fired column via
     `:every_field`) onto the action an `every` names, so each firing re-arms
@@ -59,6 +64,7 @@ defmodule AshWorkflow.Transformers.AddActions do
   alias AshWorkflow.Changes.UndoTransition
   alias AshWorkflow.Entities.Emit
   alias AshWorkflow.Entities.Every
+  alias AshWorkflow.Entities.OnSignal
   alias AshWorkflow.Entities.Step
   alias AshWorkflow.Entities.Timeout
   alias AshWorkflow.Entities.Transition
@@ -82,6 +88,7 @@ defmodule AshWorkflow.Transformers.AddActions do
       |> add_timeout_actions(steps)
       |> add_every_changes(steps)
       |> add_on_error_actions(steps)
+      |> add_signal_handlers(steps)
       |> add_undo_action()
       |> declare_emits(steps)
 
@@ -525,6 +532,203 @@ defmodule AshWorkflow.Transformers.AddActions do
     end)
   end
 
+  # Each `on_signal` becomes a read action that only selects records in the
+  # step, the action the signal runs, and a `signals_in` listener joining
+  # them. A handler whose signal cannot be resolved generates nothing, so
+  # `AshWorkflow.Verifiers.ValidateOnSignal` reports it instead of Ash.
+  defp add_signal_handlers(dsl, steps) do
+    state_attribute = Info.state_attribute(dsl)
+    step_names = Enum.map(steps, & &1.name)
+
+    all_handlers = for step <- steps, on_signal <- step.on_signals, do: {step, on_signal}
+
+    handlers =
+      for {step, on_signal} <- all_handlers,
+          signal = resolve_signal(dsl, on_signal),
+          generatable?(dsl, step, on_signal, step_names),
+          do: {step, on_signal, signal}
+
+    dsl =
+      all_handlers
+      |> Enum.filter(fn {step, on_signal} ->
+        !Step.terminal?(step) and OnSignal.transitions?(on_signal, step_names)
+      end)
+      |> Enum.reduce(dsl, fn {step, on_signal}, dsl ->
+        add_signal_transition_action(dsl, step, on_signal)
+      end)
+
+    dsl =
+      Enum.reduce(handlers, dsl, fn {step, on_signal, {signal_module, signal}}, dsl ->
+        {dsl, args} = add_signal_read_action(dsl, step, on_signal, signal, state_attribute)
+        add_signal_listener(dsl, step, on_signal, signal_module, args)
+      end)
+
+    inject_signal_action_changes(dsl, all_handlers)
+  end
+
+  defp generatable?(dsl, step, on_signal, step_names) do
+    one_selector? = is_nil(on_signal.filter) != is_nil(on_signal.read_action)
+    one_outcome? = is_nil(on_signal.transition_to) != is_nil(on_signal.action)
+
+    read_action_ok? =
+      is_nil(on_signal.read_action) or
+        match?(%{type: :read}, ResourceInfo.action(dsl, on_signal.read_action))
+
+    outcome_ok? =
+      if on_signal.transition_to,
+        do: on_signal.transition_to in step_names,
+        else: match?(%{type: :update}, ResourceInfo.action(dsl, on_signal.action))
+
+    !step.terminal and one_selector? and one_outcome? and read_action_ok? and outcome_ok?
+  end
+
+  defp resolve_signal(dsl, on_signal) do
+    signal_module = on_signal.from || Info.signals(dsl)
+
+    with true <- signal_module != nil,
+         {:module, _} <- Code.ensure_compiled(signal_module),
+         true <- Spark.Dsl.is?(signal_module, Ash.Signals),
+         %{} = signal <- Ash.Signals.Info.signal(signal_module, on_signal.name) do
+      {signal_module, signal}
+    else
+      _ -> nil
+    end
+  end
+
+  defp add_signal_read_action(dsl, step, %{read_action: nil} = on_signal, signal, state_attribute) do
+    fields = AshWorkflow.Expr.signal_fields(on_signal.filter)
+
+    arguments =
+      for field <- fields,
+          argument = Enum.find(signal.arguments, &(&1.name == field)) do
+        Transformer.build_entity!(ResourceDsl, [:actions, :read], :argument,
+          name: field,
+          type: argument.type,
+          constraints: argument.constraints,
+          allow_nil?: argument.allow_nil?
+        )
+      end
+
+    filter =
+      Transformer.build_entity!(ResourceDsl, [:actions, :read], :filter,
+        filter: in_step(on_signal.filter, state_attribute, step.name)
+      )
+
+    action =
+      Transformer.build_entity!(ResourceDsl, [:actions], :read,
+        name: OnSignal.read_action_name(step.name, on_signal),
+        arguments: arguments,
+        filters: [filter]
+      )
+
+    action = %{action | filter: filter.filter}
+
+    {Transformer.add_entity(dsl, [:actions], action), Enum.map(arguments, & &1.name)}
+  end
+
+  # A copy of the handler's own read action, renamed and narrowed to the step,
+  # so the state filter applies without changing the action other code calls.
+  defp add_signal_read_action(dsl, step, on_signal, signal, state_attribute) do
+    case ResourceInfo.action(dsl, on_signal.read_action) do
+      %{type: :read} = read_action ->
+        action = %{
+          read_action
+          | name: OnSignal.read_action_name(step.name, on_signal),
+            primary?: false,
+            filter: in_step(read_action.filter, state_attribute, step.name)
+        }
+
+        signal_fields = Enum.map(signal.arguments, & &1.name)
+
+        args =
+          for argument <- action.arguments,
+              argument.name in signal_fields,
+              do: argument.name
+
+        {Transformer.add_entity(dsl, [:actions], action), args}
+
+      _ ->
+        {dsl, []}
+    end
+  end
+
+  defp in_step(nil, state_attribute, step_name) do
+    require Ash.Expr
+    Ash.Expr.expr(^Ash.Expr.ref(state_attribute) == ^step_name)
+  end
+
+  defp in_step(filter, state_attribute, step_name) do
+    require Ash.Expr
+    Ash.Expr.expr(^filter and ^Ash.Expr.ref(state_attribute) == ^step_name)
+  end
+
+  defp add_signal_transition_action(dsl, step, on_signal) do
+    action =
+      Transformer.build_entity!(ResourceDsl, [:actions], :update,
+        name: OnSignal.action_name(step.name, on_signal),
+        accept: Keyword.keys(on_signal.inputs || []),
+        changes: [
+          Transformer.build_entity!(ResourceDsl, [:actions, :update], :change,
+            change: BuiltinChanges.transition_state(on_signal.transition_to)
+          ),
+          Transformer.build_entity!(ResourceDsl, [:actions, :update], :change,
+            change: {RecordEvent, triggered_by: :signal, transition_name: on_signal.name}
+          )
+        ]
+      )
+
+    Transformer.add_entity(dsl, [:actions], action)
+  end
+
+  defp add_signal_listener(dsl, step, on_signal, signal_module, args) do
+    opts =
+      [
+        signal: on_signal.name,
+        name: OnSignal.listener_name(step.name, on_signal),
+        action: OnSignal.listener_action(step.name, on_signal),
+        read_action: OnSignal.read_action_name(step.name, on_signal),
+        args: args,
+        inputs: on_signal.inputs,
+        delivery: on_signal.delivery
+      ]
+      |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+
+    listener = Transformer.build_entity!(ResourceDsl, [:signals_in, :from], :on, opts)
+
+    source =
+      Transformer.build_entity!(ResourceDsl, [:signals_in], :from,
+        signal_module: signal_module,
+        listeners: [listener]
+      )
+
+    Transformer.add_entity(dsl, [:signals_in], source)
+  end
+
+  # Like an action timeout, a handler with `action` stays in the step, so it
+  # must not touch `state_entered_at`. Two handlers may name the same action.
+  defp inject_signal_action_changes(dsl, handlers) do
+    handlers
+    |> Enum.filter(fn {_step, on_signal} -> on_signal.action end)
+    |> Enum.uniq_by(fn {_step, on_signal} -> on_signal.action end)
+    |> Enum.reduce(dsl, fn {_step, on_signal}, dsl ->
+      case ResourceInfo.action(dsl, on_signal.action) do
+        %{type: :update} = existing_action ->
+          record_event_change =
+            Transformer.build_entity!(ResourceDsl, [:actions, :update], :change,
+              change: {RecordEvent, triggered_by: :signal, touch_state_entered_at: false}
+            )
+
+          replace_action(dsl, %{
+            existing_action
+            | changes: existing_action.changes ++ [record_event_change]
+          })
+
+        _ ->
+          dsl
+      end
+    end)
+  end
+
   # Puts each `RecordEvent`'s emit plan into its opts, and declares the plan's
   # signals as dynamic emits on the action, since `Ash.Signals.emit_many/5`
   # refuses a signal the action does not declare. Runs last so it sees every
@@ -632,8 +836,17 @@ defmodule AshWorkflow.Transformers.AddActions do
           emit <- every.emits,
           do: {every.action, emit_plan_entry(emit, {:from, step.name})}
 
+    signal_entries =
+      for step <- steps,
+          on_signal <- step.on_signals,
+          emit <- on_signal.emits do
+        if on_signal.transition_to,
+          do: {OnSignal.action_name(step.name, on_signal), emit_plan_entry(emit, :always)},
+          else: {on_signal.action, emit_plan_entry(emit, {:from, step.name})}
+      end
+
     Enum.group_by(
-      transition_entries ++ timeout_entries ++ every_entries,
+      transition_entries ++ timeout_entries ++ every_entries ++ signal_entries,
       &elem(&1, 0),
       &elem(&1, 1)
     )
@@ -689,5 +902,6 @@ defmodule AshWorkflow.Transformers.AddActions do
   def before?(AshOban.Transformers.DefineSchedulers), do: true
   def before?(AshOban.Transformers.DefineActionWorkers), do: true
   def before?(Ash.Resource.Transformers.SetSignalsOut), do: true
+  def before?(Ash.Resource.Transformers.DefineSignalListeners), do: true
   def before?(_), do: false
 end

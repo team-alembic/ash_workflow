@@ -105,7 +105,86 @@ defmodule AshWorkflow.WaitStateTest do
           end
         end
         """,
-        ~r/none of its timeouts declare transition_to/
+        ~r/none of its timeouts or on_signals declare transition_to/
+      )
+    end
+
+    test "accepts a wait state whose only exit is an on_signal" do
+      # A signals module of its own, so the listener this leaves loaded never
+      # receives a signal another test emits.
+      assert_dsl_compiles("""
+      defmodule OnSignalWaitSignals do
+        use Ash.Signals
+
+        signals do
+          signal :payment_settled do
+            argument :order_id, :uuid, allow_nil?: false
+          end
+        end
+      end
+
+      defmodule OnSignalWaitWorkflow do
+        use Ash.Resource,
+          domain: AshWorkflowTest.Domain,
+          data_layer: Ash.DataLayer.Ets,
+          extensions: [AshWorkflow]
+
+        workflow do
+          scheduler AshWorkflow.Scheduler.Precise
+          signals OnSignalWaitSignals
+
+          step :awaiting_payment do
+            on_signal :payment_settled do
+              filter expr(id == ^signal(:order_id))
+              transition_to :paid
+            end
+          end
+
+          step :paid, terminal: true
+        end
+
+        attributes do
+          uuid_v7_primary_key :id
+        end
+      end
+      """)
+    end
+
+    test "rejects a wait state whose only on_signal runs an action" do
+      assert_dsl_error(
+        """
+        defmodule OnSignalTrapWorkflow do
+          use Ash.Resource,
+            domain: AshWorkflowTest.Domain,
+            data_layer: Ash.DataLayer.Ets,
+            extensions: [AshWorkflow]
+
+          workflow do
+            scheduler AshWorkflow.Scheduler.Precise
+            signals AshWorkflowTest.OrderSignals
+
+            step :awaiting_payment do
+              on_signal :address_changed do
+                filter expr(id == ^signal(:order_id))
+                action :update_address
+              end
+            end
+
+            step :paid, terminal: true
+          end
+
+          actions do
+            update :update_address do
+              accept []
+            end
+          end
+
+          attributes do
+            uuid_v7_primary_key :id
+          end
+        end
+        """,
+        ~r/none of its timeouts or on_signals declare transition_to/
       )
     end
 

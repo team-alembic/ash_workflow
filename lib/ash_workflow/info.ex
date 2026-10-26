@@ -59,6 +59,27 @@ defmodule AshWorkflow.Info do
     end
   end
 
+  @doc """
+  Returns every `on_signal` handler in the workflow, each with the name of
+  the step that declares it.
+  """
+  @spec on_signals(Ash.Resource.t() | map()) :: [{atom(), AshWorkflow.Entities.OnSignal.t()}]
+  def on_signals(resource) do
+    for step <- steps(resource), on_signal <- step.on_signals, do: {step.name, on_signal}
+  end
+
+  @doc """
+  Returns the `on_signal` handlers declared on a given step, or `[]` if the
+  step has none or does not exist.
+  """
+  @spec on_signals(Ash.Resource.t(), atom()) :: [AshWorkflow.Entities.OnSignal.t()]
+  def on_signals(resource, step_name) do
+    case step(resource, step_name) do
+      nil -> []
+      step -> step.on_signals
+    end
+  end
+
   @typedoc """
   The merged view of a transition name, as returned by `transition/2`.
   """
@@ -487,6 +508,8 @@ defmodule AshWorkflow.Info do
     until:, retry:}`. Always measures against `state_entered_at` and never has
     a target, since firing never leaves the step. `:until` is `nil` unless the
     `every` bounds its firing.
+  * `:on_signals` — one entry per `on_signal`, as `%{name:, to:, action:}`.
+    Exactly one of `:to` and `:action` is set.
 
   ## Example
 
@@ -513,7 +536,8 @@ defmodule AshWorkflow.Info do
       #=>     ],
       #=>     everys: [
       #=>       %{name: :chase, interval: {3, :days}, action: :send_reminder, until: nil, retry: nil}
-      #=>     ]
+      #=>     ],
+      #=>     on_signals: []
       #=>   },
       #=>   ...
       #=> }
@@ -542,7 +566,9 @@ defmodule AshWorkflow.Info do
        on_success: Enum.map(step.on_success, &%{to: &1.to, condition: &1.when}),
        on_error: step.on_error,
        timeouts: Enum.map(step.timeouts, &timeout_edge/1),
-       everys: Enum.map(step.everys, &every_edge/1)
+       everys: Enum.map(step.everys, &every_edge/1),
+       on_signals:
+         Enum.map(step.on_signals, &%{name: &1.name, to: &1.transition_to, action: &1.action})
      }}
   end
 

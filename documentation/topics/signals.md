@@ -93,7 +93,64 @@ A `transition`, `timeout` or `every` that contains an `emit` takes its other opt
 
 ## Listening
 
-Listening needs nothing from AshWorkflow. A transition action is an ordinary update action, so a workflow resource can list one in its `signals_in` section and move its records when another resource emits a signal. Under the default inline delivery, a listener whose record is not in one of the transition's `from` states fails, and that failure rolls back the action that emitted the signal.
+Listening needs nothing from AshWorkflow. A transition action is an ordinary update action, so a workflow resource can list one in its `signals_in` section and move its records when another resource emits a signal. Under the default inline delivery, a listener whose record is not in one of the transition's `from` states fails, and that failure rolls back the action that emitted the signal. `on_signal`, below, selects only records in the step, so it avoids that failure.
+
+## Receiving signals
+
+`on_signal` on a step moves a record on, or runs an update action, when a signal selects that record while it is in the step. It sits beside the step's transitions and timeouts, and whichever exit fires first wins:
+
+```elixir
+workflow do
+  signals MyApp.Payments.Signals
+
+  step :awaiting_payment do
+    transition :mark_paid, to: :fulfilling
+
+    on_signal :payment_settled do
+      filter expr(id == ^signal(:order_id))
+      transition_to :fulfilling
+      inputs paid_at: :settled_at
+    end
+
+    on_signal :address_changed do
+      filter expr(id == ^signal(:order_id))
+      action :update_address
+      inputs [:address]
+    end
+
+    timeout :expire do
+      fire_after {3, :days}
+      transition_to :cancelled
+    end
+  end
+
+  step :fulfilling, terminal: true
+  step :cancelled, terminal: true
+end
+```
+
+| Option | Meaning |
+| --- | --- |
+| name (positional) | The signal. |
+| `from` | The `Ash.Signals` module that declares the signal. Defaults to the workflow's `signals` module. |
+| `filter` | An expression that selects the records, with `^signal(:field)` for a field of the signal. |
+| `read_action` | A read action of the resource that selects the records instead of `filter`. Its arguments are set from signal fields of the same name. |
+| `transition_to` | The step to move to. |
+| `action` | An update action to run without leaving the step. |
+| `inputs` | Action inputs taken from signal fields, as `input: :signal_field`. |
+| `delivery` | How the signal reaches the handler, passed to the `signals_in` listener unchanged. |
+
+Exactly one of `filter` and `read_action` is required, and exactly one of `transition_to` and `action`. `AshWorkflow.Verifiers.ValidateOnSignal` checks that the signal exists, that each `^signal(:field)` names one of its fields, and that `action` names an update action.
+
+A `filter` is an ordinary read filter, so it can follow a relationship, as in `expr(customer.email == ^signal(:email))`, or use `exists/2`. A filter that matches several records in the step moves all of them, so one `:batch_cancelled` signal can cancel every order in a batch.
+
+AshWorkflow generates a read action `:__signal_<step>_<signal>_read` that adds the step to the selection, and a `signals_in` listener named `:<step>_<signal>` that runs the handler. With `transition_to` it also generates the update action `:__signal_<step>_<signal>`, whose log row has `triggered_by: :signal` and the signal's name as `transition_name`. With `action`, the named action records the event and leaves `state_entered_at` alone. A `timeout` or `every` cannot name the same action as an `on_signal`, since each would record its own event.
+
+A signal for a record that is not in the step selects nothing and is ignored. That covers a record that a person or a timeout has already moved on. It also covers a record that has not reached the step yet, so a signal emitted before the record enters the step is lost.
+
+With `Ash.Policy.Authorizer`, the generated read and transition actions are authorized by `signal_in/2` for the handler's signal. The listener can then move a record that the emitting actor could not move directly. The `action` variant runs your own update action and gets no generated policy, so that action's own policies must allow the listener.
+
+Under the default inline delivery, the handler runs inside the emitting action. A transition that fails, for example on a validation, fails the emitting action and rolls it back.
 
 ## Limits
 

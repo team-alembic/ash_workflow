@@ -122,6 +122,20 @@ defmodule AshWorkflow do
     singleton_entity_keys: [:retry]
   }
 
+  @on_signal %Spark.Dsl.Entity{
+    name: :on_signal,
+    describe:
+      "Moves the record on, or runs an action, when a signal from an `Ash.Signals` module selects it while it is in this step.",
+    target: Entities.OnSignal,
+    args: [:name],
+    imports: [Ash.Expr, AshWorkflow.Expr],
+    schema: Entities.OnSignal.attribute_schema(),
+    transform: {Entities.OnSignal, :transform, []},
+    entities: [
+      emits: [@emit]
+    ]
+  }
+
   @belongs_to_actor %Spark.Dsl.Entity{
     name: :belongs_to_actor,
     describe: "Configures actor capture on the transition log.",
@@ -167,6 +181,7 @@ defmodule AshWorkflow do
       transitions: [@transition],
       timeouts: [@timeout],
       everys: [@every],
+      on_signals: [@on_signal],
       on_success: [@on_success],
       retry: [@retry],
       emits: [@step_emit]
@@ -291,6 +306,7 @@ defmodule AshWorkflow do
       AshWorkflow.Verifiers.ValidateTransitionLog,
       AshWorkflow.Verifiers.ValidateUndo,
       AshWorkflow.Verifiers.ValidateStepPolicies,
-      AshWorkflow.Verifiers.ValidateSignals
+      AshWorkflow.Verifiers.ValidateSignals,
+      AshWorkflow.Verifiers.ValidateOnSignal
     ]
 end

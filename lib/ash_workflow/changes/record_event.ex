@@ -13,7 +13,7 @@ defmodule AshWorkflow.Changes.RecordEvent do
   ## Options
 
     * `:triggered_by` (required) — one of `:initial`, `:manual`, `:automatic`,
-      `:timeout`, `:error_path`, `:undo`.
+      `:timeout`, `:error_path`, `:undo`, `:signal`.
     * `:touch_state_entered_at` (optional, defaults to `true`) — whether the
       change writes `state_entered_at`. A timeout must not reset it, because
       every other deadline on the step measures `after` from the same
@@ -108,7 +108,7 @@ defmodule AshWorkflow.Changes.RecordEvent do
   alias AshWorkflow.Telemetry
   alias AshWorkflow.TransitionLog, as: TransitionLogHelpers
 
-  @triggered_by_values [:initial, :manual, :automatic, :timeout, :error_path, :undo]
+  @triggered_by_values [:initial, :manual, :automatic, :timeout, :error_path, :undo, :signal]
 
   @impl true
   @spec init(Keyword.t()) :: {:ok, Keyword.t()} | {:error, String.t()}
