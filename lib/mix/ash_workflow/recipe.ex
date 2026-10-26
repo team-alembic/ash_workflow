@@ -189,6 +189,8 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
 
     `opts` takes `:actions` and `:interfaces`, the subject's actions and code
     interface definitions, which are added and compared as calculations are.
+    It also takes `:changes`, keyed by change module, for `change` calls in the
+    subject's `changes` block.
     """
     @spec add_subject_edits(
             Igniter.t(),
@@ -196,7 +198,8 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
             keyword(String.t()),
             keyword(String.t()),
             actions: keyword(String.t()),
-            interfaces: keyword(String.t())
+            interfaces: keyword(String.t()),
+            changes: keyword(String.t())
           ) :: Igniter.t()
     def add_subject_edits(igniter, subject, relationships, calculations, opts \\ []) do
       [
@@ -210,7 +213,9 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
          &same_definition?/2, &ResourceIgniter.add_action/3},
         {Keyword.get(opts, :interfaces, []),
          {:code_interface, [:define, :define_calculation], [1, 2], "a code interface"},
-         &same_definition?/2, &add_code_interface/3}
+         &same_definition?/2, &add_code_interface/3},
+        {Keyword.get(opts, :changes, []), {:changes, [:change], [1, 2], "a change"},
+         &same_definition?/2, &add_change/3}
       ]
       |> Enum.reduce(igniter, fn {edits, location, same?, add}, igniter ->
         Enum.reduce(edits, igniter, fn edit, igniter ->
@@ -221,6 +226,9 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
 
     defp add_code_interface(igniter, subject, code),
       do: ResourceIgniter.add_block(igniter, subject, :code_interface, code)
+
+    defp add_change(igniter, subject, code),
+      do: ResourceIgniter.add_block(igniter, subject, :changes, code)
 
     defp add_subject_edit(igniter, subject, {name, code}, location, same?, add) do
       case existing_definition(igniter, subject, name, location) do
