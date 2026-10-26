@@ -100,6 +100,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
           can_create: Module.concat([dormancy, Checks, CanCreate]),
           can_reactivate: Module.concat([dormancy, Checks, CanReactivate]),
           start_dormancy: Module.concat([dormancy, Changes, StartDormancy]),
+          record_activity: Module.concat([dormancy, Changes, RecordActivity]),
           dormant_after: dormant_after,
           archive_after: archive_after,
           transition_log?: options[:transition_log]
@@ -155,6 +156,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
         if exists?, do: igniter, else: create_dormancy(igniter, config, storage)
       end)
       |> create_missing_module(config.start_dormancy, start_dormancy_contents(config))
+      |> create_missing_module(config.record_activity, record_activity_contents(config))
     end
 
     defp create_missing_module(igniter, module, contents) do
@@ -184,8 +186,14 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       #{inspect(config.start_dormancy)}. One created before this task ran has none \
       and is never dormant until it is backfilled, as the dormancy recipe shows.
 
-      Call record_activity whenever #{inspect(config.subject)} is used, or every \
-      dormancy goes dormant #{format_duration(config.dormant_after)} after it is created.
+      Record activity whenever #{inspect(config.subject)} is used, or every dormancy \
+      goes dormant #{format_duration(config.dormant_after)} after it is created. Call \
+      record_activity, or add #{inspect(config.record_activity)} to the subject \
+      actions that count as activity, for example:
+
+          changes do
+            change #{inspect(config.record_activity)}, on: [:update]
+          end
 
       Nobody can create a dormancy directly or reactivate one yet. Define who may \
       create one in #{inspect(config.can_create)} and who may reactivate in \
@@ -355,6 +363,55 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
 
           {:ok, false} ->
             with {:ok, _dormancy} <- DORMANCY_ALIAS.create(subject.id, opts) do
+              {:ok, subject}
+            end
+
+          {:error, error} ->
+            {:error, error}
+        end
+      end
+      '''
+      |> replace_dormancy(config)
+    end
+
+    defp record_activity_contents(config) do
+      ~S'''
+      @moduledoc """
+      Records activity on the subject's dormancy once a subject action succeeds.
+
+      Add it to the subject actions that count as activity. It does nothing for a
+      subject with no dormancy, and runs without authorization, as
+      `record_activity` allows everyone.
+      """
+
+      use Ash.Resource.Change
+
+      require Ash.Query
+
+      alias DORMANCY
+
+      @impl true
+      def change(changeset, _opts, context) do
+        Ash.Changeset.after_action(changeset, fn _changeset, subject ->
+          record_activity(subject, context)
+        end)
+      end
+
+      @impl true
+      def atomic(changeset, opts, context), do: {:ok, change(changeset, opts, context)}
+
+      defp record_activity(subject, context) do
+        opts = context |> Ash.Context.to_opts() |> Keyword.put(:authorize?, false)
+
+        DORMANCY_ALIAS
+        |> Ash.Query.filter(subject_id == ^subject.id)
+        |> Ash.read_one(opts)
+        |> case do
+          {:ok, nil} ->
+            {:ok, subject}
+
+          {:ok, dormancy} ->
+            with {:ok, _dormancy} <- DORMANCY_ALIAS.record_activity(dormancy, opts) do
               {:ok, subject}
             end
 

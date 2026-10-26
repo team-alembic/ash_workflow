@@ -15,6 +15,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.DormancyTest do
   @dormancy_source "lib/ash_workflow_test/recipe_fixtures/dormancy/account_dormancy.ex"
   @checks "lib/ash_workflow_test/recipe_fixtures/dormancy/account_dormancy/checks"
   @start_dormancy Module.concat(AccountDormancy, Changes.StartDormancy)
+  @record_activity Module.concat(AccountDormancy, Changes.RecordActivity)
   @deny_all "def match?(_actor, _context, _opts), do: false"
   @argv ["--dormant-after", "30d", "--archive-after", "90d"]
   @support %{id: "support", role: :support}
@@ -118,6 +119,26 @@ defmodule Mix.Tasks.AshWorkflow.Gen.DormancyTest do
   defp reload(dormancy), do: Ash.get!(dormancy.__struct__, dormancy.id)
 
   defp step_names(resource), do: resource |> AshWorkflow.Info.steps() |> Enum.map(& &1.name)
+
+  # What an application does to count every update of an account as activity.
+  defp record_activity_on_update(tmp_dir) do
+    [inspect(Account) | @argv]
+    |> generate()
+    |> edit_source("#{@fixtures}/account.ex", fn source ->
+      String.replace(
+        source,
+        "  changes do\n",
+        "  changes do\n    change(#{inspect(@record_activity)}, on: [:update])\n"
+      )
+    end)
+    |> compile(tmp_dir)
+  end
+
+  defp rename(account) do
+    account
+    |> Ash.Changeset.for_update(:rename, %{name: "Renamed"})
+    |> Ash.update()
+  end
 
   defp notice?(recipe, text), do: Enum.any?(recipe.notices, &String.contains?(&1, text))
 
@@ -299,6 +320,40 @@ defmodule Mix.Tasks.AshWorkflow.Gen.DormancyTest do
                recipe.modules[Account]
                |> Ash.Changeset.for_create(:create, %{name: "Acme"})
                |> Ash.create()
+    end
+  end
+
+  describe "RecordActivity" do
+    test "is generated but not added to the subject" do
+      recipe = generate([inspect(Account) | @argv])
+
+      assert Map.has_key?(
+               recipe.changed,
+               "lib/ash_workflow_test/recipe_fixtures/dormancy/account_dormancy/changes/record_activity.ex"
+             )
+
+      refute source!(recipe, "#{@fixtures}/account.ex") =~ "RecordActivity"
+      assert notice?(recipe, "change #{inspect(@record_activity)}, on: [:update]")
+    end
+
+    test "moves last_activity_at when added to the subject's updates", %{tmp_dir: tmp_dir} do
+      recipe = record_activity_on_update(tmp_dir)
+      dormancy = idle_dormancy(recipe, 31)
+      account = Ash.get!(recipe.modules[Account], dormancy.subject_id)
+
+      assert {:ok, %{renamed?: true}} = rename(account)
+
+      assert DateTime.diff(DateTime.utc_now(), reload(dormancy).last_activity_at, :second) < 5
+      assert Timeline.run_due(recipe.modules[AccountDormancy]) == 0
+      assert reload(dormancy).state == :active
+    end
+
+    test "does nothing for a subject with no dormancy", %{tmp_dir: tmp_dir} do
+      recipe = record_activity_on_update(tmp_dir)
+      account = existing_account(recipe)
+
+      assert {:ok, %{renamed?: true}} = rename(account)
+      assert dormancy_of(recipe, account) == []
     end
   end
 
