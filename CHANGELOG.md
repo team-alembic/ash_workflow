@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - A create action that upserts onto an existing row no longer appends an `:initial` row to the transition log or calls `AshWorkflow.Scheduler.notify_state_change/1`. The row stays in the step it was in. `AshWorkflow.Changes.RecordEvent` skips both when the returned record carries `upsert_action: :update` metadata, or `upsert_skipped: true` metadata from an `upsert_condition` that did not match. This covers `Ash.create/2` and `Ash.bulk_create/4`. The `[:ash_workflow, :transition]` span still emits `:stop`, because its `:start` event fires before the data layer reports whether the row was inserted. ash_workflow now requires Ash 3.29 or later, the first release that sets `upsert_action` on ETS and Mnesia. AshPostgres sets it from 2.10.0 on PostgreSQL 17 and later, and from 2.13.1 on every PostgreSQL version. With an older AshPostgres, an upsert onto an existing row is still logged.
 
+### Security
+
+- The development lock now resolves `ash` 3.37.2, `ash_postgres` 2.15.2 and `plug_crypto` 2.2.1, which fix the advisories `mix hex.audit` reported against `ash` 3.34.6 (EEF-CVE-2026-96581, EEF-CVE-2026-114214), `ash_postgres` 2.13.1 (EEF-CVE-2026-115627, EEF-CVE-2026-115635) and `plug_crypto` 2.2.0 (EEF-CVE-2026-105963). The `ash ~> 3.29` requirement in `mix.exs` still admits releases before 3.37.2, so applications pick their own versions. Upgrade them in your own lock to get the fixes.
+
 ## [0.10.1] - 2026-10-19
 
 ### Upgrading from 0.10.0
