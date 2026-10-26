@@ -151,8 +151,20 @@ defmodule AshWorkflow.WaitStateTest do
     end
 
     test "rejects a wait state whose only on_signal runs an action" do
+      # A rejected workflow still leaves its listener behind, so it gets a
+      # signals module no other test emits.
       assert_dsl_error(
         """
+        defmodule OnSignalTrapSignals do
+          use Ash.Signals
+
+          signals do
+            signal :address_changed do
+              argument :order_id, :uuid, allow_nil?: false
+            end
+          end
+        end
+
         defmodule OnSignalTrapWorkflow do
           use Ash.Resource,
             domain: AshWorkflowTest.Domain,
@@ -161,7 +173,7 @@ defmodule AshWorkflow.WaitStateTest do
 
           workflow do
             scheduler AshWorkflow.Scheduler.Precise
-            signals AshWorkflowTest.OrderSignals
+            signals OnSignalTrapSignals
 
             step :awaiting_payment do
               on_signal :address_changed do

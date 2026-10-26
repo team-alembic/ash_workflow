@@ -562,7 +562,10 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
             timeout_targets =
               step.timeouts |> Enum.map(& &1.transition_to) |> Enum.reject(&is_nil/1)
 
-            successors ++ transition_targets ++ timeout_targets
+            on_signal_targets =
+              step.on_signals |> Enum.map(& &1.transition_to) |> Enum.reject(&is_nil/1)
+
+            successors ++ transition_targets ++ timeout_targets ++ on_signal_targets
         end
 
       bfs(rest ++ neighbors, step_map, visited)
