@@ -50,6 +50,103 @@ defmodule Mix.AshWorkflow.RecipeTest do
     end
   end
 
+  describe "add_subject_change/4" do
+    @contract "test/support/recipe_fixtures/expiry/contract.ex"
+    @change "{MyApp.Changes.Stamp, days: 30}"
+
+    defp contract_project(block \\ nil) do
+      source =
+        case block do
+          nil ->
+            File.read!(@contract)
+
+          block ->
+            String.replace(File.read!(@contract), "  attributes do", block <> "\n  attributes do")
+        end
+
+      Igniter.Test.test_project(app_name: :ash_workflow, files: %{@contract => source})
+    end
+
+    defp add_change(igniter, change, opts) do
+      {:ok, applied, result} =
+        igniter
+        |> Recipe.add_subject_change(AshWorkflowTest.RecipeFixtures.Expiry.Contract, change, opts)
+        |> Igniter.Test.apply_igniter()
+
+      {applied, result.warnings, applied.assigns.test_files[@contract]}
+    end
+
+    defp global_changes(source) do
+      {_ast, changes} =
+        source
+        |> Code.string_to_quoted!()
+        |> Macro.prewalk([], fn
+          {:changes, _meta, [[do: body]]} = node, _acc -> {node, block_calls(body)}
+          node, acc -> {node, acc}
+        end)
+
+      Enum.map(changes, &Macro.to_string/1)
+    end
+
+    defp block_calls({:__block__, _meta, calls}), do: calls
+    defp block_calls(call), do: [call]
+
+    test "creates the changes block when the subject has none" do
+      {_igniter, warnings, source} = add_change(contract_project(), @change, on: [:create])
+
+      assert warnings == []
+      assert source =~ "changes do"
+      assert global_changes(source) == ["change({MyApp.Changes.Stamp, days: 30}, on: [:create])"]
+    end
+
+    test "keeps the changes already in the block, and writes a where: option" do
+      {_igniter, warnings, source} =
+        """
+          changes do
+            change set_attribute(:renamed?, false), on: [:create]
+          end
+        """
+        |> contract_project()
+        |> add_change(quote(do: MyApp.Changes.Stamp),
+          on: [:create, :update],
+          where: "[changing(:title)]"
+        )
+
+      assert warnings == []
+
+      assert global_changes(source) == [
+               "change(set_attribute(:renamed?, false), on: [:create])",
+               "change(MyApp.Changes.Stamp, on: [:create, :update], where: [changing(:title)])"
+             ]
+    end
+
+    test "skips an identical change without a warning" do
+      {first, [], source} = add_change(contract_project(), @change, on: [:create])
+      {_second, warnings, again} = add_change(first, @change, on: [:create])
+
+      assert warnings == []
+      assert again == source
+    end
+
+    test "warns and leaves a change of the same module with other options" do
+      {_igniter, warnings, source} =
+        """
+          changes do
+            change {MyApp.Changes.Stamp, days: 7}, on: [:update]
+          end
+        """
+        |> contract_project()
+        |> add_change(@change, on: [:create])
+
+      assert [warning] = warnings
+      assert warning =~ "AshWorkflowTest.RecipeFixtures.Expiry.Contract already has a change"
+      assert warning =~ "{MyApp.Changes.Stamp, days: 7}"
+      assert warning =~ "change {MyApp.Changes.Stamp, days: 30}, on: [:create]"
+
+      assert global_changes(source) == ["change({MyApp.Changes.Stamp, days: 7}, on: [:update])"]
+    end
+  end
+
   describe "postgres_block/3" do
     @storage %{domain: Domain, data_layer: AshPostgres.DataLayer, repo: AshWorkflowTest.Repo}
 

@@ -9,6 +9,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
     alias Igniter.Code.Common
     alias Igniter.Code.Function, as: CodeFunction
     alias Igniter.Project.Module, as: ProjectModule
+    alias Sourceror.Zipper
 
     @type storage :: %{domain: module(), data_layer: module(), repo: module() | nil}
 
@@ -190,7 +191,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
     `opts` takes `:actions` and `:interfaces`, the subject's actions and code
     interface definitions, which are added and compared as calculations are.
     It also takes `:changes`, keyed by change module, for `change` calls in the
-    subject's `changes` block.
+    subject's `changes` block. `add_subject_change/4` builds that entry.
     """
     @spec add_subject_edits(
             Igniter.t(),
@@ -235,7 +236,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
         {igniter, {:ok, zipper}} ->
           if same?.(zipper, Sourceror.parse_string!(code)),
             do: igniter,
-            else: warn_existing(igniter, subject, name, location, code)
+            else: warn_existing(igniter, subject, name, location, zipper, code)
 
         {igniter, :error} ->
           add.(igniter, subject, code)
@@ -262,12 +263,62 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
              zipper,
              call,
              arities,
-             &CodeFunction.argument_equals?(&1, 0, name)
+             &CodeFunction.argument_matches_predicate?(&1, 0, named?(call, name))
            ) do
         {:ok, zipper} -> {:ok, zipper}
         :error -> nil
       end
     end
+
+    # A change is named by its module, written bare or as `{module, opts}`.
+    defp named?(:change, module) do
+      fn zipper ->
+        case Zipper.node(zipper) do
+          {_module, _opts} ->
+            zipper |> Zipper.down() |> Common.nodes_equal?(module)
+
+          _node ->
+            Common.nodes_equal?(zipper, module)
+        end
+      end
+    end
+
+    defp named?(_call, name), do: &Common.nodes_equal?(&1, name)
+
+    @doc """
+    Adds a `change` to the subject's `changes` block, which runs on every
+    action of the `on:` types, creating the block when there is none.
+
+    `change` is the change's source or AST, such as `{MyChange, days: 30}`.
+    `opts` takes `:on`, a list of action types, and an optional `:where`, the
+    source or AST of the change's `where:` value. A `change` for the same
+    module that differs from this one is left as it is, with a warning.
+    """
+    @spec add_subject_change(Igniter.t(), module(), Macro.t() | String.t(),
+            on: [atom()],
+            where: Macro.t() | String.t()
+          ) :: Igniter.t()
+    def add_subject_change(igniter, subject, change, opts) do
+      change_ast = to_ast(change)
+      on = Keyword.fetch!(opts, :on)
+
+      code =
+        "change #{Sourceror.to_string(change_ast)}, on: #{inspect(on)}" <>
+          where_option(opts[:where])
+
+      add_subject_edits(igniter, subject, [], [], changes: [{change_module(change_ast), code}])
+    end
+
+    defp to_ast(code) when is_binary(code), do: Sourceror.parse_string!(code)
+    defp to_ast(ast), do: ast
+
+    defp where_option(nil), do: ""
+    defp where_option(where), do: ", where: #{Sourceror.to_string(to_ast(where))}"
+
+    defp change_module({:__block__, _meta, [{module, _opts}]}), do: change_module(module)
+    defp change_module({module, _opts}), do: change_module(module)
+    defp change_module({:__aliases__, _meta, parts}), do: Module.concat(parts)
+    defp change_module(module) when is_atom(module), do: module
 
     defp same_destination?(zipper, {_call, _meta, [_name, {:__aliases__, _, parts} | _rest]}) do
       case CodeFunction.move_to_nth_argument(zipper, 1) do
@@ -277,7 +328,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
     end
 
     defp same_definition?(zipper, recipe_ast) do
-      without_meta(Sourceror.Zipper.node(zipper)) == without_meta(recipe_ast)
+      without_meta(Zipper.node(zipper)) == without_meta(recipe_ast)
     end
 
     defp without_meta(ast) do
@@ -287,9 +338,13 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       end)
     end
 
-    defp warn_existing(igniter, subject, name, {_section, _calls, _arities, kind}, code) do
+    defp warn_existing(igniter, subject, name, {_section, _calls, _arities, kind}, zipper, code) do
       Igniter.add_warning(igniter, """
-      #{inspect(subject)} already has #{kind} named #{inspect(name)} that differs from the recipe's, so the recipe left it as it is. It would have added:
+      #{inspect(subject)} already has #{kind} named #{inspect(name)} that differs from the recipe's, so the recipe left it as it is. It has:
+
+      #{Sourceror.to_string(Zipper.node(zipper))}
+
+      It would have added:
 
       #{code}
       """)
