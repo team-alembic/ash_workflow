@@ -1,5 +1,5 @@
 defmodule AshWorkflow.RefuseStaleTransitionsTest do
-  use ExUnit.Case, async: true
+  use AshWorkflowTest.EtsCase, async: true
 
   alias Ash.Error.Changes.StaleRecord
   alias AshWorkflow.Transformers.AddActions
