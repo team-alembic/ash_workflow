@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **A Workflows lens for Clarity.** With [Clarity](https://hex.pm/packages/clarity) installed, `AshWorkflow.Clarity.Lensmaker` adds a Workflows lens that lists each workflow resource with its steps. `AshWorkflow.Clarity.Introspector` adds an `AshWorkflow.Clarity.Vertex.Step` for each step. A workflow resource gets Workflow Overview, Workflow Diagram and Workflow Timing tabs, and a step gets Step Overview, Step Diagram and Step Timeline tabs. The timing tabs place each automatic action, retry attempt, timeout, `every` firing and undo window at its offset from entering the step, and say how long a record can stay in each step. Clarity is an optional dependency, so a project without it compiles none of these modules.
 
+### Fixed
+
+- `AshWorkflow.Scheduler.Precise` arms a timeout whose `fire_at` or `field` names an expression calculation as soon as a record enters the step. `AshWorkflow.Scheduler.notify_state_change/1` handed `deadline_changed/2` the record without that calculation loaded, so `AshWorkflow.Scheduler.due_at/2` returned `nil`, no timer was armed, and only the recovery sweep caught the deadline, up to `look_ahead_ms` late. `notify_state_change/1` now loads the calculations returned by the new `AshWorkflow.Scheduler.Work.deadline_loads/1` before calling `deadline_changed/2`. `AshWorkflow.Scheduler.Oban` was not affected, because its trigger evaluates the calculation in the `where` clause.
+
 ### Security
 
 - The development lock now resolves `ash` 3.37.2, `ash_postgres` 2.15.2 and `plug_crypto` 2.2.1, which fix the advisories `mix hex.audit` reported against `ash` 3.34.6 (EEF-CVE-2026-96581, EEF-CVE-2026-114214), `ash_postgres` 2.13.1 (EEF-CVE-2026-115627, EEF-CVE-2026-115635) and `plug_crypto` 2.2.0 (EEF-CVE-2026-105963). The `ash ~> 3.0` requirement in `mix.exs` is unchanged, so applications pick their own versions. Upgrade them in your own lock to get the fixes.
