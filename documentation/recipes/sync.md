@@ -1,6 +1,6 @@
 # Sync
 
-`mix ash_workflow.gen.sync` adds a sync workflow to a resource. Each record is pushed to an external system by a `:push` action, which is retried with a backoff when it fails. The record moves to `:synced` when a push succeeds, to `:failed` once every attempt has failed, and back to `:syncing` when it is resynced.
+`mix ash_workflow.gen.sync` adds a sync workflow to a resource. Each record is pushed to an external system by a `:push` action, which is retried with a backoff when it fails. The record moves to `:synced` when a push succeeds, to `:failed` once every attempt has failed, and back to `:syncing` when it is resynced. Creating a subject starts its sync, and updating a subject requests a resync.
 
 ## The command
 
@@ -14,18 +14,28 @@ mix ash_workflow.gen.sync MyApp.Sales.Customer --max-attempts 5 --backoff 30s
 | `--domain` | the subject's domain | Domain for a subject the task creates. Required only when the subject does not exist. |
 | `--max-attempts` | `5` | How many times `:push` runs before the sync moves to `:failed`. |
 | `--backoff` | `exponential` | The delay between attempts. Accepts `10s`, `30m`, `12h`, `2d`, `2w` for a fixed delay, or `exponential` for a delay that grows with each attempt. |
+| `--fields` | every update | The subject fields whose change requests a resync, such as `title,body`. See [Syncing only when certain fields change](#syncing-only-when-certain-fields-change). |
 | `--transition-log` | `true` | Also runs `mix ash_workflow.gen.transition_log` for the sync resource. Pass `--no-transition-log` to skip it. |
 
-When the subject does not exist, the task creates it with `mix ash.gen.resource`, using the data layer of the first ETS or Postgres resource in `--domain`. When no resource there uses ETS or Postgres, the task stops with an issue and writes nothing. Create the subject resource first, or pass a `--domain` that has one. Running the task again on the same subject changes nothing.
+When the subject does not exist, the task creates it with `mix ash.gen.resource`, using the data layer of the first ETS or Postgres resource in `--domain`. When no resource there uses ETS or Postgres, the task stops with an issue and writes nothing. Create the subject resource first, or pass a `--domain` that has one. A `--fields` entry that names no attribute or relationship of an existing subject also stops the task with an issue. Running the task again on the same subject changes nothing.
 
 ## What it generates
 
-For the command above, the task writes three modules and edits the subject:
+For the command above, the task writes five modules and edits the subject:
 
-- `MyApp.Sales.CustomerSync` runs the workflow. It belongs to the customer and holds `external_id` and `last_synced_at`. An identity on `subject_id` allows one sync per customer.
-- `MyApp.Sales.CustomerSync.Checks.CanCreate` decides who may create a sync. It denies everyone as generated.
+- `MyApp.Sales.CustomerSync` runs the workflow. It belongs to the customer and holds `external_id`, `last_synced_at` and `resync_requested_at`. An identity on `subject_id` allows one sync per customer.
+- `MyApp.Sales.CustomerSync.Changes.StartSync` creates a customer's sync when the customer is created.
+- `MyApp.Sales.CustomerSync.Changes.RequestSync` requests a resync when the customer is updated.
+- `MyApp.Sales.CustomerSync.Checks.CanCreate` decides who may create a sync directly. It denies everyone as generated.
 - `MyApp.Sales.CustomerSync.Checks.CanResync` decides who may resync. It denies everyone as generated.
-- `MyApp.Sales.Customer` gains `has_one :sync` and a `synced?` calculation, which is `false` for a customer without a sync. The task adds no change, argument or policy to the subject's actions.
+- `MyApp.Sales.Customer` gains `has_one :sync`, a `synced?` calculation, which is `false` for a customer without a sync, and a `changes` block:
+
+```elixir
+changes do
+  change MyApp.Sales.CustomerSync.Changes.StartSync, on: [:create]
+  change MyApp.Sales.CustomerSync.Changes.RequestSync, on: [:update]
+end
+```
 
 The sync is a separate resource rather than a `workflow` block on the subject, so a subject that already runs a workflow keeps it.
 
@@ -37,8 +47,8 @@ stateDiagram-v2
   syncing --> syncing: push fails, attempts remain
   syncing --> synced: push succeeds
   syncing --> failed: push fails on the last attempt
-  synced --> syncing: resync
-  failed --> syncing: resync
+  synced --> syncing: resync, or resync requested
+  failed --> syncing: resync, or resync requested
 ```
 
 ```elixir
@@ -56,37 +66,102 @@ workflow do
 
   step :synced do
     transition :resync, to: :syncing
+
+    timeout :resync_requested do
+      fire_at :resync_requested_at
+      transition_to :syncing
+    end
   end
 
   step :failed do
     transition :resync, to: :syncing
+
+    timeout :resync_requested do
+      fire_at :resync_requested_at
+      transition_to :syncing
+    end
   end
 end
 ```
 
 A new sync starts in `:syncing`, so the first scheduler pass pushes it. A failed attempt leaves the record in `:syncing`, and the scheduler runs `:push` again after the backoff. Only the last failed attempt moves it to `:failed`, and the transition log records that move with `triggered_by: :error_path`.
 
-`resync` returns a record to `:syncing` from `:synced` or `:failed`. The record then gets the full `--max-attempts` again.
+`resync` returns a record to `:syncing` from `:synced` or `:failed`. So does the `:resync_requested` timeout, once `resync_requested_at` holds a time that has passed. A `nil` `resync_requested_at` never fires. Either way the record gets the full `--max-attempts` again, and entering `:syncing` clears `resync_requested_at`.
 
-The workflow has no timeout. The backoff is measured from the failed attempt by the scheduler, not from a field on the record.
+The backoff is measured from the failed attempt by the scheduler, not from a field on the record.
 
 With the default exponential backoff, five attempts wait 16, 31, 96 and 271 seconds between them.
 
 ## What your application does next
 
-### Create the sync
+### New syncs start on subject create
 
-Call `create/2` wherever a subject should start syncing, such as the subject's create action, an import or a backfill:
+`StartSync` runs after every create action on the customer, and creates the customer's sync in `:syncing`. It runs with `authorize?: false`, with the tenant of the customer create, because the customer's own create action already decided who may create the customer. A bulk create gets one sync per customer.
+
+`StartSync` skips a create that upserted onto an existing customer, and a customer that already has a sync.
+
+### Backfill existing customers
+
+Customers created before the task ran have no sync, and `synced?` is `false` for them. Create their syncs with `Ash.bulk_create/4`:
 
 ```elixir
-MyApp.Sales.CustomerSync.create(customer.id, actor: current_user)
+require Ash.Query
+
+MyApp.Sales.Customer
+|> Ash.Query.filter(not exists(sync, true))
+|> Ash.stream!(authorize?: false)
+|> Stream.map(&%{subject_id: &1.id})
+|> Ash.bulk_create(MyApp.Sales.CustomerSync, :create,
+  authorize?: false,
+  return_errors?: true
+)
 ```
 
-A second sync for the same customer fails on the `:unique_subject` identity.
+Each backfilled sync starts in `:syncing`, so the scheduler pushes every one of them. An existing customer that is updated before the backfill gets its sync from `RequestSync` instead.
 
-### Decide who may create a sync
+### Updates request a resync
 
-`CanCreate` denies everyone, so no sync can be created until you change it. Replace its `match?/3`, or replace the `authorize_if` line in the `:create` policy with a built-in check:
+`RequestSync` runs after every update action on the customer. It calls `CustomerSync.request_resync/2` with `authorize?: false`, which stamps `resync_requested_at` with the current time. A customer with no sync gets one created instead. `RequestSync` defines `atomic/3`, so an atomic update runs it too.
+
+The stamp does not move the sync. The `:resync_requested` timeout on `:synced` and `:failed` fires on it at the scheduler's next pass, and moves the sync to `:syncing`. `request_resync` has a policy of `authorize_if always()`, so any code may request a resync, with or without an actor:
+
+```elixir
+MyApp.Sales.CustomerSync.request_resync(sync)
+```
+
+### A request during a push runs once the push settles
+
+A sync in `:syncing` refuses `resync`, because only `:synced` and `:failed` declare it. A request made while a push is running or waiting for its next attempt still stamps `resync_requested_at`. `:push` does not touch the stamp, so it survives the push. Once the push moves the sync to `:synced` or `:failed`, the `:resync_requested` timeout finds the stamp in the past and fires straight away. The next push sends the customer as it is after the update.
+
+Entering `:syncing` clears the stamp, so several requests during one push cause one resync. A request after the sync has entered `:syncing` again stamps it afresh.
+
+### Syncing only when certain fields change
+
+An update to a field the external system does not hold need not resync. Pass `--fields` with the fields that matter:
+
+```bash
+mix ash_workflow.gen.sync MyApp.Sales.Customer --fields title,body
+```
+
+The task then adds a `where:` condition to the `RequestSync` change:
+
+```elixir
+changes do
+  change MyApp.Sales.CustomerSync.Changes.StartSync, on: [:create]
+
+  change MyApp.Sales.CustomerSync.Changes.RequestSync,
+    on: [:update],
+    where: [any([changing(:title, touching?: true), changing(:body, touching?: true)])]
+end
+```
+
+With one field, the condition is `where: [changing(:title, touching?: true)]`. To change the fields later, edit the `where:` list.
+
+The condition uses `touching?: true`. On an atomic update, a plain `changing(:title)` compares the old and new values inside the database. Ash cannot then decide before the update whether to add `RequestSync`'s `after_action` hook, so it refuses the update. With `touching?: true`, the condition passes whenever the update writes `title`, even with the value it already had. Such an update requests one resync it did not need.
+
+### Decide who may create a sync directly
+
+`CanCreate` only gates direct calls to `CustomerSync.create`, since `StartSync`, `RequestSync` and the backfill above skip authorization. It denies everyone, so no direct create succeeds until you change it. Replace its `match?/3`, or replace the `authorize_if` line in the `:create` policy with a built-in check:
 
 ```elixir
 policies do
@@ -96,7 +171,7 @@ policies do
 end
 ```
 
-Code that creates a sync on the application's behalf, such as an import or a backfill, can pass `authorize?: false` instead.
+A second sync for the same customer fails on the `:unique_subject` identity.
 
 Reads stay open by default. `AshWorkflow` authorizes `:read` on the sync resource for every actor. Add a read policy if syncs are private.
 
@@ -118,7 +193,7 @@ The change returns an error to fail the attempt, and writes `external_id` from t
 
 ### Decide who may resync
 
-`CanResync` denies everyone, so nothing can be resynced until you change it. Replace its `match?/3`, or replace the `authorize_if` line in the sync's policy with a built-in check:
+`CanResync` gates the manual `resync`. It denies everyone, so nothing can be resynced by hand until you change it. Replace its `match?/3`, or replace the `authorize_if` line in the sync's policy with a built-in check:
 
 ```elixir
 policies do
@@ -128,6 +203,8 @@ policies do
 end
 ```
 
+`CanResync` does not gate `request_resync` or the `:resync_requested` timeout.
+
 ### Resync
 
 Call `resync/2` on a sync in `:synced` or `:failed`, for example from an admin screen listing failed syncs:
@@ -136,62 +213,7 @@ Call `resync/2` on a sync in `:synced` or `:failed`, for example from an admin s
 MyApp.Sales.CustomerSync.resync(sync, actor: current_user)
 ```
 
-The actor must be one that `CanResync` permits. As generated, `CanResync` denies everyone, so every `resync/2` call fails with `Ash.Error.Forbidden` until you change it. Code that runs without a user, such as a background job, passes an actor `CanResync` permits, or `authorize?: false`.
-
-A sync in `:syncing` refuses `resync`, because only `:synced` and `:failed` declare it. A push that is already running or waiting for its next attempt sends the subject as it was when that attempt started.
-
-### Resync after the subject changes
-
-A change to the subject during a sync must wait until the sync settles. Record the change on the sync, and resync once the sync reaches `:synced` or `:failed`. Add a flag and an action that sets it from any state:
-
-```elixir
-attributes do
-  attribute :needs_resync?, :boolean, default: false, allow_nil?: false, public?: true
-end
-
-actions do
-  update :request_resync do
-    require_atomic? false
-    change set_attribute(:needs_resync?, true)
-  end
-end
-
-policies do
-  policy action(:request_resync) do
-    authorize_if always()
-  end
-end
-```
-
-`AshWorkflow` authorizes only reads, creates and workflow actions, so `request_resync` needs a policy of its own. `authorize_if always()` lets any subject action that changes the subject flag its sync. The action sets `require_atomic? false`, as `:push` does. On ETS, the `pre_check_with` on the `:unique_subject` identity adds a `before_action` hook to every update, and an atomic update cannot run one.
-
-Clear the flag when the sync resyncs, by adding the change to the `:resync` action:
-
-```elixir
-update :resync do
-  require_atomic? false
-  change set_attribute(:needs_resync?, false)
-end
-```
-
-Call `request_resync` from each subject action that changes data the external system holds. Then resync every settled sync that has the flag, for example with an ash_oban trigger on the sync:
-
-```elixir
-oban do
-  triggers do
-    trigger :resync_changed do
-      action :resync
-      where expr(needs_resync? and state in [:synced, :failed])
-      worker_module_name MyApp.Sales.CustomerSync.AshOban.Worker.ResyncChanged
-      scheduler_module_name MyApp.Sales.CustomerSync.AshOban.Scheduler.ResyncChanged
-    end
-  end
-end
-```
-
-The trigger runs `:resync` like any other caller, so `CanResync` must permit the trigger's actor, or the trigger must run with authorization off.
-
-`:push` does not touch the flag, so a change that lands during a push stays recorded and is sent by the next resync.
+The actor must be one that `CanResync` permits. As generated, `CanResync` denies everyone, so every `resync/2` call fails with `Ash.Error.Forbidden` until you change it. Code that runs without a user, such as a background job, can call `request_resync/2` instead, which needs no permission.
 
 ### Use the outcome
 
@@ -209,8 +231,8 @@ On AshPostgres, run `mix ash.codegen add_customer_sync` to create the sync and t
 
 ## Limits
 
-A push that hangs keeps the sync in `:syncing`. The workflow has no timeout to move it on. Add a `timeout` with `transition_to :failed` to the `:syncing` step if your application needs one.
+A push that hangs keeps the sync in `:syncing`. No timeout moves it on. Add a `timeout` with `transition_to :failed` to the `:syncing` step if your application needs one.
 
-A change to the subject does not resync it. A sync in `:syncing` cannot be resynced, so a change during a push waits for the sync to settle. See [Resync after the subject changes](#resync-after-the-subject-changes).
+A request on a settled sync waits for the scheduler's next pass. `AshWorkflow.Scheduler.Oban` polls on its `check_interval`, every minute by default. `AshWorkflow.Scheduler.Precise` arms timers on a state change, and `request_resync` changes no state, so its periodic sweep picks the request up.
 
 `:syncing` does not declare `resync`, because the scheduler would not restart the push. On the default `AshWorkflow.Scheduler.Oban`, a failed attempt leaves its Oban job waiting to retry. That job is unique per record, so a resync could neither replace it nor reset its attempt count, and the old job would still run `:push` on its backoff.
