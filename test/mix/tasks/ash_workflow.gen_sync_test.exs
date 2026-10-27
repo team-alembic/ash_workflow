@@ -1,6 +1,8 @@
 defmodule Mix.Tasks.AshWorkflow.Gen.SyncTest do
   use AshWorkflow.RecipeCase, async: true
 
+  require Ash.Query
+
   alias AshWorkflow.Scheduler
   alias AshWorkflow.Scheduler.Precise.Timeline
   alias AshWorkflowTest.RecipeFixtures.Sync.Account
@@ -74,60 +76,29 @@ defmodule Mix.Tasks.AshWorkflow.Gen.SyncTest do
     |> update_in([Access.key!(:igniter), Access.key!(:assigns), :test_files, path], fun)
   end
 
-  # The "Resync after the subject changes" pattern from the sync recipe page.
-  defp follow_subject_changes(recipe) do
-    sync = inspect(CustomerSync)
-
-    edit_source(recipe, @sync_file, fn source ->
-      source
-      |> String.replace("timestamps()", """
-      timestamps()
-      attribute :needs_resync?, :boolean, default: false, allow_nil?: false, public?: true
-      """)
-      |> String.replace("defaults([:read])", """
-      defaults([:read])
-
-      update :request_resync do
-        require_atomic? false
-        change set_attribute(:needs_resync?, true)
-      end
-
-      update :resync do
-        require_atomic? false
-        change set_attribute(:needs_resync?, false)
-      end
-      """)
-      |> String.replace("policies do", """
-      policies do
-        policy action(:request_resync) do
-          authorize_if always()
-        end
-      """)
-      |> String.replace("code_interface do", """
-      oban do
-        triggers do
-          trigger :resync_changed do
-            action :resync
-            where expr(needs_resync? and state in [:synced, :failed])
-            worker_module_name #{sync}.AshOban.Worker.ResyncChanged
-            scheduler_module_name #{sync}.AshOban.Scheduler.ResyncChanged
-          end
-        end
-      end
-
-      code_interface do
-      """)
-    end)
-  end
-
   defp customer(recipe) do
     recipe.modules[Customer]
     |> Ash.Changeset.for_create(:create, %{name: "Acme"})
     |> Ash.create!()
   end
 
+  # A customer that existed before the task ran, so it has no sync.
+  defp existing_customer(recipe), do: Ash.Seed.seed!(recipe.modules[Customer], %{name: "Acme"})
+
+  defp sync_of(recipe, customer) do
+    recipe.modules[CustomerSync]
+    |> Ash.Query.filter(subject_id == ^customer.id)
+    |> Ash.read!(authorize?: false)
+  end
+
+  defp update_customer(customer, action, params) do
+    customer
+    |> Ash.Changeset.for_update(action, params)
+    |> Ash.update!()
+  end
+
   defp start_sync(recipe, subject \\ nil, actor \\ @creator) do
-    subject = subject || customer(recipe)
+    subject = subject || existing_customer(recipe)
 
     recipe.modules[CustomerSync]
     |> Ash.Changeset.for_create(:create, %{subject_id: subject.id}, actor: actor)
@@ -151,12 +122,14 @@ defmodule Mix.Tasks.AshWorkflow.Gen.SyncTest do
     name
   end
 
-  # What `AshWorkflow.Scheduler.Precise` does when a sync enters :syncing.
+  # What `AshWorkflow.Scheduler.Precise` does when a sync enters a step.
   defp arm(timeline, sync) do
-    works =
-      sync.__struct__ |> AshWorkflow.Info.scheduled_work() |> Enum.filter(&(&1.step == :syncing))
+    sync = reload(sync)
+    Timeline.deadline_changed(sync, works_in(sync), timeline)
+  end
 
-    Timeline.deadline_changed(sync, works, timeline)
+  defp works_in(sync) do
+    sync.__struct__ |> AshWorkflow.Info.scheduled_work() |> Enum.filter(&(&1.step == sync.state))
   end
 
   # A wait spans real backoffs of whole seconds, the smallest `--backoff` takes.
@@ -212,7 +185,6 @@ defmodule Mix.Tasks.AshWorkflow.Gen.SyncTest do
       recipe = sync_for_customers(tmp_dir)
       customer = customer(recipe)
 
-      {:ok, _sync} = start_sync(recipe, customer)
       refute Ash.load!(customer, :synced?).synced?
 
       assert Timeline.run_due(recipe.modules[CustomerSync]) == 1
@@ -237,10 +209,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.SyncTest do
 
     account = account_module |> Ash.Changeset.for_create(:create, %{}) |> Ash.create!()
 
-    sync =
-      sync_module
-      |> Ash.Changeset.for_create(:create, %{subject_id: account.id}, actor: @creator)
-      |> Ash.create!()
+    sync = account |> Ash.load!(:sync) |> Map.fetch!(:sync)
 
     assert sync.state == :syncing
     assert Ash.load!(account, sync: :id).sync.id == sync.id
@@ -260,7 +229,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.SyncTest do
 
   test "a subject has at most one sync", %{tmp_dir: tmp_dir} do
     recipe = sync_for_customers(tmp_dir)
-    customer = customer(recipe)
+    customer = existing_customer(recipe)
 
     assert {:ok, _sync} = start_sync(recipe, customer)
     assert {:error, %Ash.Error.Invalid{}} = start_sync(recipe, customer)
@@ -278,7 +247,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.SyncTest do
 
       assert Enum.any?(
                recipe.notices,
-               &String.contains?(&1, "Nobody can create or resync a sync yet")
+               &String.contains?(&1, "Nobody can create a sync directly or resync one yet")
              )
     end
 
@@ -403,8 +372,8 @@ defmodule Mix.Tasks.AshWorkflow.Gen.SyncTest do
       assert await_state(sync, :failed) == :failed
       assert FakePush.remaining(sync) == [:error, :ok]
 
-      assert {:ok, %{state: :syncing} = resynced} = sync |> reload() |> resync()
-      arm(timeline, resynced)
+      assert {:ok, %{state: :syncing}} = sync |> reload() |> resync()
+      arm(timeline, sync)
 
       assert await_state(sync, :synced) == :synced
       assert FakePush.remaining(sync) == []
@@ -412,46 +381,213 @@ defmodule Mix.Tasks.AshWorkflow.Gen.SyncTest do
       assert recipe |> log() |> Enum.map(& &1.to_state) |> Enum.sort() ==
                [:failed, :synced, :syncing, :syncing]
     end
+  end
 
-    test "a flagged settled sync is resynced by the trigger and the flag is cleared", %{
+  describe "StartSync" do
+    test "starts a sync in syncing when a subject is created", %{tmp_dir: tmp_dir} do
+      recipe = sync_for_customers(tmp_dir)
+      customer = customer(recipe)
+
+      assert [%{state: :syncing, resync_requested_at: nil}] = sync_of(recipe, customer)
+    end
+
+    test "starts one sync per subject of a bulk create", %{tmp_dir: tmp_dir} do
+      recipe = sync_for_customers(tmp_dir)
+
+      assert %Ash.BulkResult{status: :success, records: customers} =
+               Ash.bulk_create(
+                 [%{name: "One"}, %{name: "Two"}, %{name: "Three"}],
+                 recipe.modules[Customer],
+                 :create,
+                 return_records?: true,
+                 return_errors?: true
+               )
+
+      for customer <- customers do
+        assert [%{state: :syncing}] = sync_of(recipe, customer)
+      end
+
+      assert length(Ash.read!(recipe.modules[CustomerSync], authorize?: false)) == 3
+    end
+
+    test "starts no second sync when a create upserts onto an existing subject", %{
       tmp_dir: tmp_dir
     } do
-      recipe =
-        [inspect(Customer)]
-        |> generate()
-        |> fill_in_push()
-        |> allow_creators()
-        |> allow_operators()
-        |> follow_subject_changes()
-        |> compile(tmp_dir)
+      recipe = sync_for_customers(tmp_dir)
+      customer = customer(recipe)
+      [sync] = sync_of(recipe, customer)
 
+      assert {:ok, upserted} =
+               recipe.modules[Customer]
+               |> Ash.Changeset.for_create(:create, %{name: "Renamed"})
+               |> Ash.Changeset.force_change_attribute(:id, customer.id)
+               |> Ash.create(upsert?: true)
+
+      assert upserted.__metadata__.upsert_action == :update
+      assert sync_of(recipe, customer) == [sync]
+    end
+
+    test "starts a sync while CanCreate still denies everyone", %{tmp_dir: tmp_dir} do
+      recipe = [inspect(Customer)] |> generate() |> compile(tmp_dir)
+      customer = customer(recipe)
+
+      assert [%{state: :syncing}] = sync_of(recipe, customer)
+      assert {:error, %Ash.Error.Forbidden{}} = start_sync(recipe)
+    end
+
+    test "the documented backfill gives each existing subject a sync", %{tmp_dir: tmp_dir} do
+      recipe = [inspect(Customer)] |> generate() |> compile(tmp_dir)
+      tracked = customer(recipe)
+      existing = [existing_customer(recipe), existing_customer(recipe)]
+
+      assert %Ash.BulkResult{status: :success} =
+               recipe.modules[Customer]
+               |> Ash.Query.filter(not exists(sync, true))
+               |> Ash.stream!(authorize?: false)
+               |> Stream.map(&%{subject_id: &1.id})
+               |> Ash.bulk_create(recipe.modules[CustomerSync], :create,
+                 authorize?: false,
+                 return_errors?: true
+               )
+
+      for customer <- [tracked | existing] do
+        assert [%{state: :syncing}] = sync_of(recipe, customer)
+      end
+    end
+  end
+
+  describe "RequestSync" do
+    test "an update to a synced subject resyncs it", %{tmp_dir: tmp_dir} do
+      recipe = sync_for_customers(tmp_dir)
       sync_module = recipe.modules[CustomerSync]
-      {:ok, sync} = start_sync(recipe)
-
-      flagged =
-        sync
-        |> Ash.Changeset.for_update(:request_resync, %{}, actor: @creator)
-        |> Ash.update!()
-
-      assert %{state: :syncing, needs_resync?: true} = flagged
-      AshOban.Test.refute_would_schedule(flagged, :resync_changed)
+      customer = customer(recipe)
+      [sync] = sync_of(recipe, customer)
 
       assert Timeline.run_due(sync_module) == 1
-      settled = reload(sync)
-      assert %{state: :synced, needs_resync?: true} = settled
-      AshOban.Test.assert_would_schedule(settled, :resync_changed)
+      synced = reload(sync)
+      assert %{state: :synced, resync_requested_at: nil} = synced
+      AshOban.Test.refute_would_schedule(synced, :__timeout_trigger_synced_resync_requested)
+      assert [nil] = Enum.map(works_in(synced), &Scheduler.due_at(&1, synced))
+      assert Timeline.run_due(sync_module) == 0
 
-      trigger = AshOban.Info.oban_trigger(sync_module, :resync_changed)
+      update_customer(customer, :rename, %{name: "Acme Ltd"})
 
-      assert {:ok, %{state: :syncing, needs_resync?: false}} =
-               settled
-               |> Ash.Changeset.for_update(trigger.action, %{}, actor: @operator)
-               |> Ash.update()
+      requested = reload(sync)
+      assert %{state: :synced, resync_requested_at: %DateTime{} = requested_at} = requested
+      AshOban.Test.assert_would_schedule(requested, :__timeout_trigger_synced_resync_requested)
+      assert [^requested_at] = Enum.map(works_in(requested), &Scheduler.due_at(&1, requested))
 
       assert Timeline.run_due(sync_module) == 1
-      resynced = reload(sync)
-      assert %{state: :synced, needs_resync?: false} = resynced
-      AshOban.Test.refute_would_schedule(resynced, :resync_changed)
+      assert %{state: :syncing, resync_requested_at: nil} = reload(sync)
+
+      assert Timeline.run_due(sync_module) == 1
+      assert %{state: :synced, resync_requested_at: nil} = reload(sync)
+      assert Timeline.run_due(sync_module) == 0
+    end
+
+    test "an update during a push resyncs once the push succeeds", %{tmp_dir: tmp_dir} do
+      recipe = sync_for_customers(tmp_dir, ["--max-attempts", "3", "--backoff", "1s"])
+      timeline = start_timeline()
+      customer = customer(recipe)
+      [sync] = sync_of(recipe, customer)
+      FakePush.respond(sync, [:ok, :ok, :ok])
+
+      update_customer(customer, :annotate, %{notes: "moved office"})
+      assert %{state: :syncing, resync_requested_at: %DateTime{}} = reload(sync)
+
+      arm(timeline, sync)
+      assert await_state(sync, :synced) == :synced
+      assert %{resync_requested_at: %DateTime{}} = reload(sync)
+
+      arm(timeline, sync)
+      assert await_state(sync, :syncing) == :syncing
+      assert %{resync_requested_at: nil} = reload(sync)
+
+      arm(timeline, sync)
+      assert await_state(sync, :synced) == :synced
+      assert FakePush.remaining(sync) == [:ok]
+
+      assert recipe |> log() |> Enum.filter(&(&1.triggered_by == :timeout)) |> length() == 1
+    end
+
+    test "an update during a push resyncs once the push fails", %{tmp_dir: tmp_dir} do
+      recipe = sync_for_customers(tmp_dir)
+      customer = customer(recipe)
+      [sync] = sync_of(recipe, customer)
+      FakePush.respond(sync, [:error, :error, :error])
+
+      update_customer(customer, :annotate, %{notes: "moved office"})
+
+      assert {:retry, _delay} = push(sync, 1)
+      assert {:retry, _delay} = push(sync, 2)
+      assert {:ok, %{state: :failed}} = push(sync, 3)
+
+      failed = reload(sync)
+      assert %{resync_requested_at: %DateTime{}} = failed
+      AshOban.Test.assert_would_schedule(failed, :__timeout_trigger_failed_resync_requested)
+
+      assert Timeline.run_due(recipe.modules[CustomerSync]) == 1
+      assert %{state: :syncing, resync_requested_at: nil} = reload(sync)
+    end
+
+    test "a manual resync clears a pending request", %{tmp_dir: tmp_dir} do
+      recipe = sync_for_customers(tmp_dir)
+      customer = customer(recipe)
+      [sync] = sync_of(recipe, customer)
+      FakePush.respond(sync, [:error, :error, :error])
+      Enum.each(1..3, &push(sync, &1))
+
+      update_customer(customer, :annotate, %{notes: "moved office"})
+
+      assert {:ok, %{state: :syncing, resync_requested_at: nil}} = sync |> reload() |> resync()
+    end
+
+    test "an update to a subject with no sync starts one", %{tmp_dir: tmp_dir} do
+      recipe = sync_for_customers(tmp_dir)
+      customer = existing_customer(recipe)
+
+      update_customer(customer, :annotate, %{notes: "moved office"})
+
+      assert [%{state: :syncing}] = sync_of(recipe, customer)
+    end
+
+    test "--fields requests a resync only when a named field changes", %{tmp_dir: tmp_dir} do
+      recipe = sync_for_customers(tmp_dir, ["--fields", "notes"])
+      sync_module = recipe.modules[CustomerSync]
+      customer = customer(recipe)
+      [sync] = sync_of(recipe, customer)
+      Timeline.run_due(sync_module)
+
+      customer = update_customer(customer, :rename, %{name: "Acme Ltd"})
+      assert %{state: :synced, resync_requested_at: nil} = reload(sync)
+      assert Timeline.run_due(sync_module) == 0
+
+      update_customer(customer, :annotate, %{notes: "moved office"})
+      assert %{state: :synced, resync_requested_at: %DateTime{}} = reload(sync)
+    end
+
+    test "--fields writes a changing condition for each field" do
+      one = generate([inspect(Customer), "--fields", "notes"])
+      two = generate([inspect(Customer), "--fields", "name,notes"])
+      customer = "#{@fixtures}/customer.ex"
+
+      assert source!(one, customer) =~ "where: [changing(:notes, touching?: true)]"
+
+      assert source!(two, customer) =~
+               "where: [any([changing(:name, touching?: true), changing(:notes, touching?: true)])]"
+    end
+
+    test "--fields reports an issue for a field the subject does not have" do
+      igniter =
+        @files
+        |> project()
+        |> Igniter.compose_task("ash_workflow.gen.sync", [
+          inspect(Customer),
+          "--fields",
+          "notes,title"
+        ])
+
+      assert Enum.any?(igniter.issues, &String.contains?(&1, "--fields names :title"))
     end
   end
 
@@ -500,24 +636,64 @@ defmodule Mix.Tasks.AshWorkflow.Gen.SyncTest do
   end
 
   test "generates a Postgres-backed resource on the subject's repo", %{tmp_dir: tmp_dir} do
+    namespace = AshWorkflowTest.RecipeFixtures.TransitionLog
+
     recipe =
       [
         "test/support/recipe_fixtures/transition_log/postgres_domain.ex",
         "test/support/recipe_fixtures/transition_log/postgres_ticket.ex"
       ]
-      |> generate(["AshWorkflowTest.RecipeFixtures.TransitionLog.PostgresTicket"])
+      |> generate([inspect(Module.concat(namespace, PostgresTicket)), "--fields", "title"])
       |> compile(tmp_dir)
 
     for {module, table} <- [
           PostgresTicketSync: "postgres_ticket_syncs",
           PostgresTicketSyncTransition: "postgres_ticket_syncs_transitions"
         ] do
-      resource =
-        recipe.modules[Module.concat(AshWorkflowTest.RecipeFixtures.TransitionLog, module)]
+      resource = recipe.modules[Module.concat(namespace, module)]
 
       assert AshPostgres.DataLayer.Info.repo(resource) == AshWorkflowTest.Repo
       assert AshPostgres.DataLayer.Info.table(resource) == table
     end
+
+    sync = recipe.modules[Module.concat(namespace, PostgresTicketSync)]
+    start_sync = recipe.modules[Module.concat(namespace, PostgresTicketSync.Changes.StartSync)]
+
+    request_sync =
+      recipe.modules[Module.concat(namespace, PostgresTicketSync.Changes.RequestSync)]
+
+    changes =
+      recipe.modules[Module.concat(namespace, PostgresTicket)]
+      |> Ash.Resource.Info.changes()
+      |> Map.new(fn %{change: {module, _opts}} = change -> {module, change} end)
+
+    assert %{on: [:create], where: []} = changes[start_sync]
+
+    assert %{on: [:update], where: [{Ash.Resource.Validation.Changing, opts}]} =
+             changes[request_sync]
+
+    assert opts[:field] == :title
+    assert opts[:touching?]
+
+    assert %{type: Ash.Type.UtcDatetimeUsec, allow_nil?: true} =
+             Ash.Resource.Info.attribute(sync, :resync_requested_at)
+
+    for step <- [:synced, :failed] do
+      assert [%{name: :resync_requested, fire_at: :resync_requested_at, transition_to: :syncing}] =
+               sync
+               |> AshWorkflow.Info.steps()
+               |> Enum.find(&(&1.name == step))
+               |> Map.get(:timeouts)
+    end
+  end
+
+  test "running the task a second time with --fields changes nothing" do
+    argv = [inspect(Customer), "--fields", "name,notes"]
+    first = generate(argv)
+    second = run_task(first.igniter, "ash_workflow.gen.sync", argv)
+
+    assert second.changed == %{}
+    assert second.warnings == []
   end
 
   test "--no-transition-log generates no transition log" do

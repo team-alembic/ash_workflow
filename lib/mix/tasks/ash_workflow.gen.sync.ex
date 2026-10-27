@@ -19,10 +19,16 @@ defmodule Mix.Tasks.AshWorkflow.Gen.Sync.Docs do
     `has_one :sync` and a `synced?` calculation. When the subject does not
     exist, it is created with `mix ash.gen.resource` first.
 
+    Each subject create starts a sync through the generated
+    `Changes.StartSync`. Each subject update requests a resync through the
+    generated `Changes.RequestSync`, which stamps `resync_requested_at` on the
+    sync. A timeout on `:synced` and `:failed` fires on that stamp, so a
+    request made during a push runs once the push settles.
+
     The generated `:push` action only stamps `last_synced_at`. Add the change
-    that calls the external system to it. Nobody may create or resync a sync
-    until the application defines who can, in the generated `Checks.CanCreate`
-    and `Checks.CanResync` modules.
+    that calls the external system to it. Nobody may create a sync directly or
+    resync one until the application defines who can, in the generated
+    `Checks.CanCreate` and `Checks.CanResync` modules.
 
     ## Example
 
@@ -40,6 +46,8 @@ defmodule Mix.Tasks.AshWorkflow.Gen.Sync.Docs do
       `:failed`. Defaults to `5`.
     * `--backoff` - the delay between attempts, given as `10s`, `30m`, `12h`,
       `2d`, `2w` or `exponential`. Defaults to `exponential`.
+    * `--fields` - the subject fields whose change requests a resync, such as
+      `title,body`. Defaults to every update requesting one.
     * `--transition-log` - also generates a transition log for the sync with
       `mix ash_workflow.gen.transition_log`. Defaults to `true`.
     """
@@ -71,6 +79,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
           domain: :string,
           max_attempts: :integer,
           backoff: :string,
+          fields: :csv,
           transition_log: :boolean
         ],
         defaults: [max_attempts: 5, backoff: "exponential", transition_log: true]
@@ -91,13 +100,16 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
           sync: sync,
           can_create: Module.concat([sync, Checks, CanCreate]),
           can_resync: Module.concat([sync, Checks, CanResync]),
+          start_sync: Module.concat([sync, Changes, StartSync]),
+          request_sync: Module.concat([sync, Changes, RequestSync]),
+          fields: Enum.map(options[:fields] || [], &String.to_atom/1),
           max_attempts: options[:max_attempts],
           backoff: backoff,
           transition_log?: options[:transition_log]
         }
 
         case Recipe.ensure_subject(igniter, subject, options[:domain], "sync", []) do
-          {:ok, igniter, storage} -> generate_with_key_type(igniter, config, storage)
+          {:ok, igniter, storage} -> validate_fields(igniter, config, storage)
           {:error, igniter} -> igniter
         end
       else
@@ -107,6 +119,31 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
 
     defp sync_module(subject, nil), do: Module.concat([inspect(subject) <> "Sync"])
     defp sync_module(_subject, module), do: ProjectModule.parse(module)
+
+    # A subject created in this run does not compile yet, so its fields cannot
+    # be checked.
+    defp validate_fields(igniter, config, storage) do
+      missing =
+        case Code.ensure_compiled(config.subject) do
+          {:module, subject} -> Enum.reject(config.fields, &field?(subject, &1))
+          {:error, _reason} -> []
+        end
+
+      if missing == [] do
+        generate_with_key_type(igniter, config, storage)
+      else
+        Igniter.add_issue(
+          igniter,
+          "--fields names #{Enum.map_join(missing, ", ", &inspect/1)}, but " <>
+            "#{inspect(config.subject)} has no attribute or relationship of that name."
+        )
+      end
+    end
+
+    defp field?(subject, field) do
+      Ash.Resource.Info.attribute(subject, field) != nil or
+        Ash.Resource.Info.relationship(subject, field) != nil
+    end
 
     # A subject created in this run does not compile yet and gets
     # ash.gen.resource's uuid_v7 key.
@@ -133,9 +170,32 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
         ],
         synced?: "calculate :synced?, :boolean, expr(sync.state == :synced || false)"
       )
+      |> Recipe.add_subject_change(config.subject, inspect(config.start_sync), on: [:create])
+      |> Recipe.add_subject_change(config.subject, inspect(config.request_sync),
+        on: [:update],
+        where: where(config.fields)
+      )
       |> then(fn igniter ->
         if exists?, do: igniter, else: create_sync(igniter, config, storage)
       end)
+      |> create_missing_module(config.start_sync, start_sync_contents(config))
+      |> create_missing_module(config.request_sync, request_sync_contents(config))
+    end
+
+    defp where([]), do: nil
+    defp where([field]), do: "[#{touching(field)}]"
+    defp where(fields), do: "[any([#{Enum.map_join(fields, ", ", &touching/1)}])]"
+
+    # Plain `changing/1` compares old and new values in the database on an
+    # atomic update, so Ash cannot decide before the update whether to add
+    # RequestSync's after_action hook, and refuses the update.
+    defp touching(field), do: "changing(#{inspect(field)}, touching?: true)"
+
+    defp create_missing_module(igniter, module, contents) do
+      case ProjectModule.module_exists(igniter, module) do
+        {true, igniter} -> igniter
+        {false, igniter} -> ProjectModule.create_module(igniter, module, contents)
+      end
     end
 
     defp create_sync(igniter, config, storage) do
@@ -151,9 +211,14 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       The :push action only stamps last_synced_at, so every sync reaches \
       :synced until you add the change that calls the external system.
 
-      Nobody can create or resync a sync yet. Define who may create one in \
-      #{inspect(config.can_create)} and who may resync in \
-      #{inspect(config.can_resync)}. Both deny everyone as generated.
+      Each new #{inspect(config.subject)} gets a sync through \
+      #{inspect(config.start_sync)}, and each update requests a resync through \
+      #{inspect(config.request_sync)}. One created before this task ran has no \
+      sync until it is updated or backfilled, as the sync recipe shows.
+
+      Nobody can create a sync directly or resync one yet. Define who may in \
+      #{inspect(config.can_create)} and #{inspect(config.can_resync)}. Both deny \
+      everyone as generated.
       """)
     end
 
@@ -186,16 +251,21 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
 
         step :synced do
           transition :resync, to: :syncing
+
+          #{resync_requested_timeout()}
         end
 
         step :failed do
           transition :resync, to: :syncing
+
+          #{resync_requested_timeout()}
         end
       end
 
       code_interface do
         define :create, args: [:subject_id]
         define :resync
+        define :request_resync
       end
 
       actions do
@@ -209,6 +279,16 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
           require_atomic? false
           change set_attribute(:last_synced_at, &DateTime.utc_now/0)
         end
+
+        update :request_resync do
+          require_atomic? false
+          change set_attribute(:resync_requested_at, &DateTime.utc_now/0)
+        end
+
+        update :resync do
+          accept []
+          change set_attribute(:resync_requested_at, nil)
+        end
       end
 
       policies do
@@ -217,12 +297,27 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
         policy action(:resync) do
           authorize_if #{inspect(config.can_resync)}
         end
+
+        policy action(:request_resync) do
+          authorize_if always()
+        end
+      end
+
+      # Cleared on entering :syncing rather than in :push, so a request made
+      # during a push survives it and fires once the push settles. This covers
+      # the :resync_requested timeouts. :resync clears it itself, because its
+      # transition sets the state in a before_action, after this check runs.
+      changes do
+        change set_attribute(:resync_requested_at, nil),
+          on: [:update],
+          where: [changing(:state, to: :syncing)]
       end
 
       attributes do
         uuid_v7_primary_key :id
         attribute :external_id, :string, public?: true
         attribute :last_synced_at, :utc_datetime_usec, public?: true
+        attribute :resync_requested_at, :utc_datetime_usec, public?: true
         timestamps()
       end
 
@@ -234,6 +329,119 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
         identity :unique_subject, [:subject_id]#{Recipe.pre_check_with(storage)}
       end
       """
+    end
+
+    defp resync_requested_timeout do
+      """
+      timeout :resync_requested do
+        fire_at :resync_requested_at
+        transition_to :syncing
+      end
+      """
+    end
+
+    defp start_sync_contents(config) do
+      ~S'''
+      @moduledoc """
+      Starts the subject's sync when the subject is created.
+
+      The sync is created without authorization, because the subject's own
+      create action already decided who may create the subject. A create that
+      upserts onto an existing subject, or a subject that already has a sync,
+      gets no new one.
+      """
+
+      use Ash.Resource.Change
+
+      require Ash.Query
+
+      alias SYNC
+
+      @impl true
+      def change(changeset, _opts, context) do
+        Ash.Changeset.after_action(changeset, fn _changeset, subject ->
+          if upserted_onto_existing_row?(subject),
+            do: {:ok, subject},
+            else: start_sync(subject, context)
+        end)
+      end
+
+      defp upserted_onto_existing_row?(%{__metadata__: %{upsert_action: :update}}), do: true
+      defp upserted_onto_existing_row?(%{__metadata__: %{upsert_skipped: true}}), do: true
+      defp upserted_onto_existing_row?(_subject), do: false
+
+      defp start_sync(subject, context) do
+        opts = context |> Ash.Context.to_opts() |> Keyword.put(:authorize?, false)
+
+        SYNC_ALIAS
+        |> Ash.Query.filter(subject_id == ^subject.id)
+        |> Ash.exists(opts)
+        |> case do
+          {:ok, true} ->
+            {:ok, subject}
+
+          {:ok, false} ->
+            with {:ok, _sync} <- SYNC_ALIAS.create(subject.id, opts) do
+              {:ok, subject}
+            end
+
+          {:error, error} ->
+            {:error, error}
+        end
+      end
+      '''
+      |> replace_sync(config)
+    end
+
+    defp request_sync_contents(config) do
+      ~S'''
+      @moduledoc """
+      Requests a resync of the subject's sync once a subject update succeeds.
+
+      The request stamps the sync's `resync_requested_at`, and the sync resyncs
+      once it has settled in `:synced` or `:failed`. A subject with no sync gets
+      one. Both run without authorization, because the subject's own update
+      action already decided who may change the subject.
+      """
+
+      use Ash.Resource.Change
+
+      require Ash.Query
+
+      alias SYNC
+
+      @impl true
+      def change(changeset, _opts, context) do
+        Ash.Changeset.after_action(changeset, fn _changeset, subject ->
+          with {:ok, _sync} <- request_sync(subject, context) do
+            {:ok, subject}
+          end
+        end)
+      end
+
+      @impl true
+      def atomic(changeset, opts, context), do: {:ok, change(changeset, opts, context)}
+
+      defp request_sync(subject, context) do
+        opts = context |> Ash.Context.to_opts() |> Keyword.put(:authorize?, false)
+
+        SYNC_ALIAS
+        |> Ash.Query.filter(subject_id == ^subject.id)
+        |> Ash.read_one(opts)
+        |> case do
+          {:ok, nil} -> SYNC_ALIAS.create(subject.id, opts)
+          {:ok, sync} -> SYNC_ALIAS.request_resync(sync, opts)
+          {:error, error} -> {:error, error}
+        end
+      end
+      '''
+      |> replace_sync(config)
+    end
+
+    defp replace_sync(contents, config) do
+      contents
+      |> String.replace("SYNC_ALIAS", config.sync |> Module.split() |> List.last())
+      |> String.replace("SYNC", inspect(config.sync))
     end
 
     defp can_create_contents(config) do
