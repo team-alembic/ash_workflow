@@ -64,9 +64,11 @@ defmodule AshWorkflow.Changes.RecordEvent do
   ## Telling the scheduler
 
   Entering a step is when the deadlines ahead of a record become known, so this
-  change also calls `AshWorkflow.Scheduler.notify_state_change/1`. A scheduler
-  that arms timers needs that call to be precise; a scheduler that polls
-  implements neither runtime callback, so the call does nothing for it.
+  change also calls `AshWorkflow.Scheduler.notify_state_change/2`. A scheduler
+  that arms timers needs that call to be precise. A scheduler that polls uses
+  it to run an automatic step as soon as a record enters it. A step's action
+  that routes the record back into the same step does not count as entering
+  it, so a polling scheduler leaves that record for its next poll.
 
   It runs in the same `after_action` hook as the log append and the span's stop
   event, which means it runs after the data layer has committed the new state.
@@ -77,7 +79,7 @@ defmodule AshWorkflow.Changes.RecordEvent do
 
   A create action that upserts onto an existing row leaves that row in the
   step it was in. This change writes no log row for it and does not call
-  `AshWorkflow.Scheduler.notify_state_change/1`. The telemetry span still opens
+  `AshWorkflow.Scheduler.notify_state_change/2`. The telemetry span still opens
   and closes, because its `:start` event fires before the data layer reports
   whether the row was inserted.
 
@@ -196,13 +198,14 @@ defmodule AshWorkflow.Changes.RecordEvent do
   defp finish(changeset, record, opts, context) do
     if upserted_onto_existing_row?(changeset, record) do
       emit_stop(changeset, record)
+      record
     else
-      append_log(changeset, record, opts, context)
-      emit_stop(changeset, record)
-      Scheduler.notify_state_change(record)
-    end
+      record = append_log(changeset, record, opts, context)
 
-    record
+      emit_stop(changeset, record)
+      Scheduler.notify_state_change(record, entered_step?: entered_step?(changeset, record, opts))
+      record
+    end
   end
 
   # A create that upserts onto an existing row leaves it in the step it was in,
@@ -218,6 +221,27 @@ defmodule AshWorkflow.Changes.RecordEvent do
        do: true
 
   defp upserted_onto_existing_row?(_changeset, _record), do: false
+
+  defp entered_step?(changeset, record, opts) do
+    touch_state_entered_at?(opts) and not stayed_in_step?(changeset, record)
+  end
+
+  # An action whose every declared transition starts in the step the record now
+  # occupies cannot have moved it there: that is a step routing back to itself.
+  # Read from the declared transitions rather than `changeset.data`, which an
+  # atomic update from an AshOban worker does not hold.
+  defp stayed_in_step?(changeset, record) do
+    state_attribute = AshStateMachine.Info.state_machine_state_attribute!(changeset.resource)
+
+    from_states =
+      changeset.resource
+      |> AshStateMachine.Info.state_machine_transitions()
+      |> Enum.filter(&(&1.action == changeset.action.name))
+      |> Enum.flat_map(&List.wrap(&1.from))
+      |> Enum.uniq()
+
+    from_states == [Map.get(record, state_attribute)]
+  end
 
   # The span opens here rather than in the after_action hook because this is
   # where the action begins: `change/3` and `atomic/3` both run while the

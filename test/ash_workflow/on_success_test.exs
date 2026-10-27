@@ -5,7 +5,7 @@ defmodule AshWorkflow.OnSuccessTest do
   `AshWorkflow.Entities.Route` the same way manual `transition` routes do,
   but evaluated after the step's action runs rather than before it.
   """
-  use ExUnit.Case, async: true
+  use AshWorkflowTest.EtsCase, async: true
 
   alias AshStateMachine.Info, as: SMInfo
   alias AshWorkflowTest.LinearWorkflow

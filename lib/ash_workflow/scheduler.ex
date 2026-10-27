@@ -69,6 +69,8 @@ defmodule AshWorkflow.Scheduler do
     ahead of it.
   * `cancel/2` — called when a record leaves a step, so a pending timer can be
     dropped. A discovering implementation needs neither.
+  * `c:step_entered/2` — called when a record enters a step, so a discovering
+    implementation can run an automatic step without waiting for its next poll.
   """
 
   alias AshWorkflow.Entities.Retry
@@ -136,6 +138,16 @@ defmodule AshWorkflow.Scheduler do
   @callback cancel(record :: Ash.Resource.record(), [Work.t()]) :: :ok
 
   @doc """
+  A record entered a step, and `works` is that step's work.
+
+  Not called when a step's `on_success` or `on_error` routes the record back
+  into the same step, which is how a workflow says "nothing to do yet, try
+  again later". Not called for an action timeout or an `every`, which run
+  without leaving the step.
+  """
+  @callback step_entered(record :: Ash.Resource.record(), [Work.t()]) :: :ok
+
+  @doc """
   The shortest deadline this implementation can honour, in milliseconds.
 
   `AshWorkflow.Verifiers.ValidateTimeoutPrecision` rejects a timeout shorter
@@ -145,7 +157,11 @@ defmodule AshWorkflow.Scheduler do
   """
   @callback precision_floor_ms(opts :: keyword()) :: pos_integer()
 
-  @optional_callbacks child_spec: 1, deadline_changed: 2, cancel: 2, precision_floor_ms: 1
+  @optional_callbacks child_spec: 1,
+                      deadline_changed: 2,
+                      cancel: 2,
+                      step_entered: 2,
+                      precision_floor_ms: 1
 
   @cron_floor_ms 60_000
 
@@ -174,17 +190,23 @@ defmodule AshWorkflow.Scheduler do
   `c:deadline_changed/2`, or to `c:cancel/2` when the record has reached a step
   with nothing left to schedule.
 
-  A scheduler that discovers work by polling implements neither callback, so
-  this is a no-op for it.
+  With `entered_step?: true`, the same work also goes to `c:step_entered/2`.
+  `AshWorkflow.Changes.RecordEvent` passes it when the record has entered its
+  step rather than stayed in it.
   """
-  @spec notify_state_change(Ash.Resource.record()) :: :ok
-  def notify_state_change(record) do
+  @spec notify_state_change(Ash.Resource.record(), keyword()) :: :ok
+  def notify_state_change(record, opts \\ []) do
     resource = record.__struct__
     {module, _opts} = AshWorkflow.Info.scheduler(resource)
 
     Code.ensure_loaded?(module)
 
     works = work_ahead_of(record, resource)
+
+    if Keyword.get(opts, :entered_step?, false) and works != [] and
+         function_exported?(module, :step_entered, 2) do
+      module.step_entered(record, works)
+    end
 
     cond do
       works != [] and function_exported?(module, :deadline_changed, 2) ->
