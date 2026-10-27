@@ -1,14 +1,16 @@
 # The Postgres suite needs a live repo and a real Oban instance; the ETS suite
-# does not. Start them here so both can share one ExUnit run.
+# does not. Start them here so both can share one ExUnit run. The recipe
+# fixtures are compiled again under a new name by each test, so their
+# originals never run Oban jobs.
+oban_domains =
+  Application.fetch_env!(:ash_workflow, :ash_domains) --
+    Application.fetch_env!(:ash_workflow, :recipe_fixture_domains)
+
 {:ok, _} =
   Supervisor.start_link(
     [
       AshWorkflowTest.Repo,
-      {Oban,
-       AshOban.config(
-         Application.fetch_env!(:ash_workflow, :ash_domains),
-         Application.fetch_env!(:ash_workflow, Oban)
-       )}
+      {Oban, AshOban.config(oban_domains, Application.fetch_env!(:ash_workflow, Oban))}
     ],
     strategy: :one_for_one,
     name: AshWorkflowTest.Supervisor
