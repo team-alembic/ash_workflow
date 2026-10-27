@@ -1,5 +1,5 @@
 defmodule AshWorkflow.Transformers.ReadActionPaginationTest do
-  use ExUnit.Case, async: true
+  use AshWorkflowTest.EtsCase, async: true
 
   alias Ash.Resource.Info, as: ResourceInfo
   alias AshWorkflowTest.LinearWorkflow
