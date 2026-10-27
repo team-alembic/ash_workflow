@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Upgrading from 0.10.1
+
+- Under `AshWorkflow.Scheduler.Oban`, an action that moves a record into an automatic step now inserts an Oban job. A test that runs such an action needs a repo connection checked out, even when the workflow resource uses the ETS data layer. With Oban's `testing: :inline`, the step's action now runs inside the action that moved the record.
+- A `run_oban_trigger/1` change that queued an automatic step after a create or a transition is no longer needed. Leaving it in place queues no second job, because ash_oban's trigger worker is unique while a job is incomplete.
+
 ### Added
 
 - **A Workflows lens for Clarity.** With [Clarity](https://hex.pm/packages/clarity) installed, `AshWorkflow.Clarity.Lensmaker` adds a Workflows lens that lists each workflow resource with its steps. `AshWorkflow.Clarity.Introspector` adds an `AshWorkflow.Clarity.Vertex.Step` for each step. A workflow resource gets Workflow Overview, Workflow Diagram and Workflow Timing tabs, and a step gets Step Overview, Step Diagram and Step Timeline tabs. The timing tabs place each automatic action, retry attempt, timeout, `every` firing and undo window at its offset from entering the step, and say how long a record can stay in each step. Clarity is an optional dependency, so a project without it compiles none of these modules.
@@ -14,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `AshWorkflow.Scheduler.Oban` runs an automatic step as soon as a record enters it, as `AshWorkflow.Scheduler.Precise` already did. Before, the record waited for the trigger's next `check_interval`, because `AshWorkflow.Scheduler.notify_state_change/1` called only `deadline_changed/2` and `cancel/2`, and the Oban scheduler implements neither. `notify_state_change/2` now also calls the new optional `AshWorkflow.Scheduler.step_entered/2` callback when `AshWorkflow.Changes.RecordEvent` reports that the record entered its step. `AshWorkflow.Scheduler.Oban.step_entered/2` queues the step's trigger with `AshOban.run_trigger/3`. A step whose action routes the record back into the same step does not count as entering it, so that record still waits for the poll. An action timeout and an `every` do not count either. The queued job carries no actor, the same as a job the poll queues. A transition declared directly in the `state_machine` block does not run `RecordEvent`, so a record it moves into an automatic step still waits for the poll.
 - `AshWorkflow.Scheduler.Precise` arms a timeout whose `fire_at` or `field` names an expression calculation as soon as a record enters the step. `AshWorkflow.Scheduler.notify_state_change/1` handed `deadline_changed/2` the record without that calculation loaded, so `AshWorkflow.Scheduler.due_at/2` returned `nil`, no timer was armed, and only the recovery sweep caught the deadline, up to `look_ahead_ms` late. `notify_state_change/1` now loads the calculations returned by the new `AshWorkflow.Scheduler.Work.deadline_loads/1` before calling `deadline_changed/2`. `AshWorkflow.Scheduler.Oban` was not affected, because its trigger evaluates the calculation in the `where` clause.
 
 ### Security

@@ -48,6 +48,7 @@ defmodule AshWorkflowTest.Postgres.OnSuccessWithTimeoutObanTest do
     # Deliberately never run the :screening trigger — the record is aged out
     # before its own action ever executes, the same as if Oban had been down
     # or the worker had failed silently.
+    delete_queued_jobs()
     run_trigger!(:__timeout_trigger_screening_sla)
     assert %{failure: 0, discard: 0} = Oban.drain_queue(queue: :workflow, with_recursion: true)
 
@@ -58,6 +59,7 @@ defmodule AshWorkflowTest.Postgres.OnSuccessWithTimeoutObanTest do
 
   test "the timeout does not fire before its deadline, on a step with conditional on_success" do
     workflow = submit(%{candidate_name: "Weak Candidate"})
+    delete_queued_jobs()
 
     run_trigger!(:__timeout_trigger_screening_sla)
     assert %{failure: 0, discard: 0} = Oban.drain_queue(queue: :workflow, with_recursion: true)

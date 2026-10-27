@@ -64,9 +64,11 @@ defmodule AshWorkflow.Changes.RecordEvent do
   ## Telling the scheduler
 
   Entering a step is when the deadlines ahead of a record become known, so this
-  change also calls `AshWorkflow.Scheduler.notify_state_change/1`. A scheduler
-  that arms timers needs that call to be precise; a scheduler that polls
-  implements neither runtime callback, so the call does nothing for it.
+  change also calls `AshWorkflow.Scheduler.notify_state_change/2`. A scheduler
+  that arms timers needs that call to be precise. A scheduler that polls uses
+  it to run an automatic step as soon as a record enters it. A step's action
+  that routes the record back into the same step does not count as entering
+  it, so a polling scheduler leaves that record for its next poll.
 
   It runs in the same `after_action` hook as the log append and the span's stop
   event, which means it runs after the data layer has committed the new state.
@@ -187,9 +189,30 @@ defmodule AshWorkflow.Changes.RecordEvent do
     record = append_log(changeset, record, opts, context)
 
     emit_stop(changeset, record)
-    Scheduler.notify_state_change(record)
+    Scheduler.notify_state_change(record, entered_step?: entered_step?(changeset, record, opts))
 
     record
+  end
+
+  defp entered_step?(changeset, record, opts) do
+    touch_state_entered_at?(opts) and not stayed_in_step?(changeset, record)
+  end
+
+  # An action whose every declared transition starts in the step the record now
+  # occupies cannot have moved it there: that is a step routing back to itself.
+  # Read from the declared transitions rather than `changeset.data`, which an
+  # atomic update from an AshOban worker does not hold.
+  defp stayed_in_step?(changeset, record) do
+    state_attribute = AshStateMachine.Info.state_machine_state_attribute!(changeset.resource)
+
+    from_states =
+      changeset.resource
+      |> AshStateMachine.Info.state_machine_transitions()
+      |> Enum.filter(&(&1.action == changeset.action.name))
+      |> Enum.flat_map(&List.wrap(&1.from))
+      |> Enum.uniq()
+
+    from_states == [Map.get(record, state_attribute)]
   end
 
   # The span opens here rather than in the after_action hook because this is
