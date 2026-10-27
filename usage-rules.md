@@ -44,6 +44,14 @@ config :ash_workflow, scheduler: {AshWorkflow.Scheduler.Oban, queue: :workflow}
 
 `AshWorkflow.Scheduler.Oban` polls: it turns each automatic step and each timeout into an AshOban trigger whose `where` clause finds eligible records. Polling is what puts a floor under accuracy — cron cannot ask for less than a minute, which is why a sub-minute `fire_after` is rejected.
 
+A cron-fired trigger has no caller, so it reads and runs with a `nil` actor. On a resource whose read policy needs an actor, pass one with the `:actor` option, or the trigger finds no records and the workflow never moves:
+
+```elixir
+scheduler {AshWorkflow.Scheduler.Oban, actor: %MyApp.SystemActor{reason: "workflow"}}
+```
+
+The value becomes each trigger's `default_actor`, which ash_oban uses for the scheduler's read and for the worker's action when the job stored no actor.
+
 `AshWorkflow.Scheduler.Precise` arms a timer per deadline instead, so its floor is a millisecond and a sub-minute `fire_after` compiles. Select it in the `workflow` block and start `AshWorkflow.Scheduler.Precise.Timeline` with the resources it recovers deadlines for:
 
 ```elixir

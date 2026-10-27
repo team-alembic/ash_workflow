@@ -76,6 +76,8 @@ defmodule AshWorkflow.Scheduler.Work do
   that filters ahead of a full match evaluation.
   """
 
+  alias Ash.Resource.Info
+
   import Ash.Expr, only: [ref: 1]
   require Ash.Expr
 
@@ -159,6 +161,20 @@ defmodule AshWorkflow.Scheduler.Work do
   def not_fired(fired_field, deadline) do
     Ash.Expr.expr(is_nil(^ref(fired_field)) or ^ref(fired_field) < ^deadline_expr(deadline))
   end
+
+  @doc """
+  The calculations a record needs loaded before `AshWorkflow.Scheduler.due_at/2`
+  can compute this work's deadline.
+
+  A timeout may name an expression calculation as its `field` or its `fire_at`,
+  and `due_at/2` reads that field straight off the record.
+  """
+  @spec deadline_loads(t()) :: [atom()]
+  def deadline_loads(%__MODULE__{deadline: %{field: field}, resource: resource}) do
+    if Info.calculation(resource, field), do: [field], else: []
+  end
+
+  def deadline_loads(%__MODULE__{}), do: []
 
   defp deadline_expr(%{field: field, fire_after: nil}), do: ref(field)
 
