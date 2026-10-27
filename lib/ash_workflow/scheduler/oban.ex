@@ -29,6 +29,15 @@ defmodule AshWorkflow.Scheduler.Oban do
     * `:check_interval` — the cron for every generated trigger. Defaults to the
       `workflow` block's `check_interval`. A timeout's own `check_interval`
       still overrides it.
+    * `:actor` — the actor for every generated trigger, handed to ash_oban as
+      the trigger's `default_actor`. The cron-fired scheduler reads eligible
+      records as this actor, and the worker runs the step's or timeout's action
+      as it when the job carries no actor of its own. Without it both run with
+      a `nil` actor, so a resource whose read policy needs an actor never finds
+      a record to run.
+
+          scheduler {AshWorkflow.Scheduler.Oban,
+                     actor: %MyApp.SystemActor{reason: "workflow"}}
 
   ## Retry
 
@@ -94,6 +103,7 @@ defmodule AshWorkflow.Scheduler.Oban do
         worker_module_name: module_name(work, Workers),
         scheduler_module_name: module_name(work, Schedulers),
         scheduler_cron: check_interval(dsl, work, opts),
+        default_actor: opts[:actor],
         stream_with: :keyset
       )
 
