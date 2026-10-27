@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **A Workflows lens for Clarity.** With [Clarity](https://hex.pm/packages/clarity) installed, `AshWorkflow.Clarity.Lensmaker` adds a Workflows lens that lists each workflow resource with its steps. `AshWorkflow.Clarity.Introspector` adds an `AshWorkflow.Clarity.Vertex.Step` for each step. A workflow resource gets Workflow Overview, Workflow Diagram and Workflow Timing tabs, and a step gets Step Overview, Step Diagram and Step Timeline tabs. The timing tabs place each automatic action, retry attempt, timeout, `every` firing and undo window at its offset from entering the step, and say how long a record can stay in each step. Clarity is an optional dependency, so a project without it compiles none of these modules.
+- `mix ash_workflow.gen.approval` adds an approval workflow to a resource: a sibling approval resource with `pending`, `approved`, `rejected`, `cancelled` and an optional `overdue` step, a decision resource, quorum routing, and policies that stop a requester approving their own request. Who may open a request and who may approve live in generated `Checks.CanRequest` and `Checks.CanApprove` modules, which deny everyone until the application fills them in. See the [approval recipe](documentation/recipes/approval.md).
+- `mix ash_workflow.gen.transition_log` accepts a workflow resource generated earlier in the same Igniter run, before it has compiled, by reading its source. A resource on disk that fails to compile is still reported as an issue.
 
 ### Fixed
 
