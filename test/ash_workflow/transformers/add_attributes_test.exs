@@ -6,7 +6,7 @@ defmodule AshWorkflow.Transformers.AddAttributesTest do
   guarantee: outside callers cannot set it through an action, and AshWorkflow
   still writes it on a transition.
   """
-  use ExUnit.Case, async: true
+  use AshWorkflowTest.EtsCase, async: true
 
   alias Ash.Resource.Info, as: ResourceInfo
   alias AshWorkflowTest.LinearWorkflow
