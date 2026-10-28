@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.2] - 2026-10-28
+
 ### Upgrading from 0.10.1
 
 - Under `AshWorkflow.Scheduler.Oban`, an action that moves a record into an automatic step now inserts an Oban job. A test that runs such an action needs a repo connection checked out, even when the workflow resource uses the ETS data layer. With Oban's `testing: :inline`, the step's action now runs inside the action that moved the record.
