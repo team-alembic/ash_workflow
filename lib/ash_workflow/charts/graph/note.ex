@@ -12,13 +12,16 @@ defmodule AshWorkflow.Charts.Graph.Note do
   * `:every` — an `every` entry that runs `action`. `name` is its name, and
     `label` is its schedule, such as `every 1 hour for 3 hours`.
 
+  * `:on_signal` — an `on_signal` handler that runs `action` and stays in the
+    step. `name` and `label` are the signal's name.
+
   A `:timeout` or `:every` note also carries `retry`: its own retry policy,
   worded as a `:retry` note is, or `nil` when it makes one attempt.
   """
 
   defstruct [:kind, :label, name: nil, action: nil, retry: nil]
 
-  @type kind :: :policy | :retry | :timeout | :every
+  @type kind :: :policy | :retry | :timeout | :every | :on_signal
 
   @type t :: %__MODULE__{
           kind: kind(),

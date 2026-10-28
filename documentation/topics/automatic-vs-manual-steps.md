@@ -8,7 +8,7 @@ You never declare which kind a step is. The kind is inferred from its shape:
 |---|---|
 | an `action` | automatic |
 | one or more `transition` entries | manual |
-| neither, plus a `timeout` with `transition_to` | a wait state |
+| neither, plus a `timeout` or `on_signal` with `transition_to` | a wait state |
 | nothing at all | terminal |
 
 ## Automatic steps
@@ -143,7 +143,7 @@ step :cooling_off do
 end
 ```
 
-Because a timeout is the only exit, a wait state must declare at least one timeout with `transition_to`. One with only an action-style timeout would trap records forever, so the extension rejects it at compile time. `on_success` and `on_error` are also rejected: with no action to succeed or fail, neither could ever fire.
+Because a timeout is the only exit, a wait state must declare at least one timeout with `transition_to`. An `on_signal` with `transition_to` counts as an exit too, so a step can wait on a signal from elsewhere, with or without a timeout. A step with only action-style timeouts or `on_signal` handlers would trap records forever, so the extension rejects it at compile time. `on_success` and `on_error` are also rejected: with no action to succeed or fail, neither could ever fire.
 
 A wait state's deadline can come from the record rather than the clock, using `field`. That is how you give each record its own delay:
 

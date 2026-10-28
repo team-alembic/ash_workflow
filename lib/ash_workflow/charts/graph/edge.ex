@@ -9,6 +9,7 @@ defmodule AshWorkflow.Charts.Graph.Edge do
   * `:on_success` — the step's action `name` succeeds. `label` is the action's
     name.
   * `:on_error` — the step's action `name` fails. `label` is `on_error`.
+  * `:on_signal` — the signal `name` arrives. `label` is the signal's name.
   * `:timeout` — the timeout `name` fires. `label` is its deadline, such as
     `after 7 days` or `at offer_expires_at`.
   * `:undo` — the generated `undo` action rewinds the move from `to` to
@@ -24,7 +25,7 @@ defmodule AshWorkflow.Charts.Graph.Edge do
 
   defstruct [:from, :to, :kind, :name, :label, condition: nil, fallback?: false]
 
-  @type kind :: :transition | :on_success | :on_error | :timeout | :undo
+  @type kind :: :transition | :on_success | :on_error | :on_signal | :timeout | :undo
 
   @type t :: %__MODULE__{
           from: atom(),

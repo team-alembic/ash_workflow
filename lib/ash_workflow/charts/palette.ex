@@ -104,7 +104,7 @@ defmodule AshWorkflow.Charts.Palette do
   @doc """
   The class of a terminal step, from the kinds of the edges that reach it:
   `:failed` for `on_error` only, `:expired` for timeouts only, `:done` for
-  transitions and `on_success` only, and `:end` for a mix or for no edge.
+  transitions, `on_signal` and `on_success` only, and `:end` for a mix or for no edge.
 
   Undo edges leave a step and do not count. A step that a person chooses is
   `:done`, whatever its name.
@@ -121,7 +121,7 @@ defmodule AshWorkflow.Charts.Palette do
       kinds == [] -> :end
       kinds == [:on_error] -> :failed
       kinds == [:timeout] -> :expired
-      Enum.all?(kinds, &(&1 in [:transition, :on_success])) -> :done
+      Enum.all?(kinds, &(&1 in [:transition, :on_signal, :on_success])) -> :done
       true -> :end
     end
   end

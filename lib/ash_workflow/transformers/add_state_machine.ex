@@ -21,12 +21,15 @@ defmodule AshWorkflow.Transformers.AddStateMachine do
       rewind and a subsequent redo are permitted.
     - *Timeouts with `transition_to`* — a transition named `__timeout_<step>_<name>`,
       e.g. `transition :__timeout_review_escalation, from: [:review], to: [:escalated]`
+    - *`on_signal` with `transition_to`* — a transition named `__signal_<step>_<signal>`,
+      e.g. `transition :__signal_awaiting_payment_payment_settled, from: [:awaiting_payment], to: [:fulfilling]`
 
   Must run before all `AshStateMachine.Transformers.*` so that the state machine
   extension sees the generated states and transitions.
   """
   use Spark.Dsl.Transformer
 
+  alias AshWorkflow.Entities.OnSignal
   alias AshWorkflow.Entities.Step
   alias AshWorkflow.Entities.Transition
   alias AshWorkflow.Info
@@ -87,16 +90,20 @@ defmodule AshWorkflow.Transformers.AddStateMachine do
   end
 
   defp build_transitions(steps) do
+    step_names = Enum.map(steps, & &1.name)
+
     Enum.flat_map(steps, fn step ->
       cond do
         Step.terminal?(step) ->
           []
 
         Step.manual?(step) ->
-          manual_transitions(step) ++ timeout_transitions(step)
+          manual_transitions(step) ++
+            timeout_transitions(step) ++ signal_transitions(step, step_names)
 
         true ->
-          automatic_transitions(step) ++ timeout_transitions(step)
+          automatic_transitions(step) ++
+            timeout_transitions(step) ++ signal_transitions(step, step_names)
       end
     end)
   end
@@ -152,6 +159,14 @@ defmodule AshWorkflow.Transformers.AddStateMachine do
         [timeout.transition_to]
       )
     end)
+  end
+
+  defp signal_transitions(step, step_names) do
+    step.on_signals
+    |> Enum.filter(&OnSignal.transitions?(&1, step_names))
+    |> Enum.map(
+      &build_transition(OnSignal.action_name(step.name, &1), [step.name], [&1.transition_to])
+    )
   end
 
   defp build_transition(action, from, to) do
