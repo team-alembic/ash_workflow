@@ -1,5 +1,5 @@
 defmodule AshWorkflow.ErrorPathTest do
-  use ExUnit.Case, async: true
+  use AshWorkflowTest.EtsCase, async: true
 
   describe "on_error transition" do
     test "successful automatic step transitions to on_success state" do

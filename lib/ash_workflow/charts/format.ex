@@ -145,8 +145,8 @@ defmodule AshWorkflow.Charts.Format do
   The label of an `AshWorkflow.Charts.Graph.Edge`: a symbol for its kind,
   then its text.
 
-  * `⚙` for `on_success`, `✖` for `on_error`, `⏱` for a timeout and `↶` for
-    undo. A transition has no symbol.
+  * `⚙` for `on_success`, `✖` for `on_error`, `📨` for an `on_signal`, `⏱`
+    for a timeout and `↶` for undo. A transition has no symbol.
   * A timeout gives its name before its deadline: `⏱ auto_escalate after 4 hours`.
   * A conditional route adds `when` and its condition. The fallback route of
     a conditional `on_success` adds `otherwise`.
@@ -166,6 +166,7 @@ defmodule AshWorkflow.Charts.Format do
   defp edge_symbol(:transition), do: ""
   defp edge_symbol(:on_success), do: "⚙ "
   defp edge_symbol(:on_error), do: "✖ "
+  defp edge_symbol(:on_signal), do: "📨 "
   defp edge_symbol(:timeout), do: "⏱ "
   defp edge_symbol(:undo), do: "↶ "
 
@@ -176,6 +177,7 @@ defmodule AshWorkflow.Charts.Format do
     the policy.
   * A timeout that runs an action is `⏱`, its deadline and the action.
   * An `every` is `↻`, its schedule and the action.
+  * An `on_signal` that runs an action is `📨`, the signal and the action.
 
   A timeout or an `every` with its own retry adds `, retry:` and the policy.
   """
@@ -187,6 +189,8 @@ defmodule AshWorkflow.Charts.Format do
     do: "⏱ #{note.label}: #{note.action}" <> note_retry(note)
 
   def note_text(%{kind: :every} = note), do: "↻ #{note.label}: #{note.action}" <> note_retry(note)
+
+  def note_text(%{kind: :on_signal} = note), do: "📨 #{note.label}: #{note.action}"
 
   defp note_retry(%{retry: nil}), do: ""
   defp note_retry(%{retry: retry}), do: ", retry: " <> retry

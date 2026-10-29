@@ -1,5 +1,5 @@
 defmodule AshWorkflow.Changes.RecordEventTest do
-  use ExUnit.Case, async: true
+  use AshWorkflowTest.EtsCase, async: true
 
   require Ash.Query
 

@@ -178,6 +178,11 @@ defmodule AshWorkflow.Charts.FormatTest do
       assert Format.edge_text(edge) == "⏱ auto_escalate after 4 hours"
     end
 
+    test "an on_signal edge gives an envelope and the signal's name" do
+      edge = %Edge{kind: :on_signal, name: :payment_settled, label: "payment_settled"}
+      assert Format.edge_text(edge) == "📨 payment_settled"
+    end
+
     test "a conditional route adds when, and a fallback route otherwise" do
       routed = %Edge{kind: :on_success, label: "run", condition: "score < 3"}
       fallback = %Edge{kind: :on_success, label: "run", fallback?: true}
@@ -206,6 +211,11 @@ defmodule AshWorkflow.Charts.FormatTest do
 
       assert Format.note_text(%Note{kind: :every, label: "every 1 hour", action: :ping}) ==
                "↻ every 1 hour: ping"
+    end
+
+    test "an on_signal note gives the signal and its action" do
+      note = %Note{kind: :on_signal, label: "address_changed", action: :update_address}
+      assert Format.note_text(note) == "📨 address_changed: update_address"
     end
   end
 

@@ -64,9 +64,10 @@ defmodule AshWorkflowTest.DslAssertions do
         {:raised, message} ->
           [message]
 
+        # A verifier failure arrives as a warning diagnostic, so it counts too.
         :compiled ->
           diagnostics
-          |> Enum.filter(&(&1.severity == :error))
+          |> Enum.filter(&(&1.severity == :error or dsl_error?(&1)))
           |> Enum.map(&to_string(&1.message))
       end
 
@@ -76,4 +77,6 @@ defmodule AshWorkflowTest.DslAssertions do
     #{Enum.map_join(errors, "\n", &"  - #{String.slice(&1, 0, 400)}")}
     """
   end
+
+  defp dsl_error?(diagnostic), do: to_string(diagnostic.message) =~ "DslError"
 end

@@ -1,5 +1,5 @@
 defmodule AshWorkflow.Calculations.AvailableActionsTest do
-  use ExUnit.Case, async: true
+  use AshWorkflowTest.EtsCase, async: true
 
   describe "available_actions calculation" do
     test "returns transition names for a record in a manual step" do

@@ -127,7 +127,7 @@ defmodule AshWorkflow.Scheduler.Precise.Timeline do
     |> Enum.reduce(0, fn work, count ->
       records =
         work.resource
-        |> read(recheck_filter(work), state, deadline_loads(work))
+        |> read(recheck_filter(work), state, Work.deadline_loads(work))
         |> Enum.filter(&due_now?(work, &1))
 
       Enum.each(records, &run_once(work, &1, state))
@@ -257,7 +257,7 @@ defmodule AshWorkflow.Scheduler.Precise.Timeline do
   defp due_records(%Work{deadline: %{wall_clock: _schedule}} = work, state, _cutoff) do
     filter = until_filter(Ash.Expr.expr(^in_step(work)), work)
 
-    read(work.resource, filter, state, deadline_loads(work))
+    read(work.resource, filter, state, Work.deadline_loads(work))
   end
 
   defp due_records(%Work{deadline: %{field: field, fire_after: fire_after}} = work, state, cutoff) do
@@ -270,7 +270,7 @@ defmodule AshWorkflow.Scheduler.Precise.Timeline do
       Ash.Expr.expr(^in_step(work) and ^field_due(work, field, bound) and ^Work.not_fired(work))
       |> until_filter(work)
 
-    read(work.resource, filter, state, deadline_loads(work))
+    read(work.resource, filter, state, Work.deadline_loads(work))
   end
 
   # `Work.match` already reads the attribute the workflow named, and this filter
@@ -300,27 +300,6 @@ defmodule AshWorkflow.Scheduler.Precise.Timeline do
   # and reaches the data layer as a bind parameter.
   defp bound(cutoff, nil), do: cutoff
   defp bound(cutoff, {value, unit}), do: DateTime.add(cutoff, -value, singular(unit))
-
-  # `AshWorkflow.Scheduler.due_at/2` reads the deadline field off the record with
-  # `Map.get/2`, which finds nothing for a calculation that has not been loaded.
-  # A timeout may name an expression calculation as its `field` or its `fire_at`,
-  # so load it with the records the timer is armed from.
-  defp deadline_loads(%Work{deadline: %{} = deadline, resource: resource}) do
-    [deadline.field | time_zone_field(deadline)]
-    |> Enum.filter(&Ash.Resource.Info.calculation(resource, &1))
-  end
-
-  defp deadline_loads(%Work{}), do: []
-
-  # A wall-clock `every` whose `time_zone` names a calculation — reading the
-  # zone off a related record, say — cannot compute an occurrence without it,
-  # and `AshWorkflow.Scheduler.due_at/2` reads it off the record with
-  # `Map.get/2`, which finds nothing for a calculation nobody loaded.
-  defp time_zone_field(%{wall_clock: %AshWorkflow.WallClock{time_zone: zone}})
-       when is_atom(zone) and not is_nil(zone),
-       do: [zone]
-
-  defp time_zone_field(_deadline), do: []
 
   # Without this, a record whose `until` bound has already passed keeps
   # matching the plain `field <= bound` filter above forever, so every sweep
@@ -476,7 +455,7 @@ defmodule AshWorkflow.Scheduler.Precise.Timeline do
 
     filter = Ash.Expr.expr(^Ash.Expr.expr(^pk_filter) and ^recheck_filter(work))
 
-    case read(work.resource, filter, state, deadline_loads(work)) do
+    case read(work.resource, filter, state, Work.deadline_loads(work)) do
       # The record left the step, or its deadline moved. Whatever armed this
       # timer is out of date, and doing nothing is the correct outcome.
       [] -> state
