@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`max_fires` and `backoff` on `every`.** `max_fires` stops an `every` after a number of fires in the current step visit. `backoff` grows the gap after each fire, taking a duration tuple or `:exponential` like `retry`'s `backoff`, and both schedulers compute it from `AshWorkflow.Entities.Retry.delay_ms/2`. Either option adds a `<step>_<every>_fires` integer column, so run `mix ash.codegen` on AshPostgres. An `every` without them is unchanged.
+
 ### Fixed
 
 - A create action that upserts onto an existing row no longer appends an `:initial` row to the transition log, emits the workflow's signals or calls `AshWorkflow.Scheduler.notify_state_change/2`. The row stays in the step it was in. `AshWorkflow.Changes.RecordEvent` skips all three when the returned record carries `upsert_action: :update` metadata, or `upsert_skipped: true` metadata from an `upsert_condition` that did not match. This covers `Ash.create/2` and `Ash.bulk_create/4`. The `[:ash_workflow, :transition]` span still emits `:stop`, because its `:start` event fires before the data layer reports whether the row was inserted. Ash sets `upsert_action` on ETS and Mnesia from 3.29, which ash_workflow already requires. AshPostgres sets it from 2.10.0 on PostgreSQL 17 and later, and from 2.13.1 on every PostgreSQL version. With an older AshPostgres, an upsert onto an existing row is still logged.
@@ -31,7 +35,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **`max_fires` and `backoff` on `every`.** `max_fires` stops an `every` after a number of fires in the current step visit. `backoff` grows the gap after each fire, taking a duration tuple or `:exponential` like `retry`'s `backoff`, and both schedulers compute it from `AshWorkflow.Entities.Retry.delay_ms/2`. Either option adds a `<step>_<every>_fires` integer column, so run `mix ash.codegen` on AshPostgres. An `every` without them is unchanged.
 - **A Workflows lens for Clarity.** With [Clarity](https://hex.pm/packages/clarity) installed, `AshWorkflow.Clarity.Lensmaker` adds a Workflows lens that lists each workflow resource with its steps. `AshWorkflow.Clarity.Introspector` adds an `AshWorkflow.Clarity.Vertex.Step` for each step. A workflow resource gets Workflow Overview, Workflow Diagram and Workflow Timing tabs, and a step gets Step Overview, Step Diagram and Step Timeline tabs. The timing tabs place each automatic action, retry attempt, timeout, `every` firing and undo window at its offset from entering the step, and say how long a record can stay in each step. Clarity is an optional dependency, so a project without it compiles none of these modules.
 - **An `:actor` option for `AshWorkflow.Scheduler.Oban`.** The value becomes each generated trigger's `default_actor`. A cron-fired scheduler has no caller and read with a `nil` actor, so on a resource whose read policy needs an actor it matched no rows and the workflow never advanced. With `scheduler {AshWorkflow.Scheduler.Oban, actor: ...}` the scheduler reads as that actor, and the worker runs the step's or timeout's action as it when the job stored no actor. See issue #150.
 
