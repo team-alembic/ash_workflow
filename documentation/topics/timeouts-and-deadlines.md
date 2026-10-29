@@ -112,7 +112,39 @@ end
 
 The two share nothing at runtime. `give_up` is exactly the transition timeout described in [Transition timeouts](#transition-timeouts) above, just given a `fire_after` equal to the bound. Composing two this way keeps `until` doing one thing rather than growing a second, transition-shaped meaning.
 
-`until` bounds wall-clock time, not a count of firings. A workflow that wants to say "at most 4 reminders" rather than "for at most 8 days" needs a firing counter, which is a different feature. Nothing here tracks how many times an `every` has fired, only when it started. See `documentation/design/every-until.md` for the alternatives considered, including why the bound is not measured against a per-record anchor of its own the way a timeout's `field` can be.
+`until` bounds wall-clock time, not a count of firings. For "at most 4 reminders" rather than "for at most 8 days", use `max_fires`, described next. See `documentation/design/every-until.md` for the alternatives considered, including why the bound is not measured against a per-record anchor of its own the way a timeout's `field` can be.
+
+### Bounding `every` with `max_fires`
+
+`max_fires` stops an `every` after a number of fires in the current step visit:
+
+```elixir
+every :reminder do
+  interval {2, :days}
+  action :send_review_reminder
+  max_fires 3
+end
+```
+
+This fires at day 2, day 4 and day 6, then stops. The count lives in a `<step>_<every>_fires` integer column, defaulting to 0, which each fire increments. A last fire from before `state_entered_at` belongs to an earlier visit, so the count restarts when the record leaves the step and comes back. Generate a migration after adding `max_fires`.
+
+`max_fires` and `until` may be declared together. The trigger's `where` clause checks both, so whichever is reached first stops the firing.
+
+### Spacing fires out with `backoff`
+
+`backoff` grows the gap between fires. It takes the same values as `retry`'s `backoff`: a duration tuple, or `:exponential`.
+
+```elixir
+every :reminder do
+  interval {1, :days}
+  action :send_review_reminder
+  backoff {2, :days}
+end
+```
+
+The first fire still lands one `interval` after entry. After fire `n`, the next gap is `interval` plus `AshWorkflow.Entities.Retry.delay_ms/2` for attempt `n`. A duration tuple adds the same delay to every later gap, so the example fires at day 1, 4, 7 and so on. `:exponential` adds `n^4 + 15` seconds, Oban's retry curve, so it spaces out an interval of minutes and barely moves a daily one. Both schedulers compute the gap from `Retry.delay_ms/2`'s formula, so they agree on timing. There is no jitter, and no custom backoff function.
+
+`backoff` uses the same `<step>_<every>_fires` column as `max_fires`. `AshWorkflow.Verifiers.ValidateEvery` rejects `backoff` with `max_fires 1`, since no later fire exists to delay.
 
 ## Data-driven deadlines with `field`
 
@@ -361,4 +393,4 @@ The extension auto-adds a `state_entered_at` (`utc_datetime_usec`) attribute to 
 
 If you need to define this attribute yourself (e.g., with a custom default or source), the extension skips adding it.
 
-It also auto-adds one nilable `:utc_datetime_usec` attribute per `every`, named `<step>_<every>_last_fired_at` by default, and one per action timeout, named `<step>_<timeout>_fired_at`. See [Recurring actions with `every`](#recurring-actions-with-every) above. On AshPostgres, generate a migration after adding an `every` or an action timeout.
+It also auto-adds one nilable `:utc_datetime_usec` attribute per `every`, named `<step>_<every>_last_fired_at` by default, and one per action timeout, named `<step>_<timeout>_fired_at`. An `every` declaring `max_fires` or `backoff` also gets a `<step>_<every>_fires` integer column. See [Recurring actions with `every`](#recurring-actions-with-every) above. On AshPostgres, generate a migration after adding an `every` or an action timeout.

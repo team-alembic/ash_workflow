@@ -36,6 +36,7 @@ defmodule AshWorkflow.Scheduler.Precise.Timeline do
 
   require Logger
 
+  alias AshWorkflow.Entities.Every
   alias AshWorkflow.Info
   alias AshWorkflow.Scheduler
   alias AshWorkflow.Scheduler.Leader
@@ -256,6 +257,7 @@ defmodule AshWorkflow.Scheduler.Precise.Timeline do
     filter =
       Ash.Expr.expr(^in_step(work) and ^field_due(work, field, bound) and ^Work.not_fired(work))
       |> until_filter(work)
+      |> max_fires_filter(work)
 
     read(work.resource, filter, state, Work.deadline_loads(work))
   end
@@ -303,6 +305,18 @@ defmodule AshWorkflow.Scheduler.Precise.Timeline do
     bound = DateTime.add(DateTime.utc_now(), -value, singular(unit))
 
     Ash.Expr.expr(^filter and ^ref(:state_entered_at) > ^bound)
+  end
+
+  # Like `until_filter/2`, this stops a record that has used up its fires
+  # from being armed again on every sweep.
+  defp max_fires_filter(filter, %Work{max_fires: nil}), do: filter
+
+  defp max_fires_filter(filter, %Work{deadline: %{field: field}} = work) do
+    Ash.Expr.expr(
+      ^filter and
+        (is_nil(^ref(field)) or ^ref(field) < state_entered_at or
+           ^ref(work.fires_field) < ^work.max_fires)
+    )
   end
 
   defp read(resource, filter, state, loads \\ []) do
@@ -390,6 +404,24 @@ defmodule AshWorkflow.Scheduler.Precise.Timeline do
   # substitution; it belongs to the scheduler, not the shared deadline
   # arithmetic.
   defp delay_ms(%Work{deadline: nil}, _record), do: 0
+
+  # With a `backoff` the gap after a fire depends on the fire count, which
+  # `AshWorkflow.Scheduler.due_at/2` does not read.
+  defp delay_ms(
+         %Work{deadline: %{field: field, fire_after: interval}, backoff: backoff} = work,
+         record
+       )
+       when not is_nil(backoff) do
+    interval
+    |> Every.next_due_at(
+      backoff,
+      Map.get(record, field),
+      Map.get(record, work.fires_field),
+      record.state_entered_at
+    )
+    |> DateTime.diff(DateTime.utc_now(), :microsecond)
+    |> to_timer_ms()
+  end
 
   defp delay_ms(%Work{deadline: %{field: field}, repeat?: true} = work, record) do
     case Map.get(record, field) do
