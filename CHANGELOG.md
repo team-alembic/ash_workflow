@@ -7,19 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-29
+
+### Upgrading from 0.10.2
+
+- `ash_workflow` now depends on `ash ~> 3.35`, for `Ash.Signals`.
+
+### Added
+
+- **Workflow signals.** The new `signals` option on the `workflow` section names an `Ash.Signals` module, and `emit` declares a signal at four levels: the workflow (every state change), a step (`on: :enter` or `on: :exit`), a `transition`, and a `timeout` or `every`. `AshWorkflow.Changes.RecordEvent` emits each matching signal in its `after_action` hook, after the log row, with a payload of the workflow fields `from_state`, `to_state`, `transition_name`, `triggered_by` and `occurred_at`, the attributes that share a signal field's name, the `emit`'s `fields` and its literal `values`. A failing listener fails the action and rolls it back. `AshWorkflow.Transformers.AddActions` declares each planned signal as a dynamic emit on the action, and `AshWorkflow.Verifiers.ValidateSignals` checks the names and phases. `AshWorkflow.Info.signals/1`, `emits/1` and `action_signals/2` read the configuration. A `transition`, `timeout` or `every` that contains an `emit` takes its options inside the `do` block. See the Signals guide.
+- **Receiving signals with `on_signal`.** A step can declare `on_signal`, which moves a record to `transition_to`, or runs an update `action`, when a signal from the workflow's `signals` module (or `from`) selects that record while it is in the step. `filter` selects records with `^signal(:field)` templates, or `read_action` names a read action of the resource. `AshWorkflow.Transformers.AddActions` generates the `:__signal_<step>_<signal>_read` read action, the `:__signal_<step>_<signal>` transition action and a `signals_in` listener named `:<step>_<signal>`, and the log row records `triggered_by: :signal`. `AshWorkflow.Transformers.AddPolicies` authorizes the generated actions with `signal_in/2`. `AshWorkflow.Verifiers.ValidateOnSignal` checks the signal, its fields and the outcome, and a step whose only exits are `on_signal` handlers with `transition_to` is a wait state. Charts draw an `on_signal` edge with `📨`. See the Signals guide.
+
 ## [0.10.2] - 2026-10-28
 
 ### Upgrading from 0.10.1
 
 - Under `AshWorkflow.Scheduler.Oban`, an action that moves a record into an automatic step now inserts an Oban job. A test that runs such an action needs a repo connection checked out, even when the workflow resource uses the ETS data layer. With Oban's `testing: :inline`, the step's action now runs inside the action that moved the record.
 - A `run_oban_trigger/1` change that queued an automatic step after a create or a transition is no longer needed. Leaving it in place queues no second job, because ash_oban's trigger worker is unique while a job is incomplete.
-- `ash_workflow` now depends on `ash ~> 3.35`, for `Ash.Signals`.
 
 ### Added
 
 - **A Workflows lens for Clarity.** With [Clarity](https://hex.pm/packages/clarity) installed, `AshWorkflow.Clarity.Lensmaker` adds a Workflows lens that lists each workflow resource with its steps. `AshWorkflow.Clarity.Introspector` adds an `AshWorkflow.Clarity.Vertex.Step` for each step. A workflow resource gets Workflow Overview, Workflow Diagram and Workflow Timing tabs, and a step gets Step Overview, Step Diagram and Step Timeline tabs. The timing tabs place each automatic action, retry attempt, timeout, `every` firing and undo window at its offset from entering the step, and say how long a record can stay in each step. Clarity is an optional dependency, so a project without it compiles none of these modules.
-- **Workflow signals.** The new `signals` option on the `workflow` section names an `Ash.Signals` module, and `emit` declares a signal at four levels: the workflow (every state change), a step (`on: :enter` or `on: :exit`), a `transition`, and a `timeout` or `every`. `AshWorkflow.Changes.RecordEvent` emits each matching signal in its `after_action` hook, after the log row, with a payload of the workflow fields `from_state`, `to_state`, `transition_name`, `triggered_by` and `occurred_at`, the attributes that share a signal field's name, the `emit`'s `fields` and its literal `values`. A failing listener fails the action and rolls it back. `AshWorkflow.Transformers.AddActions` declares each planned signal as a dynamic emit on the action, and `AshWorkflow.Verifiers.ValidateSignals` checks the names and phases. `AshWorkflow.Info.signals/1`, `emits/1` and `action_signals/2` read the configuration. A `transition`, `timeout` or `every` that contains an `emit` takes its options inside the `do` block. See the Signals guide.
-- **Receiving signals with `on_signal`.** A step can declare `on_signal`, which moves a record to `transition_to`, or runs an update `action`, when a signal from the workflow's `signals` module (or `from`) selects that record while it is in the step. `filter` selects records with `^signal(:field)` templates, or `read_action` names a read action of the resource. `AshWorkflow.Transformers.AddActions` generates the `:__signal_<step>_<signal>_read` read action, the `:__signal_<step>_<signal>` transition action and a `signals_in` listener named `:<step>_<signal>`, and the log row records `triggered_by: :signal`. `AshWorkflow.Transformers.AddPolicies` authorizes the generated actions with `signal_in/2`. `AshWorkflow.Verifiers.ValidateOnSignal` checks the signal, its fields and the outcome, and a step whose only exits are `on_signal` handlers with `transition_to` is a wait state. Charts draw an `on_signal` edge with `📨`. See the Signals guide.
 - **An `:actor` option for `AshWorkflow.Scheduler.Oban`.** The value becomes each generated trigger's `default_actor`. A cron-fired scheduler has no caller and read with a `nil` actor, so on a resource whose read policy needs an actor it matched no rows and the workflow never advanced. With `scheduler {AshWorkflow.Scheduler.Oban, actor: ...}` the scheduler reads as that actor, and the worker runs the step's or timeout's action as it when the job stored no actor. See issue #150.
 
 ### Fixed
