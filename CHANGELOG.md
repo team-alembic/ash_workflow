@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- A create action that upserts onto an existing row no longer appends an `:initial` row to the transition log, emits the workflow's signals or calls `AshWorkflow.Scheduler.notify_state_change/2`. The row stays in the step it was in. `AshWorkflow.Changes.RecordEvent` skips all three when the returned record carries `upsert_action: :update` metadata, or `upsert_skipped: true` metadata from an `upsert_condition` that did not match. This covers `Ash.create/2` and `Ash.bulk_create/4`. The `[:ash_workflow, :transition]` span still emits `:stop`, because its `:start` event fires before the data layer reports whether the row was inserted. Ash sets `upsert_action` on ETS and Mnesia from 3.29, which ash_workflow already requires. AshPostgres sets it from 2.10.0 on PostgreSQL 17 and later, and from 2.13.1 on every PostgreSQL version. With an older AshPostgres, an upsert onto an existing row is still logged.
+
 ## [0.11.0] - 2026-10-29
 
 ### Upgrading from 0.10.2
