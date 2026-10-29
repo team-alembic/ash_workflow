@@ -1,5 +1,5 @@
 defmodule AshWorkflow.Transformers.AddObanTriggersTest do
-  use ExUnit.Case
+  use AshWorkflowTest.EtsCase
 
   defp trigger(resource, name) do
     resource

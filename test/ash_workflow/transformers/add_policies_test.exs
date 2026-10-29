@@ -1,5 +1,5 @@
 defmodule AshWorkflow.Transformers.AddPoliciesTest do
-  use ExUnit.Case
+  use AshWorkflowTest.EtsCase
 
   alias Ash.Policy.Check.Action, as: ActionCheck
   alias Ash.Policy.Info, as: PolicyInfo

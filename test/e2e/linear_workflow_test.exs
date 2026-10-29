@@ -1,5 +1,5 @@
 defmodule AshWorkflowTest.E2E.LinearWorkflowTest do
-  use ExUnit.Case
+  use AshWorkflowTest.EtsCase
 
   alias Ash.Resource.Info, as: ResourceInfo
   alias AshWorkflowTest.LinearWorkflow

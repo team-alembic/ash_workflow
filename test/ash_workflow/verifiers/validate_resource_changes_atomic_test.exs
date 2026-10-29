@@ -1,3 +1,16 @@
+# The workflow these tests compile is in no domain, so it listens on a signal
+# no other test emits.
+defmodule AshWorkflow.Verifiers.ValidateResourceChangesAtomicTest.Signals do
+  @moduledoc false
+  use Ash.Signals
+
+  signals do
+    signal :payment_settled do
+      argument :order_id, :uuid, allow_nil?: false
+    end
+  end
+end
+
 defmodule AshWorkflow.Verifiers.ValidateResourceChangesAtomicTest do
   use ExUnit.Case
 
@@ -162,6 +175,48 @@ defmodule AshWorkflow.Verifiers.ValidateResourceChangesAtomicTest do
         end
         """),
         ~r/:approve/
+      )
+    end
+  end
+
+  describe "a non-atomic resource-level change with an on_signal transition" do
+    test "is rejected, naming the generated signal action" do
+      assert_dsl_error(
+        """
+        defmodule ResourceChangesSignalCase#{System.unique_integer([:positive])} do
+          use Ash.Resource,
+            domain: AshWorkflowTest.Domain,
+            data_layer: Ash.DataLayer.Ets,
+            extensions: [AshWorkflow]
+
+          workflow do
+            scheduler AshWorkflow.Scheduler.Precise
+            signals AshWorkflow.Verifiers.ValidateResourceChangesAtomicTest.Signals
+
+            step :awaiting_payment do
+              on_signal :payment_settled do
+                filter expr(id == ^signal(:order_id))
+                transition_to :fulfilling
+              end
+            end
+
+            step :fulfilling, terminal: true
+          end
+
+          actions do
+            defaults [:read, create: []]
+          end
+
+          changes do
+            change #{inspect(NonAtomicChange)}
+          end
+
+          attributes do
+            uuid_v7_primary_key :id
+          end
+        end
+        """,
+        ~r/:__signal_awaiting_payment_payment_settled/
       )
     end
   end

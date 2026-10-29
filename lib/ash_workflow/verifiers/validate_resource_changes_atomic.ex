@@ -4,13 +4,14 @@ defmodule AshWorkflow.Verifiers.ValidateResourceChangesAtomic do
   action it reaches is built atomic.
 
   A change in the resource's `changes` block applies to every update action,
-  including the ones AshWorkflow generates. The generated timeout actions are
-  built atomic, and the author has no declaration to set `require_atomic? false`
-  on, so a non-atomic change makes every firing fail with
-  `Ash.Error.Framework.MustBeAtomic`.
+  including the ones AshWorkflow generates. The generated timeout actions and
+  `on_signal` transition actions are built atomic, and the author has no
+  declaration to set `require_atomic? false` on, so a non-atomic change makes
+  every firing fail with `Ash.Error.Framework.MustBeAtomic`.
   """
   use Spark.Dsl.Verifier
 
+  alias AshWorkflow.Entities.OnSignal
   alias AshWorkflow.Entities.Step
   alias AshWorkflow.Transformers.AddActions
   alias Spark.Dsl.Verifier
@@ -65,7 +66,12 @@ defmodule AshWorkflow.Verifiers.ValidateResourceChangesAtomic do
       |> Enum.filter(&(&1.on_error && &1.action))
       |> Enum.map(&AddActions.on_error_action_name/1)
 
-    [AddActions.undo_action_name() | transitions ++ timeouts ++ on_errors]
+    signals =
+      Enum.flat_map(steps, fn step ->
+        Enum.map(step.on_signals, &OnSignal.action_name(step.name, &1))
+      end)
+
+    [AddActions.undo_action_name() | transitions ++ timeouts ++ on_errors ++ signals]
   end
 
   defp non_atomic_update_changes(dsl) do
