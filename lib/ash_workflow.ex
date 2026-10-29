@@ -307,6 +307,7 @@ defmodule AshWorkflow do
       AshWorkflow.Verifiers.ValidateUndo,
       AshWorkflow.Verifiers.ValidateStepPolicies,
       AshWorkflow.Verifiers.ValidateSignals,
-      AshWorkflow.Verifiers.ValidateOnSignal
+      AshWorkflow.Verifiers.ValidateOnSignal,
+      AshWorkflow.Verifiers.ValidateResourceChangesAtomic
     ]
 end
