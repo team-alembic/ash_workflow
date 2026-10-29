@@ -1,7 +1,7 @@
 defmodule AshWorkflow.MixProject do
   use Mix.Project
 
-  @version "0.10.1"
+  @version "0.10.2"
   @source_url "https://github.com/team-alembic/ash_workflow"
 
   @description """
@@ -108,7 +108,7 @@ defmodule AshWorkflow.MixProject do
   defp deps do
     [
       {:mix_test_watch, "~> 1.2", only: [:dev, :test]},
-      {:ash, "~> 3.29"},
+      {:ash, "~> 3.35"},
       {:ash_state_machine, "~> 0.2"},
       {:ash_oban, "~> 0.2"},
       {:jason, "~> 1.4"},
@@ -150,6 +150,7 @@ defmodule AshWorkflow.MixProject do
         "documentation/topics/undo.md",
         "documentation/topics/authorization.md",
         "documentation/topics/telemetry.md",
+        "documentation/topics/signals.md",
         "documentation/topics/workflows-and-relationships.md",
         "documentation/topics/diagrams.md",
         "documentation/topics/bpmn-comparison.md",
