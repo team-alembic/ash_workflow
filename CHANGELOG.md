@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- A create action that upserts onto an existing row no longer appends an `:initial` row to the transition log, emits the workflow's signals or calls `AshWorkflow.Scheduler.notify_state_change/2`. The row stays in the step it was in. `AshWorkflow.Changes.RecordEvent` skips all three when the returned record carries `upsert_action: :update` metadata, or `upsert_skipped: true` metadata from an `upsert_condition` that did not match. This covers `Ash.create/2` and `Ash.bulk_create/4`. The `[:ash_workflow, :transition]` span still emits `:stop`, because its `:start` event fires before the data layer reports whether the row was inserted. Ash sets `upsert_action` on ETS and Mnesia from 3.29, which ash_workflow already requires. AshPostgres sets it from 2.10.0 on PostgreSQL 17 and later, and from 2.13.1 on every PostgreSQL version. With an older AshPostgres, an upsert onto an existing row is still logged.
+- Transition and timeout actions that `AshWorkflow.Transformers.AddActions` generates on a workflow resource with a `pre_check_with` identity now set `require_atomic? false`. Ash adds a `before_action` for such an identity, so the generated actions failed with `MustBeAtomic`. Those actions now run non-atomically on that resource.
+
+## [0.11.0] - 2026-10-29
+
+### Upgrading from 0.10.2
+
+- `ash_workflow` now depends on `ash ~> 3.35`, for `Ash.Signals`.
+
+### Added
+
+- **Workflow signals.** The new `signals` option on the `workflow` section names an `Ash.Signals` module, and `emit` declares a signal at four levels: the workflow (every state change), a step (`on: :enter` or `on: :exit`), a `transition`, and a `timeout` or `every`. `AshWorkflow.Changes.RecordEvent` emits each matching signal in its `after_action` hook, after the log row, with a payload of the workflow fields `from_state`, `to_state`, `transition_name`, `triggered_by` and `occurred_at`, the attributes that share a signal field's name, the `emit`'s `fields` and its literal `values`. A failing listener fails the action and rolls it back. `AshWorkflow.Transformers.AddActions` declares each planned signal as a dynamic emit on the action, and `AshWorkflow.Verifiers.ValidateSignals` checks the names and phases. `AshWorkflow.Info.signals/1`, `emits/1` and `action_signals/2` read the configuration. A `transition`, `timeout` or `every` that contains an `emit` takes its options inside the `do` block. See the Signals guide.
+- **Receiving signals with `on_signal`.** A step can declare `on_signal`, which moves a record to `transition_to`, or runs an update `action`, when a signal from the workflow's `signals` module (or `from`) selects that record while it is in the step. `filter` selects records with `^signal(:field)` templates, or `read_action` names a read action of the resource. `AshWorkflow.Transformers.AddActions` generates the `:__signal_<step>_<signal>_read` read action, the `:__signal_<step>_<signal>` transition action and a `signals_in` listener named `:<step>_<signal>`, and the log row records `triggered_by: :signal`. `AshWorkflow.Transformers.AddPolicies` authorizes the generated actions with `signal_in/2`. `AshWorkflow.Verifiers.ValidateOnSignal` checks the signal, its fields and the outcome, and a step whose only exits are `on_signal` handlers with `transition_to` is a wait state. Charts draw an `on_signal` edge with `📨`. See the Signals guide.
+
+## [0.10.2] - 2026-10-28
+
 ### Upgrading from 0.10.1
 
 - Under `AshWorkflow.Scheduler.Oban`, an action that moves a record into an automatic step now inserts an Oban job. A test that runs such an action needs a repo connection checked out, even when the workflow resource uses the ETS data layer. With Oban's `testing: :inline`, the step's action now runs inside the action that moved the record.
@@ -19,7 +37,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Transition and timeout actions that `AshWorkflow.Transformers.AddActions` generates on a workflow resource with a `pre_check_with` identity now set `require_atomic? false`. Ash adds a `before_action` for such an identity, so the generated actions failed with `MustBeAtomic`. Those actions now run non-atomically on that resource.
 - `AshWorkflow.Scheduler.Oban` runs an automatic step as soon as a record enters it, as `AshWorkflow.Scheduler.Precise` already did. Before, the record waited for the trigger's next `check_interval`, because `AshWorkflow.Scheduler.notify_state_change/1` called only `deadline_changed/2` and `cancel/2`, and the Oban scheduler implements neither. `notify_state_change/2` now also calls the new optional `AshWorkflow.Scheduler.step_entered/2` callback when `AshWorkflow.Changes.RecordEvent` reports that the record entered its step. `AshWorkflow.Scheduler.Oban.step_entered/2` queues the step's trigger with `AshOban.run_trigger/3`. A step whose action routes the record back into the same step does not count as entering it, so that record still waits for the poll. An action timeout and an `every` do not count either. The queued job carries no actor, the same as a job the poll queues. A transition declared directly in the `state_machine` block does not run `RecordEvent`, so a record it moves into an automatic step still waits for the poll.
 - `AshWorkflow.Scheduler.Precise` arms a timeout whose `fire_at` or `field` names an expression calculation as soon as a record enters the step. `AshWorkflow.Scheduler.notify_state_change/1` handed `deadline_changed/2` the record without that calculation loaded, so `AshWorkflow.Scheduler.due_at/2` returned `nil`, no timer was armed, and only the recovery sweep caught the deadline, up to `look_ahead_ms` late. `notify_state_change/1` now loads the calculations returned by the new `AshWorkflow.Scheduler.Work.deadline_loads/1` before calling `deadline_changed/2`. `AshWorkflow.Scheduler.Oban` was not affected, because its trigger evaluates the calculation in the `where` clause.
 
