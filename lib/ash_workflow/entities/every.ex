@@ -94,7 +94,8 @@ defmodule AshWorkflow.Entities.Every do
     :backoff,
     self_scheduled?: false,
     __spark_metadata__: nil,
-    retry: nil
+    retry: nil,
+    emits: []
   ]
 
   @type duration_unit :: AshWorkflow.Duration.unit()
@@ -108,7 +109,8 @@ defmodule AshWorkflow.Entities.Every do
           max_fires: pos_integer() | nil,
           backoff: AshWorkflow.Entities.Retry.backoff() | nil,
           self_scheduled?: boolean(),
-          retry: AshWorkflow.Entities.Retry.t() | nil
+          retry: AshWorkflow.Entities.Retry.t() | nil,
+          emits: [AshWorkflow.Entities.Emit.t()]
         }
 
   @schema [

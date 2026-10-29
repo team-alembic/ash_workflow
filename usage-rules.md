@@ -488,9 +488,60 @@ Undo is refused, with a reason on `AshWorkflow.Errors.UndoNotPermitted`, when: t
 
 A transition whose target is an *automatic* step is undoable only until that step runs: once its Oban trigger fires, the head of the log is the automatic step's own row, and undo refuses with `:not_undoable`.
 
+## Signals
+
+A workflow fires `Ash.Signals` signals on workflow events. Name the signals module once with `signals`, then declare `emit` where the event happens:
+
+```elixir
+workflow do
+  signals MyApp.Orders.Signals
+
+  # Fires on every state change.
+  emit :order_transitioned
+
+  step :review do
+    emit :review_started              # on: :enter is the default
+    emit :review_finished, on: :exit
+
+    transition :approve do
+      to :fulfilment
+      emit :order_approved, fields: [:customer_id], values: [channel: "web"]
+    end
+
+    timeout :escalate do
+      fire_after {2, :days}
+      transition_to :escalated
+      emit :order_escalated
+    end
+  end
+end
+```
+
+`emit` also works inside `timeout` and `every`. `fields` maps signal fields to resource attributes (`signal_field: :attribute`, or a bare name for the same name). `values` sets signal fields to literal values. Only a step-level `emit` takes `on`.
+
+AshWorkflow fills the signal fields `from_state`, `to_state`, `transition_name`, `triggered_by` and `occurred_at`, and any field named after a resource attribute. `AshWorkflow.Verifiers.ValidateSignals` rejects at compile time a signal that is missing from the module, is not an `:after_action` signal, has a required field nothing fills, or declares `from_state`/`to_state` with a type other than `:atom`. Every action that may emit a signal declares it as a dynamic `emit` of the signals module, so `mix ash.signals` lists the workflow.
+
+### Receiving signals
+
+`on_signal` moves a record on, or runs an action, when a signal selects it while it is in the step. It sits beside the step's transitions and timeouts:
+
+```elixir
+step :awaiting_payment do
+  transition :mark_paid, to: :fulfilling
+
+  on_signal :payment_settled do
+    filter expr(id == ^signal(:order_id))
+    transition_to :fulfilling
+    inputs paid_at: :settled_at
+  end
+end
+```
+
+The signal comes from the workflow's `signals` module unless `from` names another. `filter` selects the records, with `^signal(:field)` for signal fields. `read_action` names a read action of your own instead, whose arguments are set from signal fields of the same name. Either way only records in the step are selected, so a signal for a record that has already left does nothing. `transition_to` moves the record; `action` runs an update action without leaving the step. `inputs` and `delivery` pass through to the generated `signals_in` listener. The generated transition is `:__signal_<step>_<signal>` and logs `triggered_by: :signal`. With `Ash.Policy.Authorizer`, the generated actions are authorized by `signal_in/2` only.
+
 ## Telemetry
 
-Every state change emits a `[:ash_workflow, :transition]` span, and a conditional transition also emits `[:ash_workflow, :route_evaluation]`. `AshWorkflow.Changes.RecordEvent` emits the span, so one span covers a manual transition, an automatic step, a timeout, an error path, an undo and the initial create.
+Every state change emits a `[:ash_workflow, :transition]` span, and a conditional transition also emits `[:ash_workflow, :route_evaluation]`. `AshWorkflow.Changes.RecordEvent` emits the span, so one span covers a manual transition, an automatic step, a timeout, an error path, an undo, a received signal and the initial create.
 
 ```elixir
 :telemetry.attach("workflow-transitions", [:ash_workflow, :transition, :stop], &handle/4, nil)

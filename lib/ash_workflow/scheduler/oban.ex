@@ -39,6 +39,23 @@ defmodule AshWorkflow.Scheduler.Oban do
           scheduler {AshWorkflow.Scheduler.Oban,
                      actor: %MyApp.SystemActor{reason: "workflow"}}
 
+  ## Entering an automatic step
+
+  An automatic step has no deadline, so a record is due the moment it enters
+  the step. `c:AshWorkflow.Scheduler.step_entered/2` queues that step's trigger
+  with `AshOban.run_trigger/3` when the record enters it, so the action runs
+  without waiting for the next `check_interval`. The worker re-checks the
+  trigger's `where` before it runs, so a record that has already moved on is
+  left alone.
+
+  A step whose `on_success` or `on_error` routes the record back into the same
+  step is not queued again. That route means "nothing to do yet", and the record waits for the
+  next `check_interval`. A transition declared directly in the `state_machine`
+  block, not in the `workflow`, does not run `AshWorkflow.Changes.RecordEvent`,
+  so a record it moves into an automatic step also waits for the poll.
+
+  The queued job carries no actor, the same as a job the cron poll queues.
+
   ## Retry
 
   A step's or timeout's `retry` block becomes the generated trigger's
@@ -108,6 +125,13 @@ defmodule AshWorkflow.Scheduler.Oban do
       )
 
     Transformer.add_entity(dsl, [:oban, :triggers], trigger)
+  end
+
+  @impl AshWorkflow.Scheduler
+  def step_entered(record, works) do
+    works
+    |> Enum.filter(&(&1.kind == :step))
+    |> Enum.each(&AshOban.run_trigger(record, &1.name))
   end
 
   # ash_oban's trigger `backoff` is in seconds, which is why a duration tuple

@@ -12,8 +12,10 @@ defmodule AshWorkflow.Entities.Step do
     transitions: [],
     timeouts: [],
     everys: [],
+    on_signals: [],
     on_success: [],
-    retry: nil
+    retry: nil,
+    emits: []
   ]
 
   @type t :: %__MODULE__{
@@ -27,7 +29,9 @@ defmodule AshWorkflow.Entities.Step do
           transitions: [AshWorkflow.Entities.Transition.t()],
           timeouts: [AshWorkflow.Entities.Timeout.t()],
           everys: [AshWorkflow.Entities.Every.t()],
-          retry: AshWorkflow.Entities.Retry.t() | nil
+          on_signals: [AshWorkflow.Entities.OnSignal.t()],
+          retry: AshWorkflow.Entities.Retry.t() | nil,
+          emits: [AshWorkflow.Entities.Emit.t()]
         }
 
   @schema [
@@ -87,6 +91,7 @@ defmodule AshWorkflow.Entities.Step do
         transitions: [],
         timeouts: [],
         everys: [],
+        on_signals: [],
         on_success: [],
         on_error: nil
       }),
@@ -113,15 +118,18 @@ defmodule AshWorkflow.Entities.Step do
   def manual?(%__MODULE__{transitions: [_ | _]}), do: true
   def manual?(%__MODULE__{action: nil, timeouts: [_ | _]}), do: true
   def manual?(%__MODULE__{action: nil, everys: [_ | _]}), do: true
+  def manual?(%__MODULE__{action: nil, on_signals: [_ | _]}), do: true
   def manual?(%__MODULE__{}), do: false
 
   @doc """
   Returns `true` if the step is a wait state — no action runs on entry and no
-  caller-facing transition leaves it, so a timeout is its only exit.
+  caller-facing transition leaves it, so a timeout or an `on_signal` is its
+  only exit.
   """
   def wait_state?(%__MODULE__{terminal: true}), do: false
   def wait_state?(%__MODULE__{action: nil, transitions: [], timeouts: [_ | _]}), do: true
   def wait_state?(%__MODULE__{action: nil, transitions: [], everys: [_ | _]}), do: true
+  def wait_state?(%__MODULE__{action: nil, transitions: [], on_signals: [_ | _]}), do: true
   def wait_state?(%__MODULE__{}), do: false
 
   @doc """
