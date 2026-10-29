@@ -94,6 +94,14 @@ defmodule AshWorkflow.Changes.RecordEvent do
   A timer armed before the commit could fire against a record still holding the
   old state.
 
+  ## Upserts
+
+  A create action that upserts onto an existing row leaves that row in the
+  step it was in. This change writes no log row for it, emits no signal and
+  does not call `AshWorkflow.Scheduler.notify_state_change/2`. The telemetry
+  span still opens and closes, because its `:start` event fires before the
+  data layer reports whether the row was inserted.
+
   ## Atomicity
 
   This change implements `atomic/3` rather than falling back to
@@ -253,10 +261,21 @@ defmodule AshWorkflow.Changes.RecordEvent do
 
   defp every_fires_field(opts), do: Keyword.get(opts, :every_fires_field)
 
+  # The `:start` event fired before the data layer reported whether the create
+  # inserted, so the span still closes on an upsert that entered no step.
+  defp finish(changeset, record, opts, context) do
+    if upserted_onto_existing_row?(changeset, record) do
+      emit_stop(changeset, record)
+      {:ok, record}
+    else
+      record_entry(changeset, record, opts, context)
+    end
+  end
+
   # Signals go out after the log row so a listener that reads history sees this
   # event, and before the span closes so a failing listener's error is what the
   # span and the scheduler see: neither runs for an event that rolls back.
-  defp finish(changeset, record, opts, context) do
+  defp record_entry(changeset, record, opts, context) do
     log = Info.transition_log(changeset.resource)
     plan = Keyword.get(opts, :emits, [])
     from_state = event_from_state(changeset, record, log, plan, opts)
@@ -351,6 +370,20 @@ defmodule AshWorkflow.Changes.RecordEvent do
   defp record_state(record) do
     Map.get(record, AshStateMachine.Info.state_machine_state_attribute!(record.__struct__))
   end
+
+  # A create that upserts onto an existing row leaves it in the step it was in,
+  # whether the row was updated or the `upsert_condition` skipped the update.
+  defp upserted_onto_existing_row?(%{action_type: :create}, %{
+         __metadata__: %{upsert_action: :update}
+       }),
+       do: true
+
+  defp upserted_onto_existing_row?(%{action_type: :create}, %{
+         __metadata__: %{upsert_skipped: true}
+       }),
+       do: true
+
+  defp upserted_onto_existing_row?(_changeset, _record), do: false
 
   defp entered_step?(changeset, record, opts) do
     touch_state_entered_at?(opts) and not stayed_in_step?(changeset, record)

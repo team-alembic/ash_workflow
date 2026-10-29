@@ -30,6 +30,8 @@ defmodule AshWorkflowTest.Domain do
     resource AshWorkflowTest.CustomSchedulerWorkflow
     resource AshWorkflowTest.OneMinuteWorkflow
     resource AshWorkflowTest.FireAtWorkflow
+    resource AshWorkflowTest.UpsertWorkflow
+    resource AshWorkflowTest.UpsertLog
     resource AshWorkflowTest.PreciseTimeoutWorkflow
     resource AshWorkflowTest.PreciseDeadlineWorkflow
     resource AshWorkflowTest.PreciseCalculatedDeadlineWorkflow
