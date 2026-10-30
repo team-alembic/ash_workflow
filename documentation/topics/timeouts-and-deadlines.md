@@ -362,6 +362,29 @@ end
 >
 > Do not try to close that window with a faster cron. `AshWorkflow.Verifiers.ValidateTimeoutPrecision` rejects a deadline shorter than a minute on the polling scheduler, because cron does not poll below that. For sub-minute precision select `AshWorkflow.Scheduler.Precise`, or set `self_scheduled?: true` on the one timeout you drive yourself. See [Shorter than a poll interval](#shorter-than-a-poll-interval) above.
 
+## Pausing the scheduler
+
+A deadline is only as correct as the record it is read from. When something rebuilds workflow records outside their own actions, such as a replay of an event log that clears the tables and applies one event at a time, a poll in the middle reads a half-rebuilt record. A deadline that a later event would have moved fires anyway, and the record transitions in a way that never happened.
+
+`AshWorkflow.with_scheduler_paused/2` runs a function with every workflow scheduler paused, and resumes them afterwards, even if the function raises:
+
+```elixir
+AshWorkflow.with_scheduler_paused(fn ->
+  MyApp.Events.replay!()
+end)
+```
+
+No automatic step, timeout or `every` runs while the function does. Work that falls due in the meantime runs on the first poll or sweep after the resume, so an overdue deadline still fires, against the rebuilt record.
+
+`AshWorkflow.Scheduler.pause/1` and `AshWorkflow.Scheduler.resume/1` do the same for a pause that spans more than one function call. Pauses nest: the scheduler runs again once every `pause/1` has had its `resume/1`. `AshWorkflow.Scheduler.paused?/0` reports whether one is held.
+
+Both pause this node and every node connected to it, unless `:nodes` names others. A node that connects after the pause is not paused. Work that has already passed its check when the pause lands still finishes.
+
+Each scheduler honours the pause in its own way:
+
+* `AshWorkflow.Scheduler.Oban` adds a private `:ash_workflow_scheduler_paused?` calculation to the resource and requires it to be false in every generated trigger's `where`. A paused poll queues nothing. A job already queued, such as an automatic step queued on entry, finds its record no longer matching and cancels itself. The Oban queue itself keeps running, so other jobs in it are unaffected.
+* `AshWorkflow.Scheduler.Precise` skips its sweep and drops each timer that fires while paused. The first sweep after the resume arms them again. `AshWorkflow.Scheduler.Precise.Timeline.run_due/2` returns 0 while paused.
+
 ## Oban queue configuration
 
 By default, all workflow triggers use the `:workflow` queue. You can override this at the workflow level:

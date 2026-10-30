@@ -121,6 +121,10 @@ defmodule AshWorkflow.Scheduler.Precise.Timeline do
   """
   @spec run_due(Ash.Resource.t(), keyword()) :: non_neg_integer()
   def run_due(resource, opts \\ []) do
+    if Scheduler.paused?(), do: 0, else: run_due_now(resource, opts)
+  end
+
+  defp run_due_now(resource, opts) do
     state = %__MODULE__{action_opts: Keyword.take(opts, [:actor, :authorize?, :tenant])}
 
     resource
@@ -155,10 +159,10 @@ defmodule AshWorkflow.Scheduler.Precise.Timeline do
   @impl GenServer
   def handle_info(:sweep, state) do
     state =
-      if Leader.leader?(state.leader) do
-        Enum.reduce(state.resources, state, &sweep_resource(&2, &1))
-      else
-        drop_all_timers(state)
+      cond do
+        not Leader.leader?(state.leader) -> drop_all_timers(state)
+        Scheduler.paused?() -> state
+        true -> Enum.reduce(state.resources, state, &sweep_resource(&2, &1))
       end
 
     {:noreply, schedule_sweep(state)}
@@ -167,8 +171,10 @@ defmodule AshWorkflow.Scheduler.Precise.Timeline do
   def handle_info({:fire, key, work, attempt}, state) do
     state = %{state | timers: Map.delete(state.timers, key)}
 
+    # A timer dropped while paused is re-armed by the first sweep after the
+    # resume, which finds the record still matching the work.
     state =
-      if Leader.leader?(state.leader) do
+      if Leader.leader?(state.leader) and not Scheduler.paused?() do
         {_resource, _name, primary_key} = key
         fire(work, primary_key, attempt, state)
       else

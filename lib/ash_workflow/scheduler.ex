@@ -71,6 +71,21 @@ defmodule AshWorkflow.Scheduler do
     dropped. A discovering implementation needs neither.
   * `c:step_entered/2` — called when a record enters a step, so a discovering
     implementation can run an automatic step without waiting for its next poll.
+
+  ## Pausing
+
+  `pause/1` stops every scheduler from running work until `resume/1`, and
+  `AshWorkflow.with_scheduler_paused/2` wraps a function in both. A paused
+  scheduler runs no automatic step, no timeout and no `every`. Work that falls
+  due while paused runs on the first poll or sweep after the resume.
+
+  Pause while something rebuilds workflow records outside their own actions,
+  such as an event-log replay. A deadline read from a half-rebuilt record fires
+  a transition that never happened.
+
+  An implementation honours the pause by checking `paused?/0` before it runs
+  work. `AshWorkflow.Scheduler.Oban` adds the check to every trigger's `where`,
+  and `AshWorkflow.Scheduler.Precise` checks it before each fire and sweep.
   """
 
   alias AshWorkflow.Entities.Retry
@@ -265,6 +280,89 @@ defmodule AshWorkflow.Scheduler do
 
       defoverridable transform: 3
     end
+  end
+
+  @paused_key {__MODULE__, :paused}
+
+  @doc """
+  Stop every workflow scheduler from running work until `resume/1`.
+
+  Applies to each node in `:nodes`, which defaults to this node and every node
+  connected to it. A node that joins later is not paused. Pauses nest: the
+  scheduler runs again once every `pause/1` has had its `resume/1`. Work already
+  past its check when the pause lands still finishes.
+
+  Raises if a node could not be paused.
+  """
+  @spec pause(keyword()) :: :ok
+  def pause(opts \\ []), do: on_nodes(opts, :pause_node)
+
+  @doc """
+  Undo one `pause/1` on each node in `:nodes`.
+
+  Takes the same `:nodes` option as `pause/1`, and should be given the same
+  nodes.
+  """
+  @spec resume(keyword()) :: :ok
+  def resume(opts \\ []), do: on_nodes(opts, :resume_node)
+
+  @doc """
+  Whether a `pause/1` holds the scheduler on this node.
+  """
+  @spec paused?() :: boolean()
+  def paused?, do: :persistent_term.get(@paused_key, 0) > 0
+
+  @doc """
+  Run `fun` with the scheduler paused, and resume it afterwards, even if `fun`
+  raises. Returns what `fun` returns.
+
+  Takes the same `:nodes` option as `pause/1`.
+  """
+  @spec with_paused((-> result), keyword()) :: result when result: term()
+  def with_paused(fun, opts \\ []) when is_function(fun, 0) do
+    pause(opts)
+
+    try do
+      fun.()
+    after
+      resume(opts)
+    end
+  end
+
+  @doc false
+  def pause_node, do: adjust_pauses(1)
+
+  @doc false
+  def resume_node, do: adjust_pauses(-1)
+
+  # A count rather than a flag, so that one caller's resume does not lift a
+  # pause another caller still holds.
+  defp adjust_pauses(delta) do
+    :global.trans(
+      {@paused_key, self()},
+      fn ->
+        count = max(:persistent_term.get(@paused_key, 0) + delta, 0)
+        :persistent_term.put(@paused_key, count)
+      end,
+      [node()]
+    )
+
+    :ok
+  end
+
+  defp on_nodes(opts, function) do
+    nodes = Keyword.get_lazy(opts, :nodes, fn -> [node() | Node.list()] end)
+
+    failed =
+      nodes
+      |> Enum.zip(:erpc.multicall(nodes, __MODULE__, function, []))
+      |> Enum.reject(&match?({_node, {:ok, :ok}}, &1))
+
+    if failed != [] do
+      raise "#{inspect(__MODULE__)}.#{function} failed on #{inspect(failed)}"
+    end
+
+    :ok
   end
 
   @doc """

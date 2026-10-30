@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **`max_fires` and `backoff` on `every`.** `max_fires` stops an `every` after a number of fires in the current step visit. `backoff` grows the gap after each fire, taking a duration tuple or `:exponential` like `retry`'s `backoff`, and both schedulers compute it from `AshWorkflow.Entities.Retry.delay_ms/2`. Either option adds a `<step>_<every>_fires` integer column, so run `mix ash.codegen` on AshPostgres. An `every` without them is unchanged.
+- **Pausing the scheduler.** `AshWorkflow.with_scheduler_paused/2` runs a function with no automatic step, timeout or `every` firing, and `AshWorkflow.Scheduler.pause/1`, `resume/1` and `paused?/0` do the same across calls. Wrap anything that rebuilds workflow records outside their own actions, such as an event-log replay, so that no deadline fires against a half-rebuilt record. Pauses nest, and apply to this node and every connected node unless `:nodes` names others. `AshWorkflow.Scheduler.Oban` adds a private `:ash_workflow_scheduler_paused?` calculation to each workflow resource and requires it to be false in every generated trigger's `where`. `AshWorkflow.Scheduler.Precise` skips its sweep and its timers while paused. See "Pausing the scheduler" in the Timeouts and Deadlines guide.
 
 ### Fixed
 
