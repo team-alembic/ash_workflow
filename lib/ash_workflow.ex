@@ -309,4 +309,23 @@ defmodule AshWorkflow do
       AshWorkflow.Verifiers.ValidateSignals,
       AshWorkflow.Verifiers.ValidateOnSignal
     ]
+
+  @doc """
+  Run `fun` with every workflow scheduler paused, and resume them afterwards.
+
+  No automatic step, timeout or `every` runs while `fun` does. Wrap anything
+  that rebuilds workflow records outside their own actions, such as an
+  event-log replay, so that no deadline fires against a half-rebuilt record.
+  Work that fell due runs on the first poll or sweep after `fun` returns.
+
+      AshWorkflow.with_scheduler_paused(fn -> MyApp.Events.replay!() end)
+
+  Pauses this node and every connected node unless `:nodes` names others. See
+  `AshWorkflow.Scheduler.pause/1`, and `AshWorkflow.Scheduler.resume/1` for a
+  pause that outlives a single function.
+  """
+  @spec with_scheduler_paused((-> result), keyword()) :: result when result: term()
+  defdelegate with_scheduler_paused(fun, opts \\ []),
+    to: AshWorkflow.Scheduler,
+    as: :with_paused
 end
