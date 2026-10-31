@@ -27,9 +27,9 @@ defmodule AshWorkflow.Transformers.AddActions do
 
   - **`every` action injection** — appends `AshWorkflow.Changes.RecordEvent`
     (`triggered_by: :timeout`, writing the `every`'s own last-fired column via
-    `:every_field`) onto the action an `every` names, so each firing re-arms
-    the interval and is logged the same way a timeout's firing is, without
-    touching `state_entered_at`.
+    `:every_field`, and its fire count via `:every_fires_field`) onto the
+    action an `every` names, so each firing re-arms the interval and is logged
+    the same way a timeout's firing is, without touching `state_entered_at`.
 
   - **Stale-record refusal** — each transition action and the undo action
     also get `AshWorkflow.Changes.RefuseStaleTransition`, which filters the
@@ -510,14 +510,9 @@ defmodule AshWorkflow.Transformers.AddActions do
               "every :#{every.name} on step :#{step.name} references action :#{every.action}, but no such action is defined on the resource."
 
         existing_action ->
-          field = Every.last_fired_field(step.name, every)
-
           record_event_change =
             Transformer.build_entity!(ResourceDsl, [:actions, :update], :change,
-              change: {
-                RecordEvent,
-                triggered_by: :timeout, touch_state_entered_at: false, every_field: field
-              }
+              change: {RecordEvent, every_record_event_opts(step, every)}
             )
 
           updated_action = %{
@@ -530,6 +525,19 @@ defmodule AshWorkflow.Transformers.AddActions do
           |> Transformer.add_entity([:actions], updated_action)
       end
     end)
+  end
+
+  defp every_record_event_opts(step, every) do
+    opts = [
+      triggered_by: :timeout,
+      touch_state_entered_at: false,
+      every_field: Every.last_fired_field(step.name, every)
+    ]
+
+    case Every.fires_field(step.name, every) do
+      nil -> opts
+      fires_field -> Keyword.put(opts, :every_fires_field, fires_field)
+    end
   end
 
   # Each `on_signal` becomes a read action that only selects records in the

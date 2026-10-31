@@ -4,6 +4,7 @@ defmodule AshWorkflowTest.Domain do
 
   resources do
     resource AshWorkflowTest.Workflow
+    resource AshWorkflowTest.EveryBackoffWorkflow
     resource AshWorkflowTest.LinearWorkflow
     resource AshWorkflowTest.ApprovalWorkflow
     resource AshWorkflowTest.TimeoutWorkflow
