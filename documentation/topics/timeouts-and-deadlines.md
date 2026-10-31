@@ -244,7 +244,7 @@ A missed occurrence fires late rather than being skipped. If nothing polled at 0
 
 Across a daylight saving change, a local time that was skipped still fires that day, at the instant the clock jumped to. `~T[02:30:00]` on a day whose clocks go 02:00 to 03:00 fires at 03:00 local. Skipping the day instead would mean a digest silently missing one day a year, in whichever zones the rows happen to name. A local time that happens twice fires on the first of its two instants; the second is then no longer after the last fire, so nothing fires again.
 
-Both rules are pinned in `AshWorkflow.WallClock` and its tests.
+Both rules are pinned in `AshWorkflow.WallClock` and its tests, which `AshWorkflow.Scheduler.Precise` and `pending_deadlines` follow. The Oban trigger's SQL leaves a skipped or repeated local time to Postgres, which reads it as standard time. On those two days a year the Oban trigger can fire up to an hour after the instant `pending_deadlines` reports. It still fires once.
 
 #### Configuring a time zone database
 

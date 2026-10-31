@@ -73,8 +73,9 @@ defmodule AshWorkflow.Entities.Every do
   next one by a week. `AshWorkflow.WallClock` has the arithmetic.
 
   Everything else is unchanged. Firing writes the same `last_fired_field`
-  column, `until` still bounds it against `state_entered_at`, and the first
-  fire is still the first occurrence after the record entered the step. See
+  column, `until` still bounds it against `state_entered_at`. The first fire is
+  the first occurrence after the record entered the step, or with a stride,
+  the first occurrence one whole stride after entry. See
   `AshWorkflow.WallClock` for the occurrence arithmetic, including daylight
   saving, and `documentation/topics/timeouts-and-deadlines.md` for the SQL the
   Oban trigger runs.

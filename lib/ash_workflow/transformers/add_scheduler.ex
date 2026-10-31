@@ -203,8 +203,9 @@ defmodule AshWorkflow.Transformers.AddScheduler do
   # Elixir at query-build time the way every other deadline's bound is. The
   # data layer has to do the arithmetic per row.
   #
-  # The subquery tries each of the last seven local dates. `on` is never empty,
-  # so the most recent occurrence is one of them, and any older occurrence the
+  # The subquery tries today and each of the seven local dates before it. `on`
+  # is never empty, so the most recent occurrence is one of them even when
+  # today's time has not arrived yet and the last one fell a week ago today, and any older occurrence the
   # last fire predates means the most recent one is predated too. A missed
   # occurrence therefore fires late, once, on whichever day polling resumes,
   # the same as `AshWorkflow.WallClock.next_occurrence/3`.
@@ -237,7 +238,7 @@ defmodule AshWorkflow.Transformers.AddScheduler do
 
     Ash.Expr.expr(
       fragment(
-        "CASE WHEN ? IN (SELECT name FROM pg_timezone_names) THEN EXISTS (SELECT 1 FROM (SELECT (now() AT TIME ZONE ?)::date - back AS day FROM generate_series(0, 6) AS back) AS o WHERE EXTRACT(ISODOW FROM o.day)::int = ANY(?) AND ((o.day + ?::time) AT TIME ZONE ?) <= now() AND (coalesce(?, ?) AT TIME ZONE 'UTC') < ((o.day + ?::time) AT TIME ZONE ?)) ELSE false END",
+        "CASE WHEN ? IN (SELECT name FROM pg_timezone_names) THEN EXISTS (SELECT 1 FROM (SELECT (now() AT TIME ZONE ?)::date - back AS day FROM generate_series(0, 7) AS back) AS o WHERE EXTRACT(ISODOW FROM o.day)::int = ANY(?) AND ((o.day + ?::time) AT TIME ZONE ?) <= now() AND (coalesce(?, ?) AT TIME ZONE 'UTC') < ((o.day + ?::time) AT TIME ZONE ?)) ELSE false END",
         ^zone,
         ^zone,
         ^days(wall_clock),
@@ -256,7 +257,7 @@ defmodule AshWorkflow.Transformers.AddScheduler do
 
     Ash.Expr.expr(
       fragment(
-        "CASE WHEN ? IN (SELECT name FROM pg_timezone_names) THEN EXISTS (SELECT 1 FROM (SELECT (now() AT TIME ZONE ?)::date - back AS day FROM generate_series(0, 6) AS back) AS o WHERE EXTRACT(ISODOW FROM o.day)::int = ANY(?) AND ((o.day + ?::time) AT TIME ZONE ?) <= now() AND (coalesce(?, ?) AT TIME ZONE 'UTC') < ((o.day + ?::time) AT TIME ZONE ?) AND o.day - ((coalesce(?, ?) AT TIME ZONE 'UTC') AT TIME ZONE ?)::date >= ?) ELSE false END",
+        "CASE WHEN ? IN (SELECT name FROM pg_timezone_names) THEN EXISTS (SELECT 1 FROM (SELECT (now() AT TIME ZONE ?)::date - back AS day FROM generate_series(0, 7) AS back) AS o WHERE EXTRACT(ISODOW FROM o.day)::int = ANY(?) AND ((o.day + ?::time) AT TIME ZONE ?) <= now() AND (coalesce(?, ?) AT TIME ZONE 'UTC') < ((o.day + ?::time) AT TIME ZONE ?) AND o.day - ((coalesce(?, ?) AT TIME ZONE 'UTC') AT TIME ZONE ?)::date >= ?) ELSE false END",
         ^zone,
         ^zone,
         ^days(wall_clock),
