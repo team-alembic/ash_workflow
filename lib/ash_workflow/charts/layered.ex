@@ -98,7 +98,8 @@ defmodule AshWorkflow.Charts.Layered do
 
     graph = Normalize.run(nodes, dag, ranks)
     {layers, crossings} = Order.run(graph, opts[:sweeps], opts)
-    graph = label_sides(graph, layers, opts[:labels])
+    partners = MapSet.new(lane_companions, & &1.companion)
+    graph = label_sides(graph, layers, opts[:labels], partners)
     {layers, pairs} = pair_companions(layers, graph, lane_companions)
     opts = Keyword.put(opts, :pairs, pairs)
     {coords, lanes, ports} = Position.run(graph, layers, opts)
@@ -125,16 +126,20 @@ defmodule AshWorkflow.Charts.Layered do
   # row gather towards its middle, under the boxes they leave, and fewer
   # edges swing out past a box's corner.
   #
+  # The label of an edge with an undo lane (partners) sits on its right, as
+  # the undo lane runs on the left (see pair_companions/3).
+  #
   # With labels: :over, every label sits centred over its own lane, and the
   # lane runs behind it.
-  defp label_sides(graph, layers, mode) do
+  defp label_sides(graph, layers, mode, partners) do
     Enum.reduce(layers, graph, fn {_rank, ids}, graph ->
       labels = Enum.filter(ids, &(graph.nodes[&1].dummy == :label))
+      free = Enum.reject(labels, fn {:dummy, edge, _rank} -> MapSet.member?(partners, edge) end)
 
       sides =
         if mode == :over,
           do: Enum.map(labels, &{&1, :over}),
-          else: Enum.map(Enum.take(labels, div(length(labels), 2)), &{&1, :left})
+          else: Enum.map(Enum.take(free, div(length(free), 2)), &{&1, :left})
 
       nodes =
         Enum.reduce(sides, graph.nodes, fn {id, side}, nodes ->

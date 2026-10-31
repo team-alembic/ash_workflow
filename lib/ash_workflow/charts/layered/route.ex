@@ -43,10 +43,24 @@ defmodule AshWorkflow.Charts.Layered.Route do
 
     solved = Keyword.get(opts, :lanes, %{})
 
+    # An undo lane and its partner run in step, so both keep the long stub
+    # at both ends: then their curves stay parallel and do not cross.
+    paired =
+      for {{:dummy, a, _}, {:dummy, b, _}} <- Keyword.get(opts, :pairs, []),
+          id <- [a, b],
+          into: MapSet.new(),
+          do: id
+
     routes =
       Map.new(graph.chains, fn {id, chain} ->
-        route =
-          lanes(id, chain, graph, coords, bands, {ports, solved}, MapSet.member?(reversed, id))
+        stubs =
+          cond do
+            MapSet.member?(paired, id) -> {@arrow_stub, @arrow_stub}
+            MapSet.member?(reversed, id) -> {@arrow_stub, @stub}
+            true -> {@stub, @arrow_stub}
+          end
+
+        route = lanes(id, chain, graph, coords, bands, {ports, solved}, stubs)
 
         # A lane that x placement solved through a label stays where it is.
         {id, Map.put(route, :solved, Enum.any?(chain, &Map.has_key?(solved, &1)))}
@@ -272,11 +286,11 @@ defmodule AshWorkflow.Charts.Layered.Route do
 
   # The vertical lane pieces of one edge, from its upper end to its lower end:
   # [{rank, top_point, bottom_point}], and its label box.
-  defp lanes(edge_id, chain, graph, coords, bands, {ports, solved}, reversed?) do
+  #
+  # The arrowhead is at the lower end, or at the upper end of a reversed
+  # edge; that end gets the longer stub ({upper_stub, lower_stub}).
+  defp lanes(edge_id, chain, graph, coords, bands, {ports, solved}, {upper_stub, lower_stub}) do
     last = length(chain) - 1
-    # The arrowhead is at the lower end, or at the upper end of a reversed
-    # edge; that end gets the longer stub.
-    {upper_stub, lower_stub} = if reversed?, do: {@arrow_stub, @stub}, else: {@stub, @arrow_stub}
 
     {lanes, label} =
       chain

@@ -185,21 +185,43 @@ defmodule AshWorkflow.Charts.Layered.Position do
     # order of their other ends, so the router does not move them again.
     index = for {_rank, ids} <- layers, {id, i} <- Enum.with_index(ids), into: %{}, do: {id, i}
 
+    # An undo lane and its partner keep 24 px apart at a box side too, as
+    # in their lanes, when the side has room for it; so both can run
+    # straight.
+    pair_edges =
+      for {{:dummy, a, _}, {:dummy, b, _}} <- Keyword.get(opts, :pairs, []),
+          into: MapSet.new(),
+          do: Enum.sort([a, b])
+
+    edge_of = fn {u, v} ->
+      [{:dummy, edge, _rank} | _] = Enum.filter([u, v], &match?({:dummy, _, _}, &1))
+      edge
+    end
+
     port_gaps =
       if slide? do
         graph.segments
         |> Enum.with_index()
-        |> Enum.flat_map(fn {{u, v}, i} ->
+        |> Enum.flat_map(fn {{u, v} = segment, i} ->
           for {kind, id, other} <- [{:out, u, v}, {:in, v, u}],
               graph.nodes[id].dummy == nil,
-              do: {{kind, id}, {Map.fetch!(index, other), {kind, i}}}
+              do: {{kind, id}, {Map.fetch!(index, other), {kind, i}, edge_of.(segment)}}
         end)
         |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
         |> Enum.flat_map(fn {{_kind, id}, ends} ->
-          ports = ends |> Enum.sort() |> Enum.map(&elem(&1, 1))
+          ports = Enum.sort(ends)
+          room = 2 * reach(graph.nodes[id])
           k = length(ports)
-          gap = if k > 1, do: min(@port_gap, floor(2 * reach(graph.nodes[id]) / (k - 1))), else: 0
-          for [a, b] <- Enum.chunk_every(ports, 2, 1, :discard), do: {a, b, gap, 0}
+          even = if k > 1, do: min(@port_gap, floor(room / (k - 1))), else: 0
+          pairs = Enum.chunk_every(ports, 2, 1, :discard)
+
+          wide =
+            Enum.map(pairs, fn [{_, _, a}, {_, _, b}] ->
+              if MapSet.member?(pair_edges, Enum.sort([a, b])), do: 24, else: @port_gap
+            end)
+
+          gaps = if Enum.sum(wide) <= room, do: wide, else: List.duplicate(even, length(pairs))
+          for {[{_, a, _}, {_, b, _}], gap} <- Enum.zip(pairs, gaps), do: {a, b, gap, 0}
         end)
       else
         []

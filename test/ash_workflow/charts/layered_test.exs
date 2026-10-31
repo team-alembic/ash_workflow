@@ -217,6 +217,21 @@ defmodule AshWorkflow.Charts.LayeredTest do
     assert MapSet.member?(paired.reversed, 2)
   end
 
+  test "a move and its undo lane both run straight, the label on the far side of the move" do
+    nodes = [box(:a, 80), box(:b, 80)]
+    forward = edge(1, :a, :b, 60, 16)
+    undo = %{edge(2, :b, :a) | companion: 1}
+
+    result = Layered.layout(nodes, [forward, undo], companions: :lanes, routing: :orthogonal)
+    xs = fn id -> result.edges[id].points |> Enum.map(&elem(&1, 0)) |> Enum.uniq() end
+
+    assert [undo_x] = xs.(2)
+    assert [forward_x] = xs.(1)
+    assert forward_x - undo_x >= 24
+    assert {lx, _, _, _} = result.edges[1].label
+    assert lx > forward_x
+  end
+
   test "the same input gives the same result" do
     nodes = [box(:a), box(:b), box(:c), box(:d)]
 

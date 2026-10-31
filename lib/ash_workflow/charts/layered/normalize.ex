@@ -28,7 +28,9 @@ defmodule AshWorkflow.Charts.Layered.Normalize do
 
     dummies =
       for rank <- (from + 1)..(to - 1)//1 do
-        if rank == label_rank,
+        # An edge without a label gets no label dummy, so it takes the
+        # narrow edge gap, not a label's, and no label side.
+        if rank == label_rank and edge.label_width > 0,
           do: {{:dummy, edge.id, rank}, rank, edge.label_width, edge.label_height, :label},
           else: {{:dummy, edge.id, rank}, rank, 0, 0, :edge}
       end
