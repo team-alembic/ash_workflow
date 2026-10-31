@@ -4,6 +4,7 @@ defmodule AshWorkflowTest.Domain do
 
   resources do
     resource AshWorkflowTest.Workflow
+    resource AshWorkflowTest.EveryBackoffWorkflow
     resource AshWorkflowTest.LinearWorkflow
     resource AshWorkflowTest.ApprovalWorkflow
     resource AshWorkflowTest.TimeoutWorkflow
@@ -29,12 +30,17 @@ defmodule AshWorkflowTest.Domain do
     resource AshWorkflowTest.CustomSchedulerWorkflow
     resource AshWorkflowTest.OneMinuteWorkflow
     resource AshWorkflowTest.FireAtWorkflow
+    resource AshWorkflowTest.UpsertWorkflow
+    resource AshWorkflowTest.UpsertLog
     resource AshWorkflowTest.PreciseTimeoutWorkflow
     resource AshWorkflowTest.PreciseDeadlineWorkflow
+    resource AshWorkflowTest.PreciseCalculatedDeadlineWorkflow
     resource AshWorkflowTest.PreciseStatusWorkflow
     resource AshWorkflowTest.RaisingStepWorkflow
     resource AshWorkflowTest.SixtySecondsWorkflow
     resource AshWorkflowTest.WaitStateWorkflow
+    resource AshWorkflowTest.SignalWaitWorkflow
+    resource AshWorkflowTest.Customer
     resource AshWorkflowTest.NonPrimaryReadWorkflow
     resource AshWorkflowTest.FailingRouteWorkflow
     resource AshWorkflowTest.TransitionTargetWorkflow
@@ -72,5 +78,10 @@ defmodule AshWorkflowTest.Domain do
     resource AshWorkflowTest.PreciseRetryWorkflow
     resource AshWorkflowTest.PreciseActionTimeoutWorkflow
     resource AshWorkflowTest.PreciseRevisitWorkflow
+    resource AshWorkflowTest.SignalWorkflow
+    resource AshWorkflowTest.SignalListener
+    resource AshWorkflowTest.OrderWorkflow
+    resource AshWorkflowTest.AuthorizedOrderWorkflow
+    resource AshWorkflowTest.Payment
   end
 end

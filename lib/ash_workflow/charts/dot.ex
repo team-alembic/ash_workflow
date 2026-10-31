@@ -25,7 +25,8 @@ defmodule AshWorkflow.Charts.Dot do
   | Timeout | Dashed amber edge, `⏱`, the timeout's name and its deadline |
   | Undo | Dotted grey edge with a hollow arrowhead, `↶ undo`, and the window when `within` is set |
   | Transition | Plain edge, the transition's name |
-  | Step notes | Under a rule inside the step: `policy:`, `retry:`, `⏱` and `↻` |
+  | `on_signal` | Plain edge, `📨` and the signal's name |
+  | Step notes | Under a rule inside the step: `policy:`, `retry:`, `⏱`, `↻` and `📨` |
 
   Each edge kind other than a transition also has a symbol, so a reader who
   cannot tell the colours apart still knows the kind. The colours come from
@@ -38,7 +39,7 @@ defmodule AshWorkflow.Charts.Dot do
 
   * **Red** when only `on_error` edges reach it.
   * **Amber** when only timeouts reach it.
-  * **Green** when only transitions and `on_success` reach it.
+  * **Green** when only transitions, `on_signal` and `on_success` reach it.
   * **Grey** for a mix of these, or for no edge at all.
 
   So a `rejected` step that a person chooses is green, the same as

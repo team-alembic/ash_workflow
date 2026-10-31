@@ -1,5 +1,5 @@
 defmodule AshWorkflow.TransitionLogTest do
-  use ExUnit.Case, async: true
+  use AshWorkflowTest.EtsCase, async: true
 
   alias AshWorkflowTest.LoggedWorkflow
   alias AshWorkflowTest.Reviewer

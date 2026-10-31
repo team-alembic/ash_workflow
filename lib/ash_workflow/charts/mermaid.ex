@@ -16,13 +16,14 @@ defmodule AshWorkflow.Charts.Mermaid do
   * The initial step has an edge from `[*]`, and every terminal step has an
     edge to `[*]`.
   * An edge label starts with a symbol for its kind: `⚙` for `on_success`,
-    `✖` for `on_error`, `⏱` for a timeout and `↶` for undo. A transition has
-    no symbol. A timeout edge gives the timeout's name and then its deadline,
-    as in `⏱ escalation after 7 days`. A conditional route adds `when` and its
-    condition, and the fallback route of a conditional `on_success` adds
-    `otherwise`.
+    `✖` for `on_error`, `📨` for an `on_signal`, `⏱` for a timeout and `↶`
+    for undo. A transition has no symbol. A timeout edge gives the timeout's
+    name and then its deadline, as in `⏱ escalation after 7 days`. A
+    conditional route adds `when` and its condition, and the fallback route
+    of a conditional `on_success` adds `otherwise`.
   * A step's notes go in a `note right of` block: `policy:`, `retry:`, `⏱` for
-    a timeout that runs an action, and `↻` for an `every`.
+    a timeout that runs an action, `↻` for an `every`, and `📨` for an
+    `on_signal` that runs an action.
 
   A state diagram cannot draw a dashed or dotted edge, which is why the edge
   kind is in the label. The characters `#`, `;`, `<`, `>`, `"` and `\\` are written

@@ -48,7 +48,8 @@ defmodule AshWorkflow.Entities.Timeout do
     self_scheduled?: false,
     __spark_metadata__: nil,
     field: nil,
-    retry: nil
+    retry: nil,
+    emits: []
   ]
 
   @type duration_unit :: AshWorkflow.Duration.unit()
@@ -61,7 +62,8 @@ defmodule AshWorkflow.Entities.Timeout do
           check_interval: String.t() | nil,
           self_scheduled?: boolean(),
           field: atom() | nil,
-          retry: AshWorkflow.Entities.Retry.t() | nil
+          retry: AshWorkflow.Entities.Retry.t() | nil,
+          emits: [AshWorkflow.Entities.Emit.t()]
         }
 
   @schema [
