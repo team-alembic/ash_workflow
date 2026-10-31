@@ -101,7 +101,8 @@ defmodule AshWorkflow.Charts.Layered do
     graph = label_sides(graph, layers, opts[:labels])
     {layers, pairs} = pair_companions(layers, graph, lane_companions)
     opts = Keyword.put(opts, :pairs, pairs)
-    coords = Position.run(graph, layers, opts)
+    {coords, lanes, ports} = Position.run(graph, layers, opts)
+    opts = Keyword.merge(opts, lanes: lanes, ports: ports)
 
     result =
       graph

@@ -178,6 +178,19 @@ defmodule AshWorkflow.Charts.LayeredTest do
     end
   end
 
+  test "an edge can meet its box off centre, so it runs straight; a forced step is at least 10 px" do
+    nodes = [box(:a, 160), box(:b, 160), box(:c)]
+    edges = [edge(1, :a, :b, 60, 16), edge(2, :a, :c, 60, 16), edge(3, :b, :c, 60, 16)]
+
+    result = Layered.layout(nodes, edges, routing: :orthogonal)
+    xs = fn id -> result.edges[id].points |> Enum.map(&elem(&1, 0)) |> Enum.uniq() end
+
+    assert length(xs.(1)) == 1
+    assert length(xs.(3)) == 1
+    assert [x1, x2] = xs.(2)
+    assert abs(x1 - x2) >= 10
+  end
+
   test "a lane companion runs in its own lane, at least 24 px left of its partner" do
     nodes = [box(:a), box(:b)]
     forward = edge(1, :a, :b, 30, 16)

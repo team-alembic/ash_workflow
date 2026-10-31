@@ -35,11 +35,21 @@ defmodule AshWorkflow.Charts.Layered.Route do
   def run(graph, coords, reversed, loops, opts) do
     nodes = for {id, %{dummy: nil}} <- graph.nodes, into: %{}, do: {id, Map.fetch!(coords, id)}
     bands = bands(graph, coords)
-    ports = ports(graph, coords, Keyword.get(opts, :routing, :polyline))
+
+    ports =
+      graph
+      |> ports(coords, Keyword.get(opts, :routing, :polyline), Keyword.get(opts, :lanes, %{}))
+      |> Map.merge(solved_ports(graph, coords, Keyword.get(opts, :ports, %{})))
+
+    solved = Keyword.get(opts, :lanes, %{})
 
     routes =
       Map.new(graph.chains, fn {id, chain} ->
-        {id, lanes(id, chain, graph, coords, bands, ports, MapSet.member?(reversed, id))}
+        route =
+          lanes(id, chain, graph, coords, bands, {ports, solved}, MapSet.member?(reversed, id))
+
+        # A lane that x placement solved through a label stays where it is.
+        {id, Map.put(route, :solved, Enum.any?(chain, &Map.has_key?(solved, &1)))}
       end)
 
     routed =
@@ -113,17 +123,23 @@ defmodule AshWorkflow.Charts.Layered.Route do
   #
   # An orthogonal edge can run straight down a label drawn over it at any x
   # in the label's column (see corner/1), so both its ports aim at one x of
-  # that column: one that both ends can reach if there is one.
-  defp ports(graph, coords, routing) do
+  # that column: the x that x placement solved for it (lanes), or else one
+  # that both ends can reach if there is one.
+  defp ports(graph, coords, routing, lanes) do
     line = fn id, chain ->
       {x, _y, w, _h} = Map.fetch!(coords, id)
       node = graph.nodes[id]
 
-      if routing == :orthogonal and Map.get(node, :side) == :over do
-        i = Enum.find_index(chain, &(&1 == id))
-        through(graph, coords, {x, w}, Enum.at(chain, i - 1), Enum.at(chain, i + 1))
-      else
-        x + Position.line_offset(node)
+      cond do
+        Map.has_key?(lanes, id) ->
+          Map.fetch!(lanes, id)
+
+        routing == :orthogonal and Map.get(node, :side) == :over ->
+          i = Enum.find_index(chain, &(&1 == id))
+          through(graph, coords, {x, w}, Enum.at(chain, i - 1), Enum.at(chain, i + 1))
+
+        true ->
+          x + Position.line_offset(node)
       end
     end
 
@@ -140,6 +156,16 @@ defmodule AshWorkflow.Charts.Layered.Route do
     Map.new(spread(out_side, :out, coords) ++ spread(in_side, :in, coords))
   end
 
+  # Ports that x placement solved for (see Position), as offsets.
+  defp solved_ports(graph, coords, ports) do
+    Map.new(ports, fn {{kind, edge} = key, px} ->
+      chain = Map.fetch!(graph.chains, edge)
+      node = if kind == :out, do: hd(chain), else: List.last(chain)
+      {x, _y, _w, _h} = Map.fetch!(coords, node)
+      {key, px - x}
+    end)
+  end
+
   # The x where an orthogonal edge runs down a label drawn over it: within
   # the label's column and, when it can be, within reach of the ends above
   # and below, so the edge passes the label as one straight line.
@@ -150,12 +176,22 @@ defmodule AshWorkflow.Charts.Layered.Route do
     {a_low, a_high} = reach.(above)
     {b_low, b_high} = reach.(below)
     {low, high} = column
-    {both_low, both_high} = {Enum.max([low, a_low, b_low]), Enum.min([high, a_high, b_high])}
 
-    if both_low <= both_high do
-      (both_low + both_high) / 2
-    else
-      ((a_low + a_high + b_low + b_high) / 4) |> max(low) |> min(high)
+    # Straight from end to end if it can be; else straight into the target
+    # below, then from the source above; any step is then in a gap.
+    [
+      [{low, high}, {a_low, a_high}, {b_low, b_high}],
+      [{low, high}, {b_low, b_high}],
+      [{low, high}, {a_low, a_high}]
+    ]
+    |> Enum.map(fn spans ->
+      {spans |> Enum.map(&elem(&1, 0)) |> Enum.max(),
+       spans |> Enum.map(&elem(&1, 1)) |> Enum.min()}
+    end)
+    |> Enum.find(fn {l, h} -> l <= h end)
+    |> case do
+      {l, h} -> (l + h) / 2
+      nil -> ((a_low + a_high + b_low + b_high) / 4) |> max(low) |> min(high)
     end
   end
 
@@ -166,6 +202,7 @@ defmodule AshWorkflow.Charts.Layered.Route do
     do: {x + Position.line_offset(node), x + Position.line_offset(node)}
 
   @port_gap 16
+  @min_step 10
   # Ports whose lanes are past a corner line up inside the middle 60% of the side.
   @port_slots 0.6
 
@@ -188,9 +225,16 @@ defmodule AshWorkflow.Charts.Layered.Route do
       first = Enum.min([x - reach + length(before) * gap | lanes]) - length(before) * gap
       last = Enum.max([x + reach - length(beyond) * gap | lanes]) + gap
 
+      # A port that cannot follow its lane keeps at least @min_step from it,
+      # so the step reads as a step, not as a jog.
       wanted =
-        Enum.map(Enum.with_index(before), fn {_, j} -> first + j * gap end) ++
-          lanes ++ Enum.map(Enum.with_index(beyond), fn {_, j} -> last + j * gap end)
+        Enum.map(Enum.with_index(before), fn {{_, lane}, j} ->
+          max(first + j * gap, lane + @min_step)
+        end) ++
+          lanes ++
+          Enum.map(Enum.with_index(beyond), fn {{_, lane}, j} ->
+            min(last + j * gap, lane - @min_step)
+          end)
 
       left =
         wanted
@@ -205,17 +249,30 @@ defmodule AshWorkflow.Charts.Layered.Route do
           Enum.reduce(rest, [first], fn d, [prev | _] = acc -> [min(d, prev - gap) | acc] end)
         end)
 
+      # Fit the ports inside the side and keep the gap: up from low, then
+      # down from high.
+      fitted =
+        left
+        |> Enum.zip(right)
+        |> Enum.map(fn {l, r} -> (l + r) / 2 end)
+        |> Enum.reduce([], fn d, acc ->
+          [max(d, if(acc == [], do: low, else: hd(acc) + gap)) | acc]
+        end)
+        |> Enum.reduce([], fn d, acc ->
+          [min(d, if(acc == [], do: high, else: hd(acc) - gap)) | acc]
+        end)
+
       sorted
-      |> Enum.zip(Enum.zip(left, right))
-      |> Enum.map(fn {{id, _lane}, {l, r}} ->
-        {{kind, id}, ((l + r) / 2) |> max(low) |> min(high) |> Kernel.-(x)}
+      |> Enum.zip(fitted)
+      |> Enum.map(fn {{id, _lane}, p} ->
+        {{kind, id}, p |> max(low) |> min(high) |> Kernel.-(x)}
       end)
     end)
   end
 
   # The vertical lane pieces of one edge, from its upper end to its lower end:
   # [{rank, top_point, bottom_point}], and its label box.
-  defp lanes(edge_id, chain, graph, coords, bands, ports, reversed?) do
+  defp lanes(edge_id, chain, graph, coords, bands, {ports, solved}, reversed?) do
     last = length(chain) - 1
     # The arrowhead is at the lower end, or at the upper end of a reversed
     # edge; that end gets the longer stub.
@@ -243,12 +300,12 @@ defmodule AshWorkflow.Charts.Layered.Route do
             {{rank, {px, min(top, y - h / 2 - lower_stub)}, {px, y - h / 2}, :end}, label}
 
           graph.nodes[id].dummy == :label ->
-            line = x + Position.line_offset(graph.nodes[id])
+            line = Map.get(solved, id, x + Position.line_offset(graph.nodes[id]))
 
             box_left =
               case Map.get(graph.nodes[id], :side) do
                 :left -> line - @label_inset - w
-                :over -> line - w / 2
+                :over -> x - w / 2
                 _right -> line + @label_inset
               end
 
@@ -441,6 +498,7 @@ defmodule AshWorkflow.Charts.Layered.Route do
   # that lies in the column, or else the x it goes on at; any other step is
   # in a gap, in sight.
   defp corner(%{lanes: lanes, label: {lx, _ly, w, _h}} = route) do
+    solved? = Map.get(route, :solved, false)
     {low, high} = {lx + min(@corner_pad, w / 2), lx + w - min(@corner_pad, w / 2)}
     within? = &(&1 >= low - 0.5 and &1 <= high + 0.5)
 
@@ -449,14 +507,14 @@ defmodule AshWorkflow.Charts.Layered.Route do
       |> Enum.zip(lanes)
       |> Enum.zip(tl(lanes) ++ [nil])
       |> Enum.map(fn
-        {{{_r0, _t0, {a, _}, _k0}, {rank, {_l, top}, {_l2, bottom}, :over}},
+        {{{_r0, _t0, {a, _}, _k0}, {rank, {l, top}, {_l2, bottom}, :over}},
          {_r2, {c, _}, _b2, _k2}} ->
+          # A step on either side is 0 or at least @min_step, never a jog.
+          clean? = fn x -> Enum.all?([a, c], &(abs(&1 - x) < 0.5 or abs(&1 - x) >= @min_step)) end
+
           x =
-            cond do
-              within?.(a) -> a
-              within?.(c) -> c
-              true -> a |> max(low) |> min(high)
-            end
+            Enum.find([a, c], &(within?.(&1) and clean?.(&1))) ||
+              if(solved?, do: l, else: a |> max(low) |> min(high))
 
           {rank, {x, top}, {x, bottom}, :over}
 

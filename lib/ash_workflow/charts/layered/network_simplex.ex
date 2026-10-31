@@ -36,45 +36,33 @@ defmodule AshWorkflow.Charts.Layered.NetworkSimplex do
     Map.new(ranks, fn {id, rank} -> {id, rank - low} end)
   end
 
-  defp longest_path(ids, edges) do
-    incoming = Enum.group_by(edges, & &1.to)
+  # The least ranks that meet every minlen: relax the edges until nothing
+  # changes. This also works when the edges form cycles, as long as no cycle
+  # has a positive total minlen; x placement uses such cycles to keep a
+  # variable within a distance of another, on both sides.
+  defp longest_path(ids, edges), do: relax(Map.new(ids, &{&1, 0}), edges, length(ids))
 
-    ids
-    |> topological(edges)
-    |> Enum.reduce(%{}, fn id, ranks ->
-      rank =
-        incoming
-        |> Map.get(id, [])
-        |> Enum.map(fn e -> Map.fetch!(ranks, e.from) + e.minlen end)
-        |> Enum.max(fn -> 0 end)
+  @doc "True when some ranks meet every minlen: no cycle has a positive total."
+  def feasible?(ids, edges) do
+    edges =
+      Enum.map(edges, fn {from, to, minlen, _weight} -> %{from: from, to: to, minlen: minlen} end)
 
-      Map.put(ranks, id, rank)
-    end)
+    relax(Map.new(ids, &{&1, 0}), edges, length(ids))
+    true
+  rescue
+    ArgumentError -> false
   end
 
-  defp topological(ids, edges) do
-    indegree =
-      Enum.reduce(edges, Map.new(ids, &{&1, 0}), fn e, acc ->
-        Map.update!(acc, e.to, &(&1 + 1))
+  defp relax(_ranks, _edges, n) when n < 0,
+    do: raise(ArgumentError, "the minlens form a cycle with a positive total")
+
+  defp relax(ranks, edges, n) do
+    next =
+      Enum.reduce(edges, ranks, fn e, ranks ->
+        Map.update!(ranks, e.to, &max(&1, Map.fetch!(ranks, e.from) + e.minlen))
       end)
 
-    out = Enum.group_by(edges, & &1.from, & &1.to)
-    take(ids, indegree, out, [])
-  end
-
-  defp take(ids, indegree, out, acc) do
-    case Enum.find(ids, &(Map.fetch!(indegree, &1) == 0)) do
-      nil ->
-        Enum.reverse(acc)
-
-      id ->
-        indegree =
-          out
-          |> Map.get(id, [])
-          |> Enum.reduce(indegree, fn to, indegree -> Map.update!(indegree, to, &(&1 - 1)) end)
-
-        take(List.delete(ids, id), indegree, out, [id | acc])
-    end
+    if next == ranks, do: ranks, else: relax(next, edges, n - 1)
   end
 
   # Grow a tree of tight edges (slack 0) from the first node. When it stops
