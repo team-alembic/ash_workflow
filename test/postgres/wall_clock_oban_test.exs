@@ -150,6 +150,21 @@ defmodule AshWorkflowTest.Postgres.WallClockObanTest do
     assert digest_count(london) == 0
   end
 
+  test "a row whose zone Postgres does not know is skipped without failing the others" do
+    zone = "Australia/Sydney"
+    unknown = submit!("Mars/Olympus_Mons")
+    known = submit!(zone)
+
+    set_field(unknown, :state_entered_at, before_occurrence(zone))
+    set_field(known, :state_entered_at, before_occurrence(zone))
+
+    run_trigger!()
+    drain!()
+
+    assert digest_count(unknown) == 0
+    assert digest_count(known) == 1
+  end
+
   test "the fragment agrees with AshWorkflow.WallClock about which records are due" do
     zone = "Australia/Sydney"
     due = submit!(zone)

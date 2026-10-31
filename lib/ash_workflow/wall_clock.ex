@@ -127,6 +127,7 @@ defmodule AshWorkflow.WallClock do
   def time_zone_for(%__MODULE__{time_zone: attribute}, record) do
     case Map.get(record, attribute) do
       zone when is_binary(zone) -> zone
+      %Ash.CiString{} = zone -> Ash.CiString.value(zone)
       _other -> nil
     end
   end

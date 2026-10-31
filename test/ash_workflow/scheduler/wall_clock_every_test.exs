@@ -167,4 +167,60 @@ defmodule AshWorkflow.Scheduler.WallClockEveryTest do
     assert digest_count(record) == 0
     assert Ash.load!(reload(record), :pending_deadlines).pending_deadlines == []
   end
+
+  describe "with max_fires" do
+    alias AshWorkflowTest.WallClockMaxFiresWorkflow, as: Capped
+
+    setup do
+      on_exit(fn ->
+        Ets.stop(Capped)
+        await_stopped(Module.concat(Capped, Ash.DataLayer.Ets.TableManager))
+      end)
+
+      :ok
+    end
+
+    test "stops firing once the step visit has used up its fires" do
+      occurrence = last_occurrence("Australia/Sydney")
+      record = Capped.create!(%{title: "one"})
+
+      record
+      |> Ash.Changeset.for_update(:set_clock, %{})
+      |> Ash.Changeset.force_change_attribute(
+        :state_entered_at,
+        DateTime.add(occurrence, -3, :day)
+      )
+      |> Ash.Changeset.force_change_attribute(
+        :waiting_digest_last_fired_at,
+        DateTime.add(occurrence, -1, :day)
+      )
+      |> Ash.Changeset.force_change_attribute(:waiting_digest_fires, 2)
+      |> Ash.update!()
+
+      assert Precise.run_due(Capped) == 0
+      assert Ash.get!(Capped, record.id).digest_count == 0
+    end
+
+    test "fires while the step visit has fires left" do
+      occurrence = last_occurrence("Australia/Sydney")
+      record = Capped.create!(%{title: "one"})
+
+      record
+      |> Ash.Changeset.for_update(:set_clock, %{})
+      |> Ash.Changeset.force_change_attribute(
+        :state_entered_at,
+        DateTime.add(occurrence, -3, :day)
+      )
+      |> Ash.Changeset.force_change_attribute(
+        :waiting_digest_last_fired_at,
+        DateTime.add(occurrence, -1, :day)
+      )
+      |> Ash.Changeset.force_change_attribute(:waiting_digest_fires, 1)
+      |> Ash.update!()
+
+      assert Precise.run_due(Capped) == 1
+
+      assert %{digest_count: 1, waiting_digest_fires: 2} = Ash.get!(Capped, record.id)
+    end
+  end
 end

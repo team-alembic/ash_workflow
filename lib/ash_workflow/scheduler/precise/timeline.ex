@@ -256,7 +256,10 @@ defmodule AshWorkflow.Scheduler.Precise.Timeline do
   # in. Read the records in the step and let `arm/3` compute each occurrence
   # through `AshWorkflow.Scheduler.due_at/2`.
   defp due_records(%Work{deadline: %{wall_clock: _schedule}} = work, state, _cutoff) do
-    filter = until_filter(Ash.Expr.expr(^in_step(work)), work)
+    filter =
+      Ash.Expr.expr(^in_step(work))
+      |> until_filter(work)
+      |> max_fires_filter(work)
 
     read(work.resource, filter, state, Work.deadline_loads(work))
   end
@@ -503,7 +506,9 @@ defmodule AshWorkflow.Scheduler.Precise.Timeline do
   # `AshWorkflow.Scheduler.Precise` working on a data layer with no `fragment`
   # support at all.
   defp recheck_filter(%Work{deadline: %{wall_clock: _schedule}} = work) do
-    until_filter(Ash.Expr.expr(^in_step(work)), work)
+    Ash.Expr.expr(^in_step(work))
+    |> until_filter(work)
+    |> max_fires_filter(work)
   end
 
   defp recheck_filter(%Work{match: match}), do: match

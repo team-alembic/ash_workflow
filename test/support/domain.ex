@@ -25,6 +25,7 @@ defmodule AshWorkflowTest.Domain do
     resource AshWorkflowTest.RepeatingTimeoutWorkflow
     resource AshWorkflowTest.EveryUntilWorkflow
     resource AshWorkflowTest.WallClockWorkflow
+    resource AshWorkflowTest.WallClockMaxFiresWorkflow
     resource AshWorkflowTest.StrideWorkflow
     resource AshWorkflowTest.RelatedZoneWorkflow
     resource AshWorkflowTest.Candidate

@@ -226,6 +226,13 @@ defmodule AshWorkflow.WallClockTest do
                "Europe/London"
     end
 
+    test "unwraps a ci_string attribute" do
+      schedule = daily(~T[09:00:00], :candidate_time_zone)
+      zone = Ash.CiString.new("Europe/London")
+
+      assert WallClock.time_zone_for(schedule, %{candidate_time_zone: zone}) == "Europe/London"
+    end
+
     test "is nil when the attribute is unset" do
       schedule = daily(~T[09:00:00], :candidate_time_zone)
 
