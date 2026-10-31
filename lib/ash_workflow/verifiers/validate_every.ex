@@ -213,14 +213,21 @@ defmodule AshWorkflow.Verifiers.ValidateEvery do
           path: [:workflow, :step, step.name],
           message:
             "every :#{every.name} on step :#{step.name} has until: #{inspect(until)}, " <>
-              "which is not longer than interval: #{inspect(interval)}. It would fire once, " <>
-              "on entry, and never a second time before the bound is reached. `until` must be " <>
-              "strictly greater than `interval`."
+              "which is not longer than interval: #{inspect(interval)}. " <>
+              until_consequence(every) <> " `until` must be strictly greater than `interval`."
         )}}
     else
       {:cont, :ok}
     end
   end
+
+  defp until_consequence(%{at: nil}),
+    do: "It would fire once, on entry, and never a second time before the bound is reached."
+
+  defp until_consequence(_every),
+    do:
+      "With at, the interval is a stride and the first fire lands one stride after entry, " <>
+        "so the bound is reached before anything fires."
 
   # `AshWorkflow.Transformers.AddAttributes` always creates the column, unless
   # a same-named attribute already exists on the resource — the same pattern

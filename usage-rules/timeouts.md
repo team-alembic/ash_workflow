@@ -192,7 +192,7 @@ The first fire is the first occurrence after the record entered the step, so a r
 
 A missed occurrence fires late rather than being skipped. If nothing polled at 09:00, the digest goes out whenever polling resumes, on that day or a later one, once, no matter how many occurrences were missed.
 
-Across a daylight saving change, a local time that was skipped still fires that day, at the instant the clock jumped to. A local time that happens twice fires on the first of the two instants. See `AshWorkflow.WallClock`.
+Across a daylight saving change, a local time that was skipped still fires that day, at the instant the clock jumped to. A local time that happens twice fires on the first of the two instants. See `AshWorkflow.WallClock`. Under `AshWorkflow.Scheduler.Oban`, Postgres places those two cases itself, so on those days the fire can land up to an hour after the instant `pending_deadlines` reports.
 
 ### Striding with `interval` and `at` together
 

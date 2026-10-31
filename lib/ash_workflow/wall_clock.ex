@@ -56,8 +56,10 @@ defmodule AshWorkflow.WallClock do
   `fragment` for the polled trigger, which answers "is this record due now".
   This module answers the other question — "when is this record next due" —
   in Elixir, for `AshWorkflow.Scheduler.Precise` to arm a timer against and
-  for `AshWorkflow.Calculations.PendingDeadlines` to report. Both readers
-  agree on the two rules below.
+  for `AshWorkflow.Calculations.PendingDeadlines` to report. The rules below
+  are this module's. On the two daylight saving days a year, Postgres places a
+  skipped or repeated local time differently, so the Oban trigger can fire up
+  to an hour after the instant this module reports. It still fires once.
 
   ## Daylight saving
 
@@ -170,8 +172,8 @@ defmodule AshWorkflow.WallClock do
   The most recent occurrence at or before `now`, or `nil` when the zone is
   unknown to the configured time zone database.
 
-  This is the boundary the polled trigger compares the last fire against. It
-  describes the occurrence grid `at` and `on` lay down, so it ignores
+  The polled trigger computes the same boundary in SQL, so this function is
+  how tests state what the trigger should agree with. It describes the occurrence grid `at` and `on` lay down, so it ignores
   `stride` — a stride is a rule about the gap from the last fire, and this
   function is not given one.
   """

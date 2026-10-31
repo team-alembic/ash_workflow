@@ -334,6 +334,18 @@ defmodule AshWorkflow.Verifiers.ValidateEveryTest do
       )
     end
 
+    test "rejects an until not longer than a stride, saying the first fire is one stride out" do
+      assert_dsl_error(
+        wall_clock_workflow("StrideUntilWorkflow", """
+                  interval {14, :days}
+                  at ~T[09:00:00]
+                  time_zone "Australia/Sydney"
+                  until {10, :days}
+        """),
+        ~r/the first fire lands one stride after entry/
+      )
+    end
+
     test "rejects at without a time_zone, since a wall-clock time is not an instant" do
       assert_dsl_error(
         wall_clock_workflow("NoTimeZoneWorkflow", """
