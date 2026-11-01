@@ -82,7 +82,8 @@ defmodule AshWorkflow.Calculations.PendingDeadlines do
   # same fallback `AshWorkflow.Transformers.AddScheduler` compiles into the
   # trigger's `where`.
   # A wall-clock `every` reports the first occurrence of its local time after
-  # the last fire, or after entry when it has never fired. A record naming a
+  # the later of its last fire and entry. A last fire from an earlier visit to
+  # the step is older than entry, so it does not make the record due. A record naming a
   # zone the time zone database does not know has no computable occurrence and
   # is omitted, the same way a nil timeout field is.
   defp deadline(
@@ -92,7 +93,9 @@ defmodule AshWorkflow.Calculations.PendingDeadlines do
     last_fired_at = as_datetime(Map.get(record, every.field))
     state_entered_at = as_datetime(Map.get(record, :state_entered_at))
     fires = every.fires_field && Map.get(record, every.fires_field)
-    from = last_fired_at || state_entered_at
+
+    from = later(last_fired_at, state_entered_at)
+
     time_zone = AshWorkflow.WallClock.time_zone_for(wall_clock, record)
 
     cond do
@@ -143,6 +146,10 @@ defmodule AshWorkflow.Calculations.PendingDeadlines do
       {:ok, false} -> []
     end
   end
+
+  defp later(nil, other), do: other
+  defp later(other, nil), do: other
+  defp later(left, right), do: Enum.max([left, right], DateTime)
 
   defp exhausted?(%{max_fires: nil}, _last_fired_at, _fires, _state_entered_at), do: false
   defp exhausted?(_every, nil, _fires, _state_entered_at), do: false

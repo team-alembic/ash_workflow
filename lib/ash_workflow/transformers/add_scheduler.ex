@@ -211,9 +211,15 @@ defmodule AshWorkflow.Transformers.AddScheduler do
   # the same as `AshWorkflow.WallClock.next_occurrence/3`.
   #
   # Postgres raises on a zone it does not recognise, which would fail the
-  # whole trigger query rather than the one row. The `CASE` guard skips that
-  # row instead, as `AshWorkflow.WallClock.next_occurrence/3` does, and `CASE`
-  # is the one construct whose evaluation order Postgres guarantees.
+  # whole trigger query rather than the one row. `known_zone_guard/2` skips
+  # that row instead, as `AshWorkflow.WallClock.next_occurrence/3` does. It is
+  # an `if`, which renders as `CASE`, the one construct whose evaluation order
+  # Postgres guarantees.
+  #
+  # The occurrence is measured from the later of the last fire and
+  # `state_entered_at`. A fire from before entry belongs to an earlier visit to
+  # the step, and must not make the record due on re-entry. `greatest` ignores
+  # a `NULL`, so a record that has never fired measures from entry.
   #
   # This is one `fragment` rather than a composition of Ash operators so that
   # nothing has to infer a type for a `time` or for an `AT TIME ZONE` result.
@@ -233,13 +239,18 @@ defmodule AshWorkflow.Transformers.AddScheduler do
   # `AshWorkflow.Scheduler.Precise` reads `Work.deadline` instead and computes
   # the same occurrence in Elixir through `AshWorkflow.WallClock`, so it needs
   # no data layer support at all.
-  defp every_due(%Every{}, %AshWorkflow.WallClock{stride: nil} = wall_clock, field) do
+  defp every_due(%Every{}, %AshWorkflow.WallClock{} = wall_clock, field) do
+    wall_clock
+    |> occurrence_due(field)
+    |> known_zone_guard(wall_clock)
+  end
+
+  defp occurrence_due(%AshWorkflow.WallClock{stride: nil} = wall_clock, field) do
     zone = time_zone_expr(wall_clock)
 
     Ash.Expr.expr(
       fragment(
-        "CASE WHEN ? IN (SELECT name FROM pg_timezone_names) THEN EXISTS (SELECT 1 FROM (SELECT (now() AT TIME ZONE ?)::date - back AS day FROM generate_series(0, 7) AS back) AS o WHERE EXTRACT(ISODOW FROM o.day)::int = ANY(?) AND ((o.day + ?::time) AT TIME ZONE ?) <= now() AND (coalesce(?, ?) AT TIME ZONE 'UTC') < ((o.day + ?::time) AT TIME ZONE ?)) ELSE false END",
-        ^zone,
+        "EXISTS (SELECT 1 FROM (SELECT (now() AT TIME ZONE ?)::date - back AS day FROM generate_series(0, 7) AS back) AS o WHERE EXTRACT(ISODOW FROM o.day)::int = ANY(?) AND ((o.day + ?::time) AT TIME ZONE ?) <= now() AND (greatest(?, ?) AT TIME ZONE 'UTC') < ((o.day + ?::time) AT TIME ZONE ?))",
         ^zone,
         ^days(wall_clock),
         ^time(wall_clock),
@@ -252,13 +263,12 @@ defmodule AshWorkflow.Transformers.AddScheduler do
     )
   end
 
-  defp every_due(%Every{}, %AshWorkflow.WallClock{stride: stride} = wall_clock, field) do
+  defp occurrence_due(%AshWorkflow.WallClock{stride: stride} = wall_clock, field) do
     zone = time_zone_expr(wall_clock)
 
     Ash.Expr.expr(
       fragment(
-        "CASE WHEN ? IN (SELECT name FROM pg_timezone_names) THEN EXISTS (SELECT 1 FROM (SELECT (now() AT TIME ZONE ?)::date - back AS day FROM generate_series(0, 7) AS back) AS o WHERE EXTRACT(ISODOW FROM o.day)::int = ANY(?) AND ((o.day + ?::time) AT TIME ZONE ?) <= now() AND (coalesce(?, ?) AT TIME ZONE 'UTC') < ((o.day + ?::time) AT TIME ZONE ?) AND o.day - ((coalesce(?, ?) AT TIME ZONE 'UTC') AT TIME ZONE ?)::date >= ?) ELSE false END",
-        ^zone,
+        "EXISTS (SELECT 1 FROM (SELECT (now() AT TIME ZONE ?)::date - back AS day FROM generate_series(0, 7) AS back) AS o WHERE EXTRACT(ISODOW FROM o.day)::int = ANY(?) AND ((o.day + ?::time) AT TIME ZONE ?) <= now() AND (greatest(?, ?) AT TIME ZONE 'UTC') < ((o.day + ?::time) AT TIME ZONE ?) AND o.day - ((greatest(?, ?) AT TIME ZONE 'UTC') AT TIME ZONE ?)::date >= ?)",
         ^zone,
         ^days(wall_clock),
         ^time(wall_clock),
@@ -271,6 +281,21 @@ defmodule AshWorkflow.Transformers.AddScheduler do
         ^ref(:state_entered_at),
         ^zone,
         ^Ash.Expr.expr(type(^stride, :integer))
+      )
+    )
+  end
+
+  # A literal zone was checked against the time zone database at compile time
+  # by `AshWorkflow.Verifiers.ValidateEvery`, so only a zone read from the row
+  # needs the guard and its scan of `pg_timezone_names`.
+  defp known_zone_guard(due, %AshWorkflow.WallClock{time_zone: zone}) when is_binary(zone),
+    do: due
+
+  defp known_zone_guard(due, %AshWorkflow.WallClock{time_zone: attribute}) do
+    Ash.Expr.expr(
+      if(fragment("? IN (SELECT name FROM pg_timezone_names)", ^ref(attribute)),
+        do: ^due,
+        else: false
       )
     )
   end

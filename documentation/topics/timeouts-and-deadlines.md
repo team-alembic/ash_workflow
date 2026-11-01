@@ -214,23 +214,27 @@ A record that has never fired has no last fire to measure the stride from, so it
 Under `AshWorkflow.Scheduler.Oban` the `where` clause is a Postgres fragment, because the zone is per row:
 
 ```sql
-EXISTS (
-  SELECT 1
-  FROM (
-    SELECT (now() AT TIME ZONE candidate_time_zone)::date - back AS day
-    FROM generate_series(0, 6) AS back
-  ) AS o
-  WHERE EXTRACT(ISODOW FROM o.day)::int = ANY('{1,2,3,4,5}')
-    AND ((o.day + '09:00:00'::time) AT TIME ZONE candidate_time_zone) <= now()
-    AND (coalesce(waiting_digest_last_fired_at, state_entered_at) AT TIME ZONE 'UTC')
-        < ((o.day + '09:00:00'::time) AT TIME ZONE candidate_time_zone)
-)
+CASE WHEN candidate_time_zone IN (SELECT name FROM pg_timezone_names) THEN
+  EXISTS (
+    SELECT 1
+    FROM (
+      SELECT (now() AT TIME ZONE candidate_time_zone)::date - back AS day
+      FROM generate_series(0, 7) AS back
+    ) AS o
+    WHERE EXTRACT(ISODOW FROM o.day)::int = ANY('{1,2,3,4,5}')
+      AND ((o.day + '09:00:00'::time) AT TIME ZONE candidate_time_zone) <= now()
+      AND (greatest(waiting_digest_last_fired_at, state_entered_at) AT TIME ZONE 'UTC')
+          < ((o.day + '09:00:00'::time) AT TIME ZONE candidate_time_zone)
+  )
+ELSE false END
 ```
 
-That is "on one of the last seven local dates, a listed day's 09:00 has passed, and the last fire is older than it". `on` is never empty, so the most recent occurrence is always one of those seven. So `at` needs a SQL data layer under the Oban scheduler. A stride adds one more clause inside the subquery, comparing the occurrence's local date with the last fire's:
+That is "on today or one of the seven local dates before it, a listed day's 09:00 has passed, and both the last fire and step entry are older than it". `on` is never empty, so the most recent occurrence is always one of those eight dates, even when today's 09:00 has not arrived and the last one fell a week ago. `greatest` ignores a `NULL`, so a record that has never fired measures from entry. A last fire from an earlier visit to the step is older than entry, so re-entering the step does not make the record due.
+
+The `CASE` skips a row whose zone Postgres does not know, rather than failing the whole query, and is the one construct whose evaluation order Postgres guarantees. A literal `time_zone` was already checked at compile time, so its fragment has no `CASE`. So `at` needs a SQL data layer under the Oban scheduler. A stride adds one more clause inside the subquery, comparing the occurrence's local date with the last fire's:
 
 ```sql
-    AND o.day - ((coalesce(waiting_digest_last_fired_at, state_entered_at) AT TIME ZONE 'UTC')
+    AND o.day - ((greatest(waiting_digest_last_fired_at, state_entered_at) AT TIME ZONE 'UTC')
                  AT TIME ZONE candidate_time_zone)::date >= 14
 ```
 

@@ -92,6 +92,24 @@ defmodule AshWorkflowTest.Postgres.WallClockObanTest do
     assert digest_count(workflow) == 1
   end
 
+  test "a last fire from an earlier visit does not make the record due on re-entry" do
+    zone = "Australia/Sydney"
+    workflow = submit!(zone)
+
+    set_field(workflow, :state_entered_at, DateTime.add(last_occurrence(zone), 1, :minute))
+
+    set_field(
+      workflow,
+      :waiting_digest_last_fired_at,
+      DateTime.add(last_occurrence(zone), -3, :day)
+    )
+
+    run_trigger!()
+    drain!()
+
+    assert digest_count(workflow) == 0
+  end
+
   test "a missed occurrence fires once, late, rather than once per occurrence missed" do
     zone = "Australia/Sydney"
     workflow = submit!(zone)
