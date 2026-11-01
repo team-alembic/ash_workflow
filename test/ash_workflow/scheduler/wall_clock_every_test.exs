@@ -118,6 +118,23 @@ defmodule AshWorkflow.Scheduler.WallClockEveryTest do
     assert digest_count(record) == 1
   end
 
+  test "a last fire from an earlier visit does not make the record due on re-entry" do
+    zone = "Australia/Sydney"
+    record = create!(zone)
+    entered_at = DateTime.add(last_occurrence(zone), 1, :minute)
+
+    set_clock(record,
+      state_entered_at: entered_at,
+      digest_fired_at: DateTime.add(last_occurrence(zone), -3, :day)
+    )
+
+    assert Precise.run_due(Workflow) == 0
+    assert digest_count(record) == 0
+
+    [deadline] = Ash.load!(reload(record), :pending_deadlines).pending_deadlines
+    assert DateTime.after?(deadline.due_at, entered_at)
+  end
+
   test "a missed occurrence still fires, late" do
     zone = "Australia/Sydney"
     record = create!(zone)

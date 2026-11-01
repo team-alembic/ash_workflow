@@ -345,20 +345,15 @@ defmodule AshWorkflow.Scheduler do
   # zone comes off the record, so a record naming a zone the time zone
   # database does not know has no computable deadline and arms nothing.
   def due_at(%Work{deadline: %{field: field, wall_clock: wall_clock}}, record) do
-    from = Map.get(record, field) || Map.get(record, :state_entered_at)
-
-    case from do
+    case wall_clock_anchor(Map.get(record, field), Map.get(record, :state_entered_at)) do
       nil ->
-        nil
-
-      %Ash.NotLoaded{} ->
         nil
 
       from ->
         AshWorkflow.WallClock.next_occurrence(
           wall_clock,
           AshWorkflow.WallClock.time_zone_for(wall_clock, record),
-          as_datetime(from)
+          from
         )
     end
   end
@@ -369,6 +364,18 @@ defmodule AshWorkflow.Scheduler do
       %Ash.NotLoaded{} -> nil
       from -> offset(as_datetime(from), fire_after)
     end
+  end
+
+  # A last fire from before `state_entered_at` belongs to an earlier visit to
+  # the step, so the occurrence is measured from whichever is later.
+  defp wall_clock_anchor(%Ash.NotLoaded{}, _state_entered_at), do: nil
+  defp wall_clock_anchor(_last_fired_at, %Ash.NotLoaded{}), do: nil
+  defp wall_clock_anchor(nil, nil), do: nil
+  defp wall_clock_anchor(nil, state_entered_at), do: as_datetime(state_entered_at)
+  defp wall_clock_anchor(last_fired_at, nil), do: as_datetime(last_fired_at)
+
+  defp wall_clock_anchor(last_fired_at, state_entered_at) do
+    Enum.max([as_datetime(last_fired_at), as_datetime(state_entered_at)], DateTime)
   end
 
   defp offset(from, nil), do: from
