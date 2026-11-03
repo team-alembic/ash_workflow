@@ -32,7 +32,10 @@ defmodule AshWorkflow.RecipeCaseTest do
       """)
 
     files =
-      Map.new(["#{@fixtures}/domain.ex", "#{@fixtures}/reviewer.ex"], &{&1, File.read!(&1)})
+      Map.new(
+        ~w(domain reviewer auditor) |> Enum.map(&"#{@fixtures}/#{&1}.ex"),
+        &{&1, File.read!(&1)}
+      )
 
     recipe = files |> Map.put(@ticket, ticket_source) |> recipe([@ticket]) |> compile(tmp_dir)
     ticket = recipe.modules[Ticket]
