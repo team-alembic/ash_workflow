@@ -36,6 +36,7 @@ defmodule AshWorkflow.Scheduler.Precise.Timeline do
 
   require Logger
 
+  alias AshWorkflow.Entities.Every
   alias AshWorkflow.Info
   alias AshWorkflow.Scheduler
   alias AshWorkflow.Scheduler.Leader
@@ -256,8 +257,9 @@ defmodule AshWorkflow.Scheduler.Precise.Timeline do
     filter =
       Ash.Expr.expr(^in_step(work) and ^field_due(work, field, bound) and ^Work.not_fired(work))
       |> until_filter(work)
+      |> max_fires_filter(work)
 
-    read(work.resource, filter, state, deadline_loads(work))
+    read(work.resource, filter, state, Work.deadline_loads(work))
   end
 
   # `Work.match` already reads the attribute the workflow named, and this filter
@@ -288,16 +290,6 @@ defmodule AshWorkflow.Scheduler.Precise.Timeline do
   defp bound(cutoff, nil), do: cutoff
   defp bound(cutoff, {value, unit}), do: DateTime.add(cutoff, -value, singular(unit))
 
-  # `AshWorkflow.Scheduler.due_at/2` reads the deadline field off the record with
-  # `Map.get/2`, which finds nothing for a calculation that has not been loaded.
-  # A timeout may name an expression calculation as its `field` or its `fire_at`,
-  # so load it with the records the timer is armed from.
-  defp deadline_loads(%Work{deadline: %{field: field}, resource: resource}) do
-    if Ash.Resource.Info.calculation(resource, field), do: [field], else: []
-  end
-
-  defp deadline_loads(%Work{}), do: []
-
   # Without this, a record whose `until` bound has already passed keeps
   # matching the plain `field <= bound` filter above forever, so every sweep
   # arms a timer for it, `fire/4` re-checks `Work.match` and finds nothing, and
@@ -313,6 +305,18 @@ defmodule AshWorkflow.Scheduler.Precise.Timeline do
     bound = DateTime.add(DateTime.utc_now(), -value, singular(unit))
 
     Ash.Expr.expr(^filter and ^ref(:state_entered_at) > ^bound)
+  end
+
+  # Like `until_filter/2`, this stops a record that has used up its fires
+  # from being armed again on every sweep.
+  defp max_fires_filter(filter, %Work{max_fires: nil}), do: filter
+
+  defp max_fires_filter(filter, %Work{deadline: %{field: field}} = work) do
+    Ash.Expr.expr(
+      ^filter and
+        (is_nil(^ref(field)) or ^ref(field) < state_entered_at or
+           ^ref(work.fires_field) < ^work.max_fires)
+    )
   end
 
   defp read(resource, filter, state, loads \\ []) do
@@ -401,6 +405,24 @@ defmodule AshWorkflow.Scheduler.Precise.Timeline do
   # arithmetic.
   defp delay_ms(%Work{deadline: nil}, _record), do: 0
 
+  # With a `backoff` the gap after a fire depends on the fire count, which
+  # `AshWorkflow.Scheduler.due_at/2` does not read.
+  defp delay_ms(
+         %Work{deadline: %{field: field, fire_after: interval}, backoff: backoff} = work,
+         record
+       )
+       when not is_nil(backoff) do
+    interval
+    |> Every.next_due_at(
+      backoff,
+      Map.get(record, field),
+      Map.get(record, work.fires_field),
+      record.state_entered_at
+    )
+    |> DateTime.diff(DateTime.utc_now(), :microsecond)
+    |> to_timer_ms()
+  end
+
   defp delay_ms(%Work{deadline: %{field: field}, repeat?: true} = work, record) do
     case Map.get(record, field) do
       nil -> due_delay(work, Map.put(record, field, record.state_entered_at))
@@ -452,7 +474,7 @@ defmodule AshWorkflow.Scheduler.Precise.Timeline do
 
     filter = Ash.Expr.expr(^Ash.Expr.expr(^pk_filter) and ^work.match)
 
-    case read(work.resource, filter, state, deadline_loads(work)) do
+    case read(work.resource, filter, state, Work.deadline_loads(work)) do
       # The record left the step, or its deadline moved. Whatever armed this
       # timer is out of date, and doing nothing is the correct outcome.
       [] -> state

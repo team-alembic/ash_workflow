@@ -15,7 +15,7 @@ defmodule AshWorkflowDemo.ATS.Candidate do
   use Ash.Resource,
     domain: AshWorkflowDemo.ATS,
     data_layer: AshPostgres.DataLayer,
-    extensions: [AshWorkflow, AshOban],
+    extensions: [AshWorkflow],
     notifiers: [AshWorkflowDemo.ATS.Candidate.Notifier]
 
   postgres do
@@ -135,7 +135,7 @@ defmodule AshWorkflowDemo.ATS.Candidate do
     # Every deadline here is shorter than a minute, which is more than cron can
     # poll for. Precise arms a timer per deadline instead of polling, so they
     # need no self_scheduled? flag and no hand-rolled ticker.
-    # scheduler AshWorkflow.Scheduler.Precise
+    scheduler AshWorkflow.Scheduler.Precise
 
     transition_log AshWorkflowDemo.ATS.CandidateTransition
 
