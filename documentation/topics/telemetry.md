@@ -12,7 +12,7 @@ AshWorkflow emits `:telemetry` events around every state change and every condit
 | `[:ash_workflow, :transition, :stop]` | It finishes, with `duration` |
 | `[:ash_workflow, :route_evaluation]` | A conditional transition picks a route |
 
-`AshWorkflow.Changes.RecordEvent` emits the span, and that change runs on every action AshWorkflow generates. So a manual transition, an automatic step, a timeout, an error path, an undo and the initial create all produce one span, and `triggered_by` says which:
+`AshWorkflow.Changes.RecordEvent` emits the span, and that change runs on every action AshWorkflow generates. So a manual transition, an automatic step, a timeout, an error path, an undo, a received signal and the initial create all produce one span, and `triggered_by` says which:
 
 ```elixir
 :telemetry.attach(

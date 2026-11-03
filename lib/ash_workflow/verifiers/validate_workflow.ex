@@ -123,7 +123,7 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
       step.on_success != [] ->
         step_error(
           step,
-          "Step :#{step.name} has no action, so on_success would never fire. A timeout's transition_to is what moves a wait state along."
+          "Step :#{step.name} has no action, so on_success would never fire. A timeout's or on_signal's transition_to is what moves a wait state along."
         )
 
       step.on_error != nil ->
@@ -132,10 +132,11 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
           "Step :#{step.name} has no action, so on_error would never fire."
         )
 
-      not Enum.any?(step.timeouts, & &1.transition_to) ->
+      not (Enum.any?(step.timeouts, & &1.transition_to) or
+               Enum.any?(step.on_signals, & &1.transition_to)) ->
         step_error(
           step,
-          "Step :#{step.name} has no action and no transitions, so a timeout is its only way out, but none of its timeouts declare transition_to. Records entering it would never leave."
+          "Step :#{step.name} has no action and no transitions, so a timeout or on_signal is its only way out, but none of its timeouts or on_signals declare transition_to. Records entering it would never leave."
         )
 
       true ->
@@ -561,7 +562,10 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
             timeout_targets =
               step.timeouts |> Enum.map(& &1.transition_to) |> Enum.reject(&is_nil/1)
 
-            successors ++ transition_targets ++ timeout_targets
+            on_signal_targets =
+              step.on_signals |> Enum.map(& &1.transition_to) |> Enum.reject(&is_nil/1)
+
+            successors ++ transition_targets ++ timeout_targets ++ on_signal_targets
         end
 
       bfs(rest ++ neighbors, step_map, visited)

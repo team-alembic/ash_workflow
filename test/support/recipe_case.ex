@@ -13,8 +13,11 @@ defmodule AshWorkflow.RecipeCase do
   import ExUnit.Assertions
 
   alias AshWorkflow.RecipeCase.ModuleRenamer
+  alias AshWorkflowTest.Repo
+  alias Ecto.Adapters.SQL.Sandbox
 
   @scaffold "lib/ash_workflow.ex"
+  @fixtures "test/support/recipe_fixtures"
 
   defstruct [:igniter, changed: %{}, notices: [], warnings: [], modules: %{}]
 
@@ -33,6 +36,12 @@ defmodule AshWorkflow.RecipeCase do
       @moduletag :igniter
       @moduletag :tmp_dir
     end
+  end
+
+  # `AshWorkflow.Scheduler.Oban` writes a job to Postgres when a record enters an
+  # automatic step, even when the record lives in ETS.
+  setup do
+    :ok = Sandbox.checkout(Repo)
   end
 
   @doc "Builds a test project containing the given fixture files, read from disk."
@@ -70,7 +79,10 @@ defmodule AshWorkflow.RecipeCase do
   failing on any error or warning.
 
   Fixtures the task left unchanged are compiled too, so a renamed resource
-  points at the renamed copy of its domain.
+  points at the renamed copy of its domain. A file that references a fixture
+  resource or domain the project does not include fails the test. The
+  `mix new` scaffold is never compiled; read a task's edits to it with
+  `source!/2`.
   """
   @spec compile(t(), Path.t()) :: t()
   def compile(%__MODULE__{} = recipe, tmp_dir) do
@@ -84,11 +96,13 @@ defmodule AshWorkflow.RecipeCase do
       |> MapSet.new()
 
     renames = Map.new(originals, &{&1, Module.concat([namespace | Module.split(&1)])})
+    omitted = MapSet.difference(fixture_modules(), originals)
 
     files =
       Enum.map(sources, fn {path, content} ->
         renamed = ModuleRenamer.rename(content, namespace, originals)
         refute_original_references(path, renamed, originals)
+        refute_omitted_fixtures(path, renamed, omitted)
         file = Path.join(tmp_dir, path)
         File.mkdir_p!(Path.dirname(file))
         File.write!(file, renamed)
@@ -121,21 +135,40 @@ defmodule AshWorkflow.RecipeCase do
 
   # The test build consolidates protocols, so every resource compiled at
   # runtime warns that its derived `Inspect` implementation has no effect.
+  # Any other protocol's warning means a generated implementation never runs.
   defp warnings(diagnostics) do
     Enum.reject(
       diagnostics.compile_warnings ++ diagnostics.runtime_warnings,
-      &(&1.message =~ "protocol has already been consolidated")
+      &String.starts_with?(&1.message, "the Inspect protocol has already been consolidated")
     )
   end
 
   # `project/1` names the app `:ash_workflow`, so the `mix new` scaffold
   # defines `AshWorkflow` itself, which must not be renamed or recompiled.
-  defp sources(%__MODULE__{igniter: igniter, changed: changed}) do
+  defp sources(%__MODULE__{igniter: igniter}) do
     for {path, content} <- igniter.assigns.test_files,
         Path.extname(path) == ".ex",
-        path != @scaffold or Map.has_key?(changed, path),
+        path != @scaffold,
         into: %{},
         do: {path, content}
+  end
+
+  # The fixtures are compiled into the test build, so a reference to a fixture
+  # resource or domain the project left out would bind to the loaded original
+  # instead of failing. Other fixtures, such as a stand-in change, are shared
+  # with the loaded original on purpose.
+  defp fixture_modules do
+    with :error <- :persistent_term.get({__MODULE__, :fixtures}, :error) do
+      modules =
+        "#{@fixtures}/**/*.ex"
+        |> Path.wildcard()
+        |> Enum.flat_map(&(&1 |> File.read!() |> ModuleRenamer.defined_modules()))
+        |> Enum.filter(&(Spark.Dsl.is?(&1, Ash.Resource) or Spark.Dsl.is?(&1, Ash.Domain)))
+        |> MapSet.new()
+
+      :persistent_term.put({__MODULE__, :fixtures}, modules)
+      modules
+    end
   end
 
   defp changed_files(before, after_task) do
@@ -159,6 +192,19 @@ defmodule AshWorkflow.RecipeCase do
         aliased module name.
 
         #{renamed}
+        """)
+    end
+  end
+
+  defp refute_omitted_fixtures(path, renamed, omitted) do
+    case ModuleRenamer.references(renamed, omitted) do
+      [] ->
+        :ok
+
+      modules ->
+        flunk("""
+        #{path} references #{Enum.map_join(modules, ", ", &inspect/1)}, which the project \
+        does not include. Add the fixture's file to `project/1`.
         """)
     end
   end
