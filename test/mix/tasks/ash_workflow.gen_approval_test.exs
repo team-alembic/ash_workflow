@@ -18,9 +18,9 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ApprovalTest do
   @files @domain_files ++ ["#{@fixtures}/expense.ex"]
 
   # The Postgres subject is approved by `Reviewer`, an ETS fixture whose domain
-  # also lists `Ticket`, so all three come along.
+  # also lists `Ticket` and `Auditor`, so they all come along.
   @postgres_files Enum.map(
-                    ~w(postgres_domain postgres_ticket domain ticket reviewer),
+                    ~w(postgres_domain postgres_ticket domain ticket reviewer auditor),
                     &"test/support/recipe_fixtures/transition_log/#{&1}.ex"
                   )
   @checks "lib/ash_workflow_test/recipe_fixtures/approval/expense_approval/checks"
