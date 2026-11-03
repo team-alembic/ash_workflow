@@ -58,6 +58,14 @@ defmodule AshWorkflow.Scheduler.Work do
   match evaluation, the way `AshWorkflow.Scheduler.Precise.Timeline`'s
   recovery sweep does.
 
+  ## `max_fires`, `backoff` and `fires_field`
+
+  Only set for an `every` that declares them. `fires_field` names the integer
+  column counting its fires in the current step visit, and `match` folds in
+  both the count bound and the grown gap. `deadline` still describes the gap
+  before the first fire, so an implementation that arms timers computes later
+  instants with `AshWorkflow.Entities.Every.next_due_at/5`.
+
   ## `fired_field`
 
   Only set for an action timeout. An action timeout does not change state, so
@@ -67,6 +75,8 @@ defmodule AshWorkflow.Scheduler.Work do
   folds in `not_fired/1`. Like `until`, it is exposed for an implementation
   that filters ahead of a full match evaluation.
   """
+
+  alias Ash.Resource.Info
 
   import Ash.Expr, only: [ref: 1]
   require Ash.Expr
@@ -91,6 +101,9 @@ defmodule AshWorkflow.Scheduler.Work do
           repeat?: boolean(),
           until: AshWorkflow.Duration.t() | nil,
           fired_field: atom() | nil,
+          max_fires: pos_integer() | nil,
+          backoff: AshWorkflow.Entities.Retry.backoff() | nil,
+          fires_field: atom() | nil,
           self_scheduled?: boolean(),
           retry: AshWorkflow.Entities.Retry.t(),
           opts: keyword()
@@ -109,6 +122,9 @@ defmodule AshWorkflow.Scheduler.Work do
     repeat?: false,
     until: nil,
     fired_field: nil,
+    max_fires: nil,
+    backoff: nil,
+    fires_field: nil,
     self_scheduled?: false,
     retry: %AshWorkflow.Entities.Retry{},
     opts: []
@@ -145,6 +161,20 @@ defmodule AshWorkflow.Scheduler.Work do
   def not_fired(fired_field, deadline) do
     Ash.Expr.expr(is_nil(^ref(fired_field)) or ^ref(fired_field) < ^deadline_expr(deadline))
   end
+
+  @doc """
+  The calculations a record needs loaded before `AshWorkflow.Scheduler.due_at/2`
+  can compute this work's deadline.
+
+  A timeout may name an expression calculation as its `field` or its `fire_at`,
+  and `due_at/2` reads that field straight off the record.
+  """
+  @spec deadline_loads(t()) :: [atom()]
+  def deadline_loads(%__MODULE__{deadline: %{field: field}, resource: resource}) do
+    if Info.calculation(resource, field), do: [field], else: []
+  end
+
+  def deadline_loads(%__MODULE__{}), do: []
 
   defp deadline_expr(%{field: field, fire_after: nil}), do: ref(field)
 

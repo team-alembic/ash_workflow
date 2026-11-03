@@ -43,16 +43,20 @@ The getting-started tutorial and the README each gain a short "Start from a reci
 
 ## Testing
 
-Each recipe test generates a project, compiles the output, and runs it. Checking the generated source with `=~`, as `Mix.Tasks.AshWorkflow.Gen.TransitionLogTest` does today, proves the text is present but not that it compiles or behaves.
+Each recipe test generates a project, compiles the output, and runs it. Checking the generated source with `=~` proves the text is present, but not that it compiles or behaves.
 
 A shared `AshWorkflow.RecipeCase` in `test/support` runs four stages:
 
 1. Build an `Igniter.Test.test_project/1` with fixture files: a domain, an actor resource, and optionally an existing subject resource on `Ash.DataLayer.Ets`.
-2. Compose the recipe task with its arguments and `apply_igniter!/1`. Assert there are no issues, and that the expected notices are present.
-3. Write every `.ex` file in the project into the test's `tmp_dir`, the unchanged fixtures included, and compile them with `Kernel.ParallelCompiler.compile/2`. Assert there are no warnings, so generated code that compiles with a deprecation still fails.
+2. Compose the recipe task with its arguments and apply it. Fail the test on any issue, and return the notices and warnings for the test to check.
+3. Write every `.ex` file in the project into the test's `tmp_dir`, the unchanged fixtures included, and compile them with `Kernel.ParallelCompiler.compile/2`. The `mix new` scaffold that defines `AshWorkflow` is never compiled. Assert there are no warnings, so generated code that compiles with a deprecation still fails. The one warning ignored is for a derived `Inspect` implementation, because the test build consolidates protocols.
 4. Hand the compiled modules to the test body, which drives them through Ash: create a subject, open a request, approve as the wrong actor, approve as the right one, fire the overdue timeout.
 
 Each `compile/2` call renames every module it writes under its own namespace, `RecipeRunN`, where `N` is unique to the call. `RecipeRun12.AshWorkflowTest.RecipeFixtures.Approval.Expense` is one such name, and the test looks it up in `modules` by the name the task gave it. Compiled modules stay loaded for the rest of the run, so the unique namespace lets the tests run with `async: true` without redefining each other's modules.
+
+The fixtures under `test/support/recipe_fixtures` are compiled into the test build too. A generated file that references a fixture resource or domain the test left out of `project/1` would bind to that loaded original, so `compile/2` fails it and names the missing fixture. A fixture that is not a resource or domain, such as a stand-in change, binds to the loaded original on purpose. A module name built at runtime, such as with `Module.concat/2` or `String.to_atom/1`, is neither renamed nor caught.
+
+Each test checks out a sandbox connection, because `AshWorkflow.Scheduler.Oban` writes a job to Postgres when a record enters an automatic step, even when the record lives in ETS.
 
 Renaming leaves Postgres table names unchanged, so two async tests that compile the same Postgres fixture share its table. A Postgres recipe test that reads or writes rows must give each test its own table, or run with `async: false`.
 

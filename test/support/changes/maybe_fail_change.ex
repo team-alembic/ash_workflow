@@ -3,7 +3,20 @@ defmodule AshWorkflowTest.Changes.MaybeFailChange do
   use Ash.Resource.Change
 
   @impl true
-  def atomic(changeset, opts, context), do: {:ok, change(changeset, opts, context)}
+  def atomic(changeset, _opts, _context) do
+    {:ok,
+     Ash.Changeset.atomic_update(
+       changeset,
+       :should_fail,
+       expr(
+         if should_fail do
+           error(Ash.Error.Changes.InvalidChanges, %{message: "Processing failed"})
+         else
+           should_fail
+         end
+       )
+     )}
+  end
 
   @impl true
   def change(changeset, _opts, _context) do
