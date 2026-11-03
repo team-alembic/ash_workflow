@@ -27,6 +27,10 @@ config :my_app, Oban,
 
 The queue name must match the workflow's `queue` option, which defaults to `:workflow`. A trigger publishing to a queue Oban does not run inserts jobs that never execute.
 
+## Start from a recipe
+
+If your workflow is a common one, such as an approval or an expiry, a recipe can generate it for you. A recipe is a Mix task that writes the workflow onto your resource, and you edit the result like any other code. See the [recipes index](documentation/recipes/index.md) for the catalogue. The rest of this guide writes a workflow by hand.
+
 ## Define the workflow
 
 Create a resource with the `AshWorkflow` and `AshOban` extensions.

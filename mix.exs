@@ -107,7 +107,7 @@ defmodule AshWorkflow.MixProject do
 
   defp deps do
     [
-      {:mix_test_watch, "~> 1.2", only: [:dev, :test]},
+      {:mix_test_watch, "~> 1.2", only: [:dev, :test], runtime: false},
       {:ash, "~> 3.35"},
       {:ash_state_machine, "~> 0.2"},
       {:ash_oban, "~> 0.2"},
@@ -157,11 +157,16 @@ defmodule AshWorkflow.MixProject do
         "documentation/topics/workflows-and-relationships.md",
         "documentation/topics/diagrams.md",
         "documentation/topics/bpmn-comparison.md",
+        {"documentation/recipes/index.md", filename: "recipes"},
+        "documentation/recipes/approval.md",
+        "documentation/recipes/expiry.md",
+        "documentation/recipes/publication.md",
         "documentation/dsls/DSL-AshWorkflow.md"
       ],
       groups_for_extras: [
         Tutorials: ~r'documentation/tutorials',
         Topics: ~r'documentation/topics',
+        Recipes: ~r'documentation/recipes',
         DSLs: ~r'documentation/dsls'
       ],
       groups_for_modules: [

@@ -208,7 +208,12 @@ defmodule AshWorkflow.Transformers.AddActions do
     case Enum.find(actions, &(&1.name == name)) do
       nil ->
         opts = [name: name, accept: accepted, changes: changes]
-        opts = if is_conditional, do: Keyword.put(opts, :require_atomic?, false), else: opts
+
+        opts =
+          if is_conditional or pre_checked_identity?(dsl),
+            do: Keyword.put(opts, :require_atomic?, false),
+            else: opts
+
         action = Transformer.build_entity!(ResourceDsl, [:actions], :update, opts)
         Transformer.add_entity(dsl, [:actions], action)
 
@@ -276,6 +281,15 @@ defmodule AshWorkflow.Transformers.AddActions do
   @doc "Name of the generated undo action."
   @spec undo_action_name() :: atom()
   def undo_action_name, do: :undo
+
+  # Ash adds a `before_action` hook to every update on a resource with a
+  # `pre_check_with` identity, and an atomic update cannot run one. An action
+  # declared by the application keeps whatever `require_atomic?` it declared.
+  defp pre_checked_identity?(dsl) do
+    dsl
+    |> Transformer.get_entities([:identities])
+    |> Enum.any?(& &1.pre_check_with)
+  end
 
   defp has_explicit_routes?(step_transitions) do
     Enum.any?(step_transitions, fn {_step, t} ->
@@ -408,6 +422,7 @@ defmodule AshWorkflow.Transformers.AddActions do
         action =
           Transformer.build_entity!(ResourceDsl, [:actions], :update,
             name: action_name,
+            require_atomic?: !pre_checked_identity?(dsl),
             changes: [
               Transformer.build_entity!(ResourceDsl, [:actions, :update], :change,
                 change: BuiltinChanges.transition_state(timeout.transition_to)
