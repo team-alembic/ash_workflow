@@ -17,7 +17,7 @@ mix ash_workflow.gen.approval MyApp.Expenses.Expense \
 | `--module` | `<Subject>Approval` | Name of the generated approval resource. |
 | `--domain` | none | Domain for a subject the task creates. Required when the subject does not exist, and ignored when it does: the approval resources then join the subject's domain. |
 | `--required-approvals` | `1` | Number of approvals a request needs. Each request stores the count, and the `:request` action does not accept it, so a requester cannot lower their own quorum. |
-| `--overdue-after` | none | Moves a waiting request to `:overdue` after this long. Accepts `10s`, `30m`, `12h`, `2d` and `2w`. Without it, no `:overdue` step is generated. |
+| `--overdue-after` | none | Moves a waiting request to `:overdue` after this long. Accepts `30m`, `12h`, `2d` and `2w`. A duration under a minute needs `AshWorkflow.Scheduler.Precise`. Without it, no `:overdue` step is generated. |
 | `--transition-log` | `true` | Also runs `mix ash_workflow.gen.transition_log` for the approval resource, recording the approver as the actor. Pass `--no-transition-log` to skip it. |
 
 When the subject does not exist, the task creates it with `mix ash.gen.resource`, using the approver's data layer, or else the data layer of the first ETS or Postgres resource in `--domain`. When neither the approver nor any resource there uses ETS or Postgres, the task stops with an issue and writes nothing. Create the subject resource first, or pass a `--domain` that has one. Running the task again on the same subject changes nothing.

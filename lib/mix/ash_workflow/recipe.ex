@@ -9,6 +9,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
     alias Igniter.Code.Common
     alias Igniter.Code.Function, as: CodeFunction
     alias Igniter.Project.Module, as: ProjectModule
+    alias Sourceror.Zipper
 
     @type storage :: %{domain: module(), data_layer: module(), repo: module() | nil}
 
@@ -186,47 +187,63 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
     same name is already there. It warns when that existing one is not the
     recipe's: a relationship to another resource, or a calculation with
     another expression.
-    """
-    @spec add_subject_edits(Igniter.t(), module(), keyword(String.t()), keyword(String.t())) ::
-            Igniter.t()
-    def add_subject_edits(igniter, subject, relationships, calculations) do
-      igniter =
-        Enum.reduce(relationships, igniter, fn {name, code}, igniter ->
-          add_subject_edit(
-            igniter,
-            subject,
-            {name, code},
-            {:relationships, [:has_one, :has_many, :belongs_to, :many_to_many], [2, 3, 4]},
-            &same_destination?/2,
-            &ResourceIgniter.add_relationship/3
-          )
-        end)
 
-      Enum.reduce(calculations, igniter, fn {name, code}, igniter ->
-        add_subject_edit(
-          igniter,
-          subject,
-          {name, code},
-          {:calculations, [:calculate], [3, 4, 5]},
-          &same_definition?/2,
-          &ResourceIgniter.add_calculation/3
-        )
+    `opts` takes `:actions` and `:interfaces`, the subject's actions and code
+    interface definitions, which are added and compared as calculations are.
+    It also takes `:changes`, keyed by change module, for `change` calls in the
+    subject's `changes` block. `add_subject_change/4` builds that entry.
+    """
+    @spec add_subject_edits(
+            Igniter.t(),
+            module(),
+            keyword(String.t()),
+            keyword(String.t()),
+            actions: keyword(String.t()),
+            interfaces: keyword(String.t()),
+            changes: keyword(String.t())
+          ) :: Igniter.t()
+    def add_subject_edits(igniter, subject, relationships, calculations, opts \\ []) do
+      [
+        {relationships,
+         {:relationships, [:has_one, :has_many, :belongs_to, :many_to_many], [2, 3, 4],
+          "a relationship"}, &same_destination?/2, &ResourceIgniter.add_relationship/3},
+        {calculations, {:calculations, [:calculate], [3, 4, 5], "a calculation"},
+         &same_definition?/2, &ResourceIgniter.add_calculation/3},
+        {Keyword.get(opts, :actions, []),
+         {:actions, [:create, :read, :update, :destroy, :action], [2, 3, 4], "an action"},
+         &same_definition?/2, &ResourceIgniter.add_action/3},
+        {Keyword.get(opts, :interfaces, []),
+         {:code_interface, [:define, :define_calculation], [1, 2], "a code interface"},
+         &same_definition?/2, &add_code_interface/3},
+        {Keyword.get(opts, :changes, []), {:changes, [:change], [1, 2], "a change"},
+         &same_definition?/2, &add_change/3}
+      ]
+      |> Enum.reduce(igniter, fn {edits, location, same?, add}, igniter ->
+        Enum.reduce(edits, igniter, fn edit, igniter ->
+          add_subject_edit(igniter, subject, edit, location, same?, add)
+        end)
       end)
     end
+
+    defp add_code_interface(igniter, subject, code),
+      do: ResourceIgniter.add_block(igniter, subject, :code_interface, code)
+
+    defp add_change(igniter, subject, code),
+      do: ResourceIgniter.add_block(igniter, subject, :changes, code)
 
     defp add_subject_edit(igniter, subject, {name, code}, location, same?, add) do
       case existing_definition(igniter, subject, name, location) do
         {igniter, {:ok, zipper}} ->
           if same?.(zipper, Sourceror.parse_string!(code)),
             do: igniter,
-            else: warn_existing(igniter, subject, name, location, code)
+            else: warn_existing(igniter, subject, name, location, zipper, code)
 
         {igniter, :error} ->
           add.(igniter, subject, code)
       end
     end
 
-    defp existing_definition(igniter, subject, name, {section, calls, arities}) do
+    defp existing_definition(igniter, subject, name, {section, calls, arities, _kind}) do
       igniter
       |> Spark.Igniter.find(subject, fn _module, zipper ->
         with {:ok, zipper} <-
@@ -246,12 +263,62 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
              zipper,
              call,
              arities,
-             &CodeFunction.argument_equals?(&1, 0, name)
+             &CodeFunction.argument_matches_predicate?(&1, 0, named?(call, name))
            ) do
         {:ok, zipper} -> {:ok, zipper}
         :error -> nil
       end
     end
+
+    # A change is named by its module, written bare or as `{module, opts}`.
+    defp named?(:change, module) do
+      fn zipper ->
+        case Zipper.node(zipper) do
+          {_module, _opts} ->
+            zipper |> Zipper.down() |> Common.nodes_equal?(module)
+
+          _node ->
+            Common.nodes_equal?(zipper, module)
+        end
+      end
+    end
+
+    defp named?(_call, name), do: &Common.nodes_equal?(&1, name)
+
+    @doc """
+    Adds a `change` to the subject's `changes` block, which runs on every
+    action of the `on:` types, creating the block when there is none.
+
+    `change` is the change's source or AST, such as `{MyChange, days: 30}`.
+    `opts` takes `:on`, a list of action types, and an optional `:where`, the
+    source or AST of the change's `where:` value. A `change` for the same
+    module that differs from this one is left as it is, with a warning.
+    """
+    @spec add_subject_change(Igniter.t(), module(), Macro.t() | String.t(),
+            on: [atom()],
+            where: Macro.t() | String.t()
+          ) :: Igniter.t()
+    def add_subject_change(igniter, subject, change, opts) do
+      change_ast = to_ast(change)
+      on = Keyword.fetch!(opts, :on)
+
+      code =
+        "change #{Sourceror.to_string(change_ast)}, on: #{inspect(on)}" <>
+          where_option(opts[:where])
+
+      add_subject_edits(igniter, subject, [], [], changes: [{change_module(change_ast), code}])
+    end
+
+    defp to_ast(code) when is_binary(code), do: Sourceror.parse_string!(code)
+    defp to_ast(ast), do: ast
+
+    defp where_option(nil), do: ""
+    defp where_option(where), do: ", where: #{Sourceror.to_string(to_ast(where))}"
+
+    defp change_module({:__block__, _meta, [{module, _opts}]}), do: change_module(module)
+    defp change_module({module, _opts}), do: change_module(module)
+    defp change_module({:__aliases__, _meta, parts}), do: Module.concat(parts)
+    defp change_module(module) when is_atom(module), do: module
 
     defp same_destination?(zipper, {_call, _meta, [_name, {:__aliases__, _, parts} | _rest]}) do
       case CodeFunction.move_to_nth_argument(zipper, 1) do
@@ -261,7 +328,7 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
     end
 
     defp same_definition?(zipper, recipe_ast) do
-      without_meta(Sourceror.Zipper.node(zipper)) == without_meta(recipe_ast)
+      without_meta(Zipper.node(zipper)) == without_meta(recipe_ast)
     end
 
     defp without_meta(ast) do
@@ -271,11 +338,13 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       end)
     end
 
-    defp warn_existing(igniter, subject, name, {section, _calls, _arities}, code) do
-      kind = section |> Atom.to_string() |> String.trim_trailing("s")
-
+    defp warn_existing(igniter, subject, name, {_section, _calls, _arities, kind}, zipper, code) do
       Igniter.add_warning(igniter, """
-      #{inspect(subject)} already has a #{kind} named #{inspect(name)} that differs from the recipe's, so the recipe left it as it is. It would have added:
+      #{inspect(subject)} already has #{kind} named #{inspect(name)} that differs from the recipe's, so the recipe left it as it is. It has:
+
+      #{Sourceror.to_string(Zipper.node(zipper))}
+
+      It would have added:
 
       #{code}
       """)

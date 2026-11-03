@@ -37,6 +37,18 @@ defmodule AshWorkflowTest.DataCase do
   def age_by(record, amount, unit), do: age_field_by(record, :state_entered_at, amount, unit)
 
   @doc """
+  Deletes every job still waiting to run, standing in for a job lost before it
+  ran.
+
+  `AshWorkflow.Scheduler.Oban` queues an automatic step's job when a record
+  enters the step. A test that exercises the cron poll, or a timeout on a record
+  whose step never ran, deletes that job first.
+  """
+  def delete_queued_jobs do
+    Repo.delete_all(from(j in Oban.Job, where: j.state in ["available", "scheduled"]))
+  end
+
+  @doc """
   Ages an arbitrary datetime column on a record's row, the same way `age_by/3`
   ages `state_entered_at` — writing through Ecto so a test can put an `every`'s
   own last-fired column, or `state_entered_at`, on either side of a bound
