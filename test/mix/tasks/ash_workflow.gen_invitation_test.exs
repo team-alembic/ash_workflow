@@ -11,6 +11,13 @@ defmodule Mix.Tasks.AshWorkflow.Gen.InvitationTest do
 
   @fixtures "test/support/recipe_fixtures/invitation"
   @files ["#{@fixtures}/domain.ex", "#{@fixtures}/user.ex", "#{@fixtures}/team.ex"]
+
+  # The Postgres subject invites `Reviewer`, an ETS fixture whose domain also
+  # lists `Ticket` and `Auditor`, so they all come along.
+  @postgres_files Enum.map(
+                    ~w(postgres_domain postgres_ticket domain ticket reviewer auditor),
+                    &"test/support/recipe_fixtures/transition_log/#{&1}.ex"
+                  )
   @checks "lib/ash_workflow_test/recipe_fixtures/invitation/team_invitation/checks"
   @deny_all "def match?(_actor, _context, _opts), do: false"
   @day 86_400
@@ -133,7 +140,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.InvitationTest do
 
   test "creates a missing subject in the given domain and invites to it", %{tmp_dir: tmp_dir} do
     recipe =
-      ["#{@fixtures}/domain.ex", "#{@fixtures}/user.ex"]
+      @files
       |> generate([inspect(Event), "--invitee", inspect(User), "--domain", inspect(Domain)])
       |> allow_inviters(
         "lib/ash_workflow_test/recipe_fixtures/invitation/event_invitation/checks"
@@ -401,10 +408,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.InvitationTest do
 
   test "generates a Postgres-backed resource with a partial unique identity", %{tmp_dir: tmp_dir} do
     recipe =
-      [
-        "test/support/recipe_fixtures/transition_log/postgres_domain.ex",
-        "test/support/recipe_fixtures/transition_log/postgres_ticket.ex"
-      ]
+      @postgres_files
       |> generate([
         "AshWorkflowTest.RecipeFixtures.TransitionLog.PostgresTicket",
         "--invitee",
