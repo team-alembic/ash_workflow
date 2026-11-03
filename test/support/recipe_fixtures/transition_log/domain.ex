@@ -5,5 +5,6 @@ defmodule AshWorkflowTest.RecipeFixtures.TransitionLog.Domain do
   resources do
     resource AshWorkflowTest.RecipeFixtures.TransitionLog.Ticket
     resource AshWorkflowTest.RecipeFixtures.TransitionLog.Reviewer
+    resource AshWorkflowTest.RecipeFixtures.TransitionLog.Auditor
   end
 end

@@ -156,6 +156,8 @@ defmodule AshWorkflow.MixProject do
         "documentation/topics/bpmn-comparison.md",
         {"documentation/recipes/index.md", filename: "recipes"},
         "documentation/recipes/approval.md",
+        "documentation/recipes/expiry.md",
+        "documentation/recipes/publication.md",
         "documentation/dsls/DSL-AshWorkflow.md"
       ],
       groups_for_extras: [

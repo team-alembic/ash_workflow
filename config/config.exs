@@ -41,6 +41,8 @@ if Mix.env() == :test do
   # config, and the Postgres fixture sets `migrate? false`.
   recipe_fixture_domains = [
     AshWorkflowTest.RecipeFixtures.Approval.Domain,
+    AshWorkflowTest.RecipeFixtures.Expiry.Domain,
+    AshWorkflowTest.RecipeFixtures.Publication.Domain,
     AshWorkflowTest.RecipeFixtures.TransitionLog.Domain,
     AshWorkflowTest.RecipeFixtures.TransitionLog.PostgresDomain
   ]
