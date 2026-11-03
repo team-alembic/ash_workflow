@@ -1,8 +1,8 @@
 defmodule AshWorkflow.Verifiers.ValidateEvery do
   @moduledoc """
-  Verifies that an `every`'s `until` bound is coherent, and that its
-  `last_fired_field` — explicit or generated — is a column `every` can
-  safely own.
+  Verifies that an `every`'s `until` and `backoff` are coherent, and that the
+  columns it owns — its `last_fired_field` and, with `max_fires` or `backoff`,
+  its fire count — are columns `every` can safely write.
 
   Separate from `AshWorkflow.Verifiers.ValidateTimeoutFields`, which is about a
   timeout's `field` — a concept `every` does not have. `every` measures its
@@ -39,8 +39,15 @@ defmodule AshWorkflow.Verifiers.ValidateEvery do
          :ok <-
            Enum.reduce_while(entries, :ok, fn {step, every}, :ok ->
              validate_last_fired_field(dsl, step, every)
-           end) do
-      validate_no_shared_last_fired_field(dsl, entries)
+           end),
+         :ok <-
+           Enum.reduce_while(entries, :ok, fn {step, every}, :ok ->
+             validate_backoff(step, every)
+           end),
+         :ok <- validate_no_shared_last_fired_field(dsl, entries) do
+      Enum.reduce_while(entries, :ok, fn {step, every}, :ok ->
+        validate_fires_field_type(dsl, step, every)
+      end)
     end
   end
 
@@ -134,6 +141,46 @@ defmodule AshWorkflow.Verifiers.ValidateEvery do
     _ -> {:cont, :ok}
   end
 
+  # The backoff is keyed on the fire count and first applies to the gap after
+  # the first fire. With `max_fires 1` there is no second fire to delay.
+  defp validate_backoff(step, %{backoff: backoff, max_fires: 1} = every)
+       when not is_nil(backoff) do
+    {:halt,
+     {:error,
+      DslError.exception(
+        path: [:workflow, :step, step.name],
+        message:
+          "every :#{every.name} on step :#{step.name} has backoff: #{inspect(backoff)} and " <>
+            "max_fires: 1. The backoff only delays the fires after the first, so it would never " <>
+            "apply. Remove `backoff`, or raise `max_fires`."
+      )}}
+  end
+
+  defp validate_backoff(_step, _every), do: {:cont, :ok}
+
+  # Like the last-fired column, an existing attribute may be reused as the
+  # fire count, but `AshWorkflow.Changes.RecordEvent` increments it, so it has
+  # to be an integer.
+  defp validate_fires_field_type(dsl, step, every) do
+    with field when not is_nil(field) <- Every.fires_field(step.name, every),
+         %{type: type} <- ResourceInfo.attribute(dsl, field),
+         false <- Ash.Type.storage_type(type) in [:integer, :bigint] do
+      {:halt,
+       {:error,
+        DslError.exception(
+          path: [:workflow, :step, step.name],
+          message:
+            "every :#{every.name} on step :#{step.name} counts its fires in :#{field}, which " <>
+              "references an existing attribute of type #{inspect(type)}. An every's fire " <>
+              "count must be an integer type."
+        )}}
+    else
+      _ -> {:cont, :ok}
+    end
+  rescue
+    _ -> {:cont, :ok}
+  end
+
   # Two everys resolving to the same column, whether both explicit or one
   # colliding with another's generated default, would have one fire silently
   # count as the other's — the same shared-anchor starvation this design
@@ -162,8 +209,10 @@ defmodule AshWorkflow.Verifiers.ValidateEvery do
   end
 
   defp effective_fields(entries) do
-    Enum.map(entries, fn {step, every} ->
-      {Every.last_fired_field(step.name, every), step, every}
+    Enum.flat_map(entries, fn {step, every} ->
+      [Every.last_fired_field(step.name, every), Every.fires_field(step.name, every)]
+      |> Enum.reject(&is_nil/1)
+      |> Enum.map(&{&1, step, every})
     end)
   end
 end

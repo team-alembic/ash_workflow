@@ -96,7 +96,7 @@ The generator creates a resource with these attributes:
 | `to_state` | `:atom` | equal to `from_state` for an `every` firing |
 | `transition_name` | `:atom` | the action that ran |
 | `occurred_at` | `:utc_datetime_usec` | |
-| `triggered_by` | `:atom` | `:initial \| :manual \| :automatic \| :timeout \| :error_path` |
+| `triggered_by` | `:atom` | `:initial \| :manual \| :automatic \| :timeout \| :error_path \| :undo \| :signal` |
 
 A compile-time verifier checks this schema is in place whenever
 `transition_log` is configured, so a missing or mistyped attribute fails the

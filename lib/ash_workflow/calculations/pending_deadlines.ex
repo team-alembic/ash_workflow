@@ -21,6 +21,9 @@ defmodule AshWorkflow.Calculations.PendingDeadlines do
   Firing an `every` writes its own last-fired column, so its `due_at` is
   always the next instant it will run.
 
+  An `every` with `backoff` reports the grown gap, and one that has used up
+  its `max_fires` in the current step visit is omitted.
+
   A timeout whose `field` is `nil` on the record has no derivable deadline and
   is omitted. An `every` whose column is `nil` is different: it has never
   fired, and its interval is measured from `state_entered_at` instead — see
@@ -28,6 +31,8 @@ defmodule AshWorkflow.Calculations.PendingDeadlines do
   the record entered the step, rather than being omitted.
   """
   use Ash.Resource.Calculation
+
+  alias AshWorkflow.Entities.Every
 
   @impl true
   @spec init(Keyword.t()) :: {:ok, Keyword.t()}
@@ -40,7 +45,9 @@ defmodule AshWorkflow.Calculations.PendingDeadlines do
       opts[:timeouts]
       |> Map.values()
       |> List.flatten()
-      |> Enum.flat_map(&[&1.field | List.wrap(Map.get(&1, :fired_field))])
+      |> Enum.flat_map(
+        &[&1.field | List.wrap(Map.get(&1, :fired_field)) ++ List.wrap(Map.get(&1, :fires_field))]
+      )
       |> Enum.uniq()
 
     [Keyword.fetch!(opts, :state_attribute), :state_entered_at | fields]
@@ -63,13 +70,28 @@ defmodule AshWorkflow.Calculations.PendingDeadlines do
   # same fallback `AshWorkflow.Transformers.AddScheduler` compiles into the
   # trigger's `where`.
   defp deadline(%{kind: :every} = every, record) do
-    from =
-      as_datetime(Map.get(record, every.field)) ||
-        as_datetime(Map.get(record, :state_entered_at))
+    last_fired_at = as_datetime(Map.get(record, every.field))
+    state_entered_at = as_datetime(Map.get(record, :state_entered_at))
+    fires = every.fires_field && Map.get(record, every.fires_field)
 
-    case from do
-      nil -> []
-      from -> [entry(every, due_at(from, every.fire_after))]
+    cond do
+      is_nil(state_entered_at) ->
+        []
+
+      exhausted?(every, last_fired_at, fires, state_entered_at) ->
+        []
+
+      true ->
+        due_at =
+          Every.next_due_at(
+            every.fire_after,
+            every.backoff,
+            last_fired_at,
+            fires,
+            state_entered_at
+          )
+
+        [entry(every, due_at)]
     end
   end
 
@@ -82,6 +104,13 @@ defmodule AshWorkflow.Calculations.PendingDeadlines do
       nil -> []
       {:ok, false} -> []
     end
+  end
+
+  defp exhausted?(%{max_fires: nil}, _last_fired_at, _fires, _state_entered_at), do: false
+  defp exhausted?(_every, nil, _fires, _state_entered_at), do: false
+
+  defp exhausted?(%{max_fires: max_fires}, last_fired_at, fires, state_entered_at) do
+    DateTime.compare(last_fired_at, state_entered_at) != :lt and (fires || 0) >= max_fires
   end
 
   defp entry(timeout, due_at) do
