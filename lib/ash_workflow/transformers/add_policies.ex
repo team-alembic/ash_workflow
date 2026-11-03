@@ -3,7 +3,7 @@ defmodule AshWorkflow.Transformers.AddPolicies do
   Generates Ash policies from workflow step declarations.
 
   Ensures workflow resources function by default when `Authorizer`
-  is present by injecting four layers of policies:
+  is present by injecting five layers of policies:
 
   1. **AshOban bypass** — allows Oban-triggered actions (automatic steps,
      timeouts and `every` entities) to execute without an actor. Uses
@@ -25,10 +25,15 @@ defmodule AshWorkflow.Transformers.AddPolicies do
            authorize_if {Ash.Policy.Check.ActorAttributeEquals, ...}
          end
 
-  3. **Undo policy** — when the workflow declares `undo do policy ... end`, a
+  3. **Signal policies** — for each `on_signal`, a policy scoped to its
+     generated read and transition actions that authorizes
+     `signal_in(signals_module, signal)`, since the listener runs as the
+     emitting actor.
+
+  4. **Undo policy** — when the workflow declares `undo do policy ... end`, a
      policy scoped to the generated `:undo` action.
 
-  4. **Default allow** — a catch-all `authorize_if always()` scoped to workflow
+  5. **Default allow** — a catch-all `authorize_if always()` scoped to workflow
      transition actions, automatic step actions, timeout actions, `every`
      actions, read actions, and user-defined create actions, so workflow
      initialization and background execution aren't blocked by other policies
@@ -41,6 +46,7 @@ defmodule AshWorkflow.Transformers.AddPolicies do
 
   alias Ash.Policy.Authorizer
   alias Ash.Policy.Check.Builtins, as: PolicyBuiltins
+  alias AshWorkflow.Entities.OnSignal
   alias AshWorkflow.Entities.Step
   alias AshWorkflow.Info
   alias AshWorkflow.Transformers.AddActions
@@ -75,6 +81,7 @@ defmodule AshWorkflow.Transformers.AddPolicies do
         end)
 
       dsl = add_undo_policy(dsl, existing_policies)
+      dsl = add_signal_policies(dsl, steps)
       dsl = add_default_allow_policy(dsl, workflow_action_names)
 
       {:ok, dsl}
@@ -239,6 +246,38 @@ defmodule AshWorkflow.Transformers.AddPolicies do
 
       Transformer.add_entity(dsl, [:policies], policy)
     end
+  end
+
+  # The listener runs as the emitting actor, who usually may not move the
+  # workflow directly, so the handler's actions authorize the signal instead.
+  defp add_signal_policies(dsl, steps) do
+    for step <- steps,
+        on_signal <- step.on_signals,
+        signal_module = on_signal.from || Info.signals(dsl),
+        reduce: dsl do
+      dsl -> add_signal_policy(dsl, step, on_signal, signal_module)
+    end
+  end
+
+  defp add_signal_policy(dsl, step, on_signal, signal_module) do
+    transition_actions =
+      if on_signal.transition_to, do: [OnSignal.action_name(step.name, on_signal)], else: []
+
+    authorize_if =
+      Transformer.build_entity!(Authorizer, [:policies, :policy], :authorize_if,
+        check: PolicyBuiltins.signal_in(signal_module, on_signal.name)
+      )
+
+    policy =
+      Transformer.build_entity!(Authorizer, [:policies], :policy,
+        condition:
+          PolicyBuiltins.action([
+            OnSignal.read_action_name(step.name, on_signal) | transition_actions
+          ]),
+        policies: [authorize_if]
+      )
+
+    Transformer.add_entity(dsl, [:policies], policy)
   end
 
   defp add_default_allow_policy(dsl, workflow_action_names) do

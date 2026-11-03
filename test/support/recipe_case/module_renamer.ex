@@ -144,7 +144,16 @@ defmodule AshWorkflow.RecipeCase.ModuleRenamer do
       state = %{state | scopes: [%{scope | module: module}, scope | parents]}
       {{:defmodule, meta, [skip(name) | rest]}, state}
     else
-      {{:defmodule, meta, [name | rest]}, push_scope(state, nil)}
+      # `defmodule __MODULE__.Child` names a module under the enclosing one
+      # without adding an alias, so the name moves with its parent.
+      case resolve(parts, state) do
+        {module, :relative} ->
+          {_name, state} = emit(state, {:defmodule, name, module, nil})
+          {{:defmodule, meta, [skip(name) | rest]}, push_scope(state, module)}
+
+        _unknown ->
+          {{:defmodule, meta, [name | rest]}, push_scope(state, nil)}
+      end
     end
   end
 
