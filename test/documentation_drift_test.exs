@@ -27,7 +27,8 @@ defmodule AshWorkflow.DocumentationDriftTest do
     "usage-rules.md"
     | Path.wildcard("usage-rules/*.md") ++
         Path.wildcard("documentation/topics/*.md") ++
-        Path.wildcard("documentation/tutorials/*.md")
+        Path.wildcard("documentation/tutorials/*.md") ++
+        Path.wildcard("documentation/recipes/*.md")
   ]
 
   # Names that used to be part of the public DSL. Add to this list when

@@ -17,6 +17,7 @@ defmodule AshWorkflowTest.Domain do
     resource AshWorkflowTest.SharedTransitionWorkflow
     resource AshWorkflowTest.SharedConditionalWorkflow
     resource AshWorkflowTest.AggregateRouteWorkflow
+    resource AshWorkflowTest.SharedRoutedWorkflow
     resource AshWorkflowTest.AcceptWorkflow
     resource AshWorkflowTest.AcceptedRouteWorkflow
     resource AshWorkflowTest.InitialFlagWorkflow
@@ -30,6 +31,7 @@ defmodule AshWorkflowTest.Domain do
     resource AshWorkflowTest.CustomSchedulerWorkflow
     resource AshWorkflowTest.OneMinuteWorkflow
     resource AshWorkflowTest.FireAtWorkflow
+    resource AshWorkflowTest.PreCheckedIdentityWorkflow
     resource AshWorkflowTest.UpsertWorkflow
     resource AshWorkflowTest.UpsertLog
     resource AshWorkflowTest.PreciseTimeoutWorkflow
