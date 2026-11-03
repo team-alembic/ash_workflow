@@ -29,6 +29,11 @@ defmodule AshWorkflow.Changes.RecordEvent do
       this is how that firing re-arms its own trigger for the next interval
       without touching `state_entered_at`, which every other deadline on the
       step measures from.
+    * `:every_fires_field` (optional, defaults to `nil`) — the integer attribute
+      counting the `every`'s fires in the current step visit, named by
+      `AshWorkflow.Entities.Every.fires_field/2`. Incremented on each fire, and
+      restarted at 1 when `:every_field` holds a fire from before
+      `state_entered_at`, which belongs to an earlier visit.
     * `:timeout_fields` (optional, defaults to `%{}`) — the columns an action
       timeout's firing writes, as a map from step name to the
       `AshWorkflow.Entities.Timeout.fired_field/2` columns of that step's
@@ -89,6 +94,14 @@ defmodule AshWorkflow.Changes.RecordEvent do
   A timer armed before the commit could fire against a record still holding the
   old state.
 
+  ## Upserts
+
+  A create action that upserts onto an existing row leaves that row in the
+  step it was in. This change writes no log row for it, emits no signal and
+  does not call `AshWorkflow.Scheduler.notify_state_change/2`. The telemetry
+  span still opens and closes, because its `:start` event fires before the
+  data layer reports whether the row was inserted.
+
   ## Atomicity
 
   This change implements `atomic/3` rather than falling back to
@@ -128,6 +141,7 @@ defmodule AshWorkflow.Changes.RecordEvent do
     changeset
     |> touch_state_entered_at(opts)
     |> touch_fired_fields(opts)
+    |> touch_fires_field(opts)
     |> emit_start(opts)
     |> Ash.Changeset.after_action(&finish(&1, &2, opts, context))
   end
@@ -149,6 +163,7 @@ defmodule AshWorkflow.Changes.RecordEvent do
     changeset
     |> fired_fields(opts)
     |> Enum.reduce(attrs, &Map.put(&2, &1, expr(now())))
+    |> put_atomic_fires(opts)
   end
 
   defp touch_state_entered_at(changeset, opts) do
@@ -165,6 +180,55 @@ defmodule AshWorkflow.Changes.RecordEvent do
     changeset
     |> fired_fields(opts)
     |> Enum.reduce(changeset, &Ash.Changeset.force_change_attribute(&2, &1, now))
+  end
+
+  defp touch_fires_field(changeset, opts) do
+    case every_fires_field(opts) do
+      nil ->
+        changeset
+
+      fires_field ->
+        last_fired_at = data_attribute(changeset, every_field(opts))
+        state_entered_at = data_attribute(changeset, :state_entered_at)
+
+        fires =
+          if this_visit?(last_fired_at, state_entered_at),
+            do: (data_attribute(changeset, fires_field) || 0) + 1,
+            else: 1
+
+        Ash.Changeset.force_change_attribute(changeset, fires_field, fires)
+    end
+  end
+
+  defp this_visit?(nil, _state_entered_at), do: false
+  defp this_visit?(_last_fired_at, nil), do: true
+
+  defp this_visit?(last_fired_at, state_entered_at),
+    do: DateTime.compare(last_fired_at, state_entered_at) != :lt
+
+  # Attribute references in an atomic update read the row as it was before the
+  # update, so this compares the previous fire against the current visit.
+  defp put_atomic_fires(attrs, opts) do
+    case every_fires_field(opts) do
+      nil ->
+        attrs
+
+      fires_field ->
+        last_fired_at = Ash.Expr.ref(every_field(opts))
+        fires = Ash.Expr.ref(fires_field)
+
+        Map.put(
+          attrs,
+          fires_field,
+          expr(
+            if not is_nil(^last_fired_at) and ^last_fired_at >= state_entered_at do
+              ^fires + 1
+            else
+              1
+            end
+          )
+        )
+    end
   end
 
   defp fired_fields(changeset, opts) do
@@ -195,10 +259,23 @@ defmodule AshWorkflow.Changes.RecordEvent do
 
   defp every_field(opts), do: Keyword.get(opts, :every_field)
 
+  defp every_fires_field(opts), do: Keyword.get(opts, :every_fires_field)
+
+  # The `:start` event fired before the data layer reported whether the create
+  # inserted, so the span still closes on an upsert that entered no step.
+  defp finish(changeset, record, opts, context) do
+    if upserted_onto_existing_row?(changeset, record) do
+      emit_stop(changeset, record)
+      {:ok, record}
+    else
+      record_entry(changeset, record, opts, context)
+    end
+  end
+
   # Signals go out after the log row so a listener that reads history sees this
   # event, and before the span closes so a failing listener's error is what the
   # span and the scheduler see: neither runs for an event that rolls back.
-  defp finish(changeset, record, opts, context) do
+  defp record_entry(changeset, record, opts, context) do
     log = Info.transition_log(changeset.resource)
     plan = Keyword.get(opts, :emits, [])
     from_state = event_from_state(changeset, record, log, plan, opts)
@@ -293,6 +370,20 @@ defmodule AshWorkflow.Changes.RecordEvent do
   defp record_state(record) do
     Map.get(record, AshStateMachine.Info.state_machine_state_attribute!(record.__struct__))
   end
+
+  # A create that upserts onto an existing row leaves it in the step it was in,
+  # whether the row was updated or the `upsert_condition` skipped the update.
+  defp upserted_onto_existing_row?(%{action_type: :create}, %{
+         __metadata__: %{upsert_action: :update}
+       }),
+       do: true
+
+  defp upserted_onto_existing_row?(%{action_type: :create}, %{
+         __metadata__: %{upsert_skipped: true}
+       }),
+       do: true
+
+  defp upserted_onto_existing_row?(_changeset, _record), do: false
 
   defp entered_step?(changeset, record, opts) do
     touch_state_entered_at?(opts) and not stayed_in_step?(changeset, record)

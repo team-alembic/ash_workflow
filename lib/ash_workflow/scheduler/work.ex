@@ -58,6 +58,14 @@ defmodule AshWorkflow.Scheduler.Work do
   match evaluation, the way `AshWorkflow.Scheduler.Precise.Timeline`'s
   recovery sweep does.
 
+  ## `max_fires`, `backoff` and `fires_field`
+
+  Only set for an `every` that declares them. `fires_field` names the integer
+  column counting its fires in the current step visit, and `match` folds in
+  both the count bound and the grown gap. `deadline` still describes the gap
+  before the first fire, so an implementation that arms timers computes later
+  instants with `AshWorkflow.Entities.Every.next_due_at/5`.
+
   ## `fired_field`
 
   Only set for an action timeout. An action timeout does not change state, so
@@ -93,6 +101,9 @@ defmodule AshWorkflow.Scheduler.Work do
           repeat?: boolean(),
           until: AshWorkflow.Duration.t() | nil,
           fired_field: atom() | nil,
+          max_fires: pos_integer() | nil,
+          backoff: AshWorkflow.Entities.Retry.backoff() | nil,
+          fires_field: atom() | nil,
           self_scheduled?: boolean(),
           retry: AshWorkflow.Entities.Retry.t(),
           opts: keyword()
@@ -111,6 +122,9 @@ defmodule AshWorkflow.Scheduler.Work do
     repeat?: false,
     until: nil,
     fired_field: nil,
+    max_fires: nil,
+    backoff: nil,
+    fires_field: nil,
     self_scheduled?: false,
     retry: %AshWorkflow.Entities.Retry{},
     opts: []
