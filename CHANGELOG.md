@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **`max_fires` and `backoff` on `every`.** `max_fires` stops an `every` after a number of fires in the current step visit. `backoff` grows the gap after each fire, taking a duration tuple or `:exponential` like `retry`'s `backoff`, and both schedulers compute it from `AshWorkflow.Entities.Retry.delay_ms/2`. Either option adds a `<step>_<every>_fires` integer column, so run `mix ash.codegen` on AshPostgres. An `every` without them is unchanged.
+- `mix ash_workflow.gen.approval` adds an approval workflow to a resource: a sibling approval resource with `pending`, `approved`, `rejected`, `cancelled` and an optional `overdue` step, a decision resource, quorum routing, and policies that stop a requester approving their own request. Who may open a request and who may approve live in generated `Checks.CanRequest` and `Checks.CanApprove` modules, which deny everyone until the application fills them in. See the [approval recipe](documentation/recipes/approval.md).
+- `mix ash_workflow.gen.transition_log` accepts a workflow resource generated earlier in the same Igniter run, before it has compiled, by reading its source. A resource on disk that fails to compile is still reported as an issue.
 
 ### Fixed
 

@@ -1,6 +1,8 @@
 defmodule Mix.Tasks.AshWorkflow.Gen.TransitionLogTest do
   use AshWorkflow.RecipeCase, async: true
 
+  alias Ash.Domain.Igniter, as: DomainIgniter
+
   alias AshWorkflowTest.RecipeFixtures.TransitionLog.PostgresTicket
   alias AshWorkflowTest.RecipeFixtures.TransitionLog.Reviewer
   alias AshWorkflowTest.RecipeFixtures.TransitionLog.Ticket
@@ -115,6 +117,53 @@ defmodule Mix.Tasks.AshWorkflow.Gen.TransitionLogTest do
              AshPostgres.DataLayer.Info.custom_indexes(log)
   end
 
+  test "logs a workflow generated earlier in the same run, before it has compiled", %{
+    tmp_dir: tmp_dir
+  } do
+    workflow = AshWorkflowTest.RecipeFixtures.TransitionLog.Draft
+
+    recipe =
+      @ets_files
+      |> project()
+      |> Igniter.Project.Module.create_module(workflow, """
+      use Ash.Resource,
+        domain: AshWorkflowTest.RecipeFixtures.TransitionLog.Domain,
+        data_layer: Ash.DataLayer.Ets,
+        extensions: [AshWorkflow, AshOban]
+
+      workflow do
+        step :drafting do
+          transition :publish, to: :published
+        end
+
+        step :published, terminal: true
+      end
+
+      actions do
+        defaults [:read, :create]
+      end
+
+      attributes do
+        uuid_v7_primary_key :id
+      end
+      """)
+      |> DomainIgniter.add_resource_reference(
+        AshWorkflowTest.RecipeFixtures.TransitionLog.Domain,
+        workflow
+      )
+      |> run_task("ash_workflow.gen.transition_log", [inspect(workflow)])
+      |> compile(tmp_dir)
+
+    log = recipe.modules[AshWorkflowTest.RecipeFixtures.TransitionLog.DraftTransition]
+
+    recipe.modules[workflow]
+    |> Ash.Changeset.for_create(:create, %{})
+    |> Ash.create!()
+    |> Ash.update!(action: :publish)
+
+    assert [%{to_state: :drafting}, %{to_state: :published}] = log_rows(log)
+  end
+
   test "warns instead of duplicating when a transition_log is already configured" do
     recipe =
       generate(
@@ -141,5 +190,37 @@ defmodule Mix.Tasks.AshWorkflow.Gen.TransitionLogTest do
              igniter.issues,
              &String.contains?(&1, "does not use the AshWorkflow extension")
            )
+  end
+
+  test "reports an issue for a workflow on disk that does not compile" do
+    workflow = AshWorkflowTest.RecipeFixtures.TransitionLog.Broken
+
+    igniter =
+      Igniter.Test.test_project(
+        app_name: :ash_workflow,
+        files:
+          @ets_files
+          |> Map.new(&{&1, File.read!(&1)})
+          |> Map.put("lib/broken.ex", """
+          defmodule #{inspect(workflow)} do
+            use Ash.Resource,
+              domain: AshWorkflowTest.RecipeFixtures.TransitionLog.Domain,
+              extensions: [AshWorkflow]
+
+            workflow do
+              step :drafting, terminal: true
+            end
+
+            attributes do
+              uuid_v7_primary_key :id
+              attribute :title, :not_a_type
+            end
+          end
+          """)
+      )
+      |> Igniter.compose_task("ash_workflow.gen.transition_log", [inspect(workflow)])
+
+    assert Enum.any?(igniter.issues, &String.contains?(&1, "Could not load #{inspect(workflow)}"))
+    assert Enum.any?(igniter.issues, &String.contains?(&1, "must already exist and compile"))
   end
 end
