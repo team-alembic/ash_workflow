@@ -11,6 +11,12 @@ defmodule Mix.Tasks.AshWorkflow.Gen.AcknowledgementTest do
 
   @fixtures "test/support/recipe_fixtures/acknowledgement"
   @files ["#{@fixtures}/domain.ex", "#{@fixtures}/user.ex", "#{@fixtures}/policy.ex"]
+  # The Postgres subject is acknowledged by `Reviewer`, an ETS fixture whose
+  # domain also lists `Ticket` and `Auditor`, so they all come along.
+  @postgres_files Enum.map(
+                    ~w(postgres_domain postgres_ticket domain ticket reviewer auditor),
+                    &"test/support/recipe_fixtures/transition_log/#{&1}.ex"
+                  )
   @checks "lib/ash_workflow_test/recipe_fixtures/acknowledgement/policy_acknowledgement/checks"
   @deny_all "def match?(_actor, _context, _opts), do: false"
 
@@ -166,7 +172,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.AcknowledgementTest do
     tmp_dir: tmp_dir
   } do
     recipe =
-      ["#{@fixtures}/domain.ex", "#{@fixtures}/user.ex"]
+      ["#{@fixtures}/domain.ex", "#{@fixtures}/user.ex", "#{@fixtures}/policy.ex"]
       |> generate([inspect(Terms), "--person", inspect(User), "--domain", inspect(Domain)])
       |> allow_requesters(
         "lib/ash_workflow_test/recipe_fixtures/acknowledgement/terms_acknowledgement/checks"
@@ -396,10 +402,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.AcknowledgementTest do
 
   test "generates a Postgres-backed resource on the subject's repo", %{tmp_dir: tmp_dir} do
     recipe =
-      [
-        "test/support/recipe_fixtures/transition_log/postgres_domain.ex",
-        "test/support/recipe_fixtures/transition_log/postgres_ticket.ex"
-      ]
+      @postgres_files
       |> generate([
         "AshWorkflowTest.RecipeFixtures.TransitionLog.PostgresTicket",
         "--person",
