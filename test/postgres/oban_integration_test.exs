@@ -32,6 +32,7 @@ defmodule AshWorkflowTest.Postgres.ObanIntegrationTest do
   describe "automatic step triggers" do
     test "the scheduler enqueues a job for a record sitting in an automatic step" do
       workflow = submit()
+      delete_queued_jobs()
 
       # One non-recursive drain runs the scheduler, which enqueues the per-record
       # worker job without executing it.

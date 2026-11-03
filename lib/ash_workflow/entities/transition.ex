@@ -26,14 +26,23 @@ defmodule AshWorkflow.Entities.Transition do
         route :rejected, when: expr(decision == :reject)
       end
   """
-  defstruct [:name, :to, __spark_metadata__: nil, accept: [], routes: [], undoable?: false]
+  defstruct [
+    :name,
+    :to,
+    __spark_metadata__: nil,
+    accept: [],
+    routes: [],
+    emits: [],
+    undoable?: false
+  ]
 
   @type t :: %__MODULE__{
           name: atom(),
           to: atom() | nil,
           accept: [atom()],
           routes: [AshWorkflow.Entities.Route.t()],
-          undoable?: boolean()
+          undoable?: boolean(),
+          emits: [AshWorkflow.Entities.Emit.t()]
         }
 
   @schema [

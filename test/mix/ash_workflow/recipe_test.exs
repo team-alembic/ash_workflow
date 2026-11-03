@@ -11,7 +11,8 @@ defmodule Mix.AshWorkflow.RecipeTest do
   for {task, argv} <- [
         {"ash_workflow.gen.approval", ["--approver", inspect(User)]},
         {"ash_workflow.gen.expiry", []},
-        {"ash_workflow.gen.sync", []}
+        {"ash_workflow.gen.sync", []},
+        {"ash_workflow.gen.publication", []}
       ] do
     test "#{task} stops when a missing subject has no data layer to copy" do
       igniter =

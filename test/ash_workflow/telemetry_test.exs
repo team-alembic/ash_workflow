@@ -6,7 +6,7 @@ defmodule AshWorkflow.TelemetryTest do
   transition, an automatic step, a timeout, an error path — and that
   `triggered_by` says which.
   """
-  use ExUnit.Case, async: true
+  use AshWorkflowTest.EtsCase, async: true
 
   alias AshWorkflowTest.ApprovalWorkflow
   alias AshWorkflowTest.ConditionalWorkflow

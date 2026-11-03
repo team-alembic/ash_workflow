@@ -4,7 +4,7 @@ defmodule AshWorkflow.Calculations.PendingDeadlinesTest do
   when" — derived on read from the DSL and the record's own timestamps, with
   nothing stored.
   """
-  use ExUnit.Case, async: true
+  use AshWorkflowTest.EtsCase, async: true
 
   defp deadlines(record) do
     record
