@@ -1,5 +1,5 @@
 defmodule AshWorkflowTest.E2E.FullPipelineTest do
-  use ExUnit.Case
+  use AshWorkflowTest.EtsCase
 
   alias Ash.Resource.Info, as: ResourceInfo
   alias AshStateMachine.Info, as: StateMachineInfo

@@ -376,6 +376,33 @@ defmodule AshWorkflow.InfoTest do
     end
   end
 
+  describe "signals/1, emits/1 and action_signals/2" do
+    test "returns the signals module, or nil when none is named" do
+      assert Info.signals(AshWorkflowTest.SignalWorkflow) == AshWorkflowTest.Signals
+      assert Info.signals(AshWorkflowTest.ApprovalWorkflow) == nil
+    end
+
+    test "returns the workflow-level emits" do
+      assert [%AshWorkflow.Entities.Emit{name: :state_changed, on: nil}] =
+               Info.emits(AshWorkflowTest.SignalWorkflow)
+
+      assert Info.emits(AshWorkflowTest.ApprovalWorkflow) == []
+    end
+
+    test "normalises bare field names and defaults a step emit to :enter" do
+      [started, finished] = Info.step(AshWorkflowTest.SignalWorkflow, :review).emits
+
+      assert %{name: :review_started, on: :enter, fields: [name: :name]} = started
+      assert %{name: :review_finished, on: :exit} = finished
+    end
+
+    test "returns the signals an action may emit" do
+      assert Info.action_signals(AshWorkflowTest.SignalWorkflow, :send_reminder) == [:reminded]
+      assert Info.action_signals(AshWorkflowTest.SignalWorkflow, :read) == []
+      assert Info.action_signals(AshWorkflowTest.SignalWorkflow, :no_such_action) == []
+    end
+  end
+
   defp find_transition(step, name), do: Enum.find(step.transitions, &(&1.name == name))
   defp find_timeout(step, name), do: Enum.find(step.timeouts, &(&1.name == name))
 end

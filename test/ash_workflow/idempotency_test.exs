@@ -1,5 +1,5 @@
 defmodule AshWorkflow.IdempotencyTest do
-  use ExUnit.Case, async: true
+  use AshWorkflowTest.EtsCase, async: true
 
   describe "automatic step idempotency" do
     test "re-running an automatic step action after success is rejected by state machine" do
