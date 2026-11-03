@@ -411,12 +411,14 @@ defmodule Mix.Tasks.AshWorkflow.Gen.DormancyTest do
       argv = [inspect(Account) | @argv]
       first = generate(argv)
 
-      edited =
-        update_in(first.igniter.assigns.test_files["#{@fixtures}/account.ex"], fn source ->
+      files =
+        Map.update!(first.igniter.assigns.test_files, "#{@fixtures}/account.ex", fn source ->
           String.replace(source, "on: [:create]", "on: [:create, :update]")
         end)
 
-      second = run_task(edited.igniter, "ash_workflow.gen.dormancy", argv)
+      # Editing `assigns.test_files` alone leaves the source Igniter already loaded in place.
+      edited = Igniter.Test.test_project(app_name: :ash_workflow, files: files)
+      second = run_task(edited, "ash_workflow.gen.dormancy", argv)
 
       assert second.changed == %{}
       assert [warning] = second.warnings
