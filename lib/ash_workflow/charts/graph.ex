@@ -29,7 +29,8 @@ defmodule AshWorkflow.Charts.Graph do
   `AshWorkflow.Info.undoable_edges/1` once. Nodes are in step declaration
   order. Edges are grouped by the step they leave, in declaration order, and
   undo edges come last. Within one step the order is `on_success` routes,
-  transitions, timeouts that move the record, then `on_error`.
+  transitions, `on_signal` handlers and timeouts that move the record, then
+  `on_error`.
 
   Raises `ArgumentError` for a module that is not such a resource.
 
@@ -75,7 +76,7 @@ defmodule AshWorkflow.Charts.Graph do
   defp notes(entry) do
     optional_note(:policy, Format.policy(entry.policy)) ++
       optional_note(:retry, Format.retry(entry.retry)) ++
-      timeout_notes(entry) ++ every_notes(entry)
+      timeout_notes(entry) ++ every_notes(entry) ++ on_signal_notes(entry)
   end
 
   defp optional_note(_kind, nil), do: []
@@ -105,9 +106,21 @@ defmodule AshWorkflow.Charts.Graph do
     end
   end
 
+  defp on_signal_notes(entry) do
+    for %{to: nil} = on_signal <- entry.on_signals do
+      %Note{
+        kind: :on_signal,
+        name: on_signal.name,
+        action: on_signal.action,
+        label: to_string(on_signal.name)
+      }
+    end
+  end
+
   defp edges(entry) do
     on_success_edges(entry) ++
-      transition_edges(entry) ++ timeout_edges(entry) ++ on_error_edges(entry)
+      transition_edges(entry) ++
+      on_signal_edges(entry) ++ timeout_edges(entry) ++ on_error_edges(entry)
   end
 
   defp on_success_edges(entry) do
@@ -140,6 +153,18 @@ defmodule AshWorkflow.Charts.Graph do
         name: transition.name,
         label: to_string(transition.name),
         condition: Format.condition(transition.condition)
+      }
+    end
+  end
+
+  defp on_signal_edges(entry) do
+    for %{to: to} = on_signal <- entry.on_signals, not is_nil(to) do
+      %Edge{
+        from: entry.name,
+        to: to,
+        kind: :on_signal,
+        name: on_signal.name,
+        label: to_string(on_signal.name)
       }
     end
   end

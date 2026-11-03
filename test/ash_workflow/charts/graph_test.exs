@@ -80,6 +80,19 @@ defmodule AshWorkflow.Charts.GraphTest do
              ]
     end
 
+    test "notes hold the on_signal handlers that run an action" do
+      graph = Graph.build(AshWorkflowTest.OrderWorkflow)
+
+      assert find_node(graph, :awaiting_payment).notes == [
+               %Note{
+                 kind: :on_signal,
+                 name: :address_changed,
+                 action: :update_address,
+                 label: "address_changed"
+               }
+             ]
+    end
+
     test "notes: false leaves every note out" do
       graph = Graph.build(AshWorkflowTest.FullPipeline, notes: false)
 
@@ -141,6 +154,20 @@ defmodule AshWorkflow.Charts.GraphTest do
                first_timeout_edge(AshWorkflowTest.WaitStateWorkflow)
 
       assert %Edge{label: "at next_check_at"} = first_timeout_edge(AshWorkflowTest.FireAtWorkflow)
+    end
+  end
+
+  describe "on_signal edges" do
+    test "follow the step's transitions and come before its timeouts" do
+      graph = Graph.build(AshWorkflowTest.OrderWorkflow)
+
+      assert Enum.map(graph.edges, &{&1.to, &1.kind, &1.label}) == [
+               {:fulfilling, :transition, "mark_paid"},
+               {:fulfilling, :on_signal, "payment_settled"},
+               {:cancelled, :on_signal, "batch_cancelled"},
+               {:cancelled, :on_signal, "order_withdrawn"},
+               {:cancelled, :timeout, "after 3 days"}
+             ]
     end
   end
 
