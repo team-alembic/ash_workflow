@@ -19,11 +19,11 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
-      - uses: extractions/setup-just@v2
+      - uses: extractions/setup-just@v4
       - run: just html
         working-directory: slides
       - name: Collect the site
@@ -31,7 +31,7 @@ jobs:
           deck=slides/2026-ashconf-when-time-meets-state
           mkdir -p _site/when-time-meets-state
           cp -r "$deck/index.html" "$deck/assets" _site/when-time-meets-state/
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
 
   deploy:
     needs: build
@@ -41,4 +41,4 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
