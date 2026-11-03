@@ -14,6 +14,13 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ReviewTest do
   @fixtures "test/support/recipe_fixtures/review"
   @domain_files Enum.map(~w(domain user note), &"#{@fixtures}/#{&1}.ex")
   @files @domain_files ++ ["#{@fixtures}/article.ex"]
+
+  # The Postgres subject is reviewed by `Reviewer`, an ETS fixture whose domain
+  # also lists `Ticket` and `Auditor`, so they all come along.
+  @postgres_files Enum.map(
+                    ~w(postgres_domain postgres_ticket domain ticket reviewer auditor),
+                    &"test/support/recipe_fixtures/transition_log/#{&1}.ex"
+                  )
   @checks "lib/ash_workflow_test/recipe_fixtures/review/article_review/checks"
   @deny_all "def match?(_actor, _context, _opts), do: false"
 
@@ -140,7 +147,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ReviewTest do
     tmp_dir: tmp_dir
   } do
     recipe =
-      @domain_files
+      @files
       |> generate([inspect(Post), "--reviewer", inspect(User), "--domain", inspect(Domain)])
       |> allow_requesters("lib/ash_workflow_test/recipe_fixtures/review/post_review/checks")
       |> compile(tmp_dir)
@@ -443,10 +450,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ReviewTest do
       tmp_dir: tmp_dir
     } do
       recipe =
-        [
-          "test/support/recipe_fixtures/transition_log/postgres_domain.ex",
-          "test/support/recipe_fixtures/transition_log/postgres_ticket.ex"
-        ]
+        @postgres_files
         |> generate([
           "AshWorkflowTest.RecipeFixtures.TransitionLog.PostgresTicket",
           "--reviewer",
@@ -578,10 +582,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ReviewTest do
 
   test "generates Postgres-backed resources on the subject's repo", %{tmp_dir: tmp_dir} do
     recipe =
-      [
-        "test/support/recipe_fixtures/transition_log/postgres_domain.ex",
-        "test/support/recipe_fixtures/transition_log/postgres_ticket.ex"
-      ]
+      @postgres_files
       |> generate([
         "AshWorkflowTest.RecipeFixtures.TransitionLog.PostgresTicket",
         "--reviewer",
