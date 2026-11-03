@@ -16,6 +16,13 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ApprovalTest do
   @fixtures "test/support/recipe_fixtures/approval"
   @domain_files Enum.map(~w(domain user receipt ledger_line), &"#{@fixtures}/#{&1}.ex")
   @files @domain_files ++ ["#{@fixtures}/expense.ex"]
+
+  # The Postgres subject is approved by `Reviewer`, an ETS fixture whose domain
+  # also lists `Ticket`, so all three come along.
+  @postgres_files Enum.map(
+                    ~w(postgres_domain postgres_ticket domain ticket reviewer),
+                    &"test/support/recipe_fixtures/transition_log/#{&1}.ex"
+                  )
   @checks "lib/ash_workflow_test/recipe_fixtures/approval/expense_approval/checks"
   @deny_all "def match?(_actor, _context, _opts), do: false"
 
@@ -160,7 +167,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ApprovalTest do
     tmp_dir: tmp_dir
   } do
     recipe =
-      @domain_files
+      @files
       |> generate([inspect(Invoice), "--approver", inspect(User), "--domain", inspect(Domain)])
       |> allow_requesters(
         "lib/ash_workflow_test/recipe_fixtures/approval/invoice_approval/checks"
@@ -397,10 +404,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ApprovalTest do
 
   test "generates Postgres-backed resources on the subject's repo", %{tmp_dir: tmp_dir} do
     recipe =
-      [
-        "test/support/recipe_fixtures/transition_log/postgres_domain.ex",
-        "test/support/recipe_fixtures/transition_log/postgres_ticket.ex"
-      ]
+      @postgres_files
       |> generate([
         "AshWorkflowTest.RecipeFixtures.TransitionLog.PostgresTicket",
         "--approver",
@@ -426,10 +430,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ApprovalTest do
       tmp_dir: tmp_dir
     } do
       recipe =
-        [
-          "test/support/recipe_fixtures/transition_log/postgres_domain.ex",
-          "test/support/recipe_fixtures/transition_log/postgres_ticket.ex"
-        ]
+        @postgres_files
         |> generate([
           "AshWorkflowTest.RecipeFixtures.TransitionLog.PostgresTicket",
           "--approver",
@@ -468,10 +469,7 @@ defmodule Mix.Tasks.AshWorkflow.Gen.ApprovalTest do
 
   test "shortens a Postgres identity index name past 63 bytes", %{tmp_dir: tmp_dir} do
     recipe =
-      [
-        "test/support/recipe_fixtures/transition_log/postgres_domain.ex",
-        "test/support/recipe_fixtures/transition_log/postgres_ticket.ex"
-      ]
+      @postgres_files
       |> generate([
         "AshWorkflowTest.RecipeFixtures.TransitionLog.PostgresTicket",
         "--approver",
