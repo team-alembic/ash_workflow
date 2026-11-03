@@ -134,14 +134,14 @@ defmodule AshWorkflow.InfoTest do
       assert Info.transition_target(sponsored, :refer) == {:ok, :activated}
     end
 
-    test "reads an unloaded related field as nil, as the transition does" do
+    test "reads an unloaded related field as nil, where the transition loads it" do
       {:ok, sponsor} = AshWorkflowTest.Reviewer.create(%{name: "Direct"})
 
       {:ok, unloaded} =
         TransitionTargetWorkflow.create(%{title: "sponsored", sponsor_id: sponsor.id})
 
       assert Info.transition_target(unloaded, :refer) == {:ok, nil}
-      assert {:error, _no_match} = Ash.update(unloaded, action: :refer)
+      assert {:ok, %{state: :activated}} = Ash.update(unloaded, action: :refer)
     end
 
     test "applies accepted input the same way the action does" do
@@ -373,6 +373,33 @@ defmodule AshWorkflow.InfoTest do
       graph = Info.workflow_graph(AshWorkflowTest.ApprovalWorkflow)
 
       assert Enum.all?(graph, fn {name, entry} -> entry.name == name end)
+    end
+  end
+
+  describe "signals/1, emits/1 and action_signals/2" do
+    test "returns the signals module, or nil when none is named" do
+      assert Info.signals(AshWorkflowTest.SignalWorkflow) == AshWorkflowTest.Signals
+      assert Info.signals(AshWorkflowTest.ApprovalWorkflow) == nil
+    end
+
+    test "returns the workflow-level emits" do
+      assert [%AshWorkflow.Entities.Emit{name: :state_changed, on: nil}] =
+               Info.emits(AshWorkflowTest.SignalWorkflow)
+
+      assert Info.emits(AshWorkflowTest.ApprovalWorkflow) == []
+    end
+
+    test "normalises bare field names and defaults a step emit to :enter" do
+      [started, finished] = Info.step(AshWorkflowTest.SignalWorkflow, :review).emits
+
+      assert %{name: :review_started, on: :enter, fields: [name: :name]} = started
+      assert %{name: :review_finished, on: :exit} = finished
+    end
+
+    test "returns the signals an action may emit" do
+      assert Info.action_signals(AshWorkflowTest.SignalWorkflow, :send_reminder) == [:reminded]
+      assert Info.action_signals(AshWorkflowTest.SignalWorkflow, :read) == []
+      assert Info.action_signals(AshWorkflowTest.SignalWorkflow, :no_such_action) == []
     end
   end
 

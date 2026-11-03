@@ -48,7 +48,8 @@ defmodule AshWorkflow.Entities.Timeout do
     self_scheduled?: false,
     __spark_metadata__: nil,
     field: nil,
-    retry: nil
+    retry: nil,
+    emits: []
   ]
 
   @type duration_unit :: AshWorkflow.Duration.unit()
@@ -61,7 +62,8 @@ defmodule AshWorkflow.Entities.Timeout do
           check_interval: String.t() | nil,
           self_scheduled?: boolean(),
           field: atom() | nil,
-          retry: AshWorkflow.Entities.Retry.t() | nil
+          retry: AshWorkflow.Entities.Retry.t() | nil,
+          emits: [AshWorkflow.Entities.Emit.t()]
         }
 
   @schema [
@@ -137,6 +139,20 @@ defmodule AshWorkflow.Entities.Timeout do
   @spec deadline_field(t()) :: atom()
   def deadline_field(%__MODULE__{fire_at: nil} = timeout), do: anchor_field(timeout)
   def deadline_field(%__MODULE__{fire_at: fire_at}), do: fire_at
+
+  @doc """
+  The column an action timeout writes when it fires, named
+  `<step>_<timeout>_fired_at`, or `nil` for a transition timeout.
+
+  An action timeout does not change state, so this column is the only record
+  that it fired. A transition timeout leaves the step, which is record enough.
+  """
+  @spec fired_field(atom(), t()) :: atom() | nil
+  def fired_field(step_name, %__MODULE__{transition_to: nil, action: action, name: name})
+      when not is_nil(action),
+      do: :"#{step_name}_#{name}_fired_at"
+
+  def fired_field(_step_name, %__MODULE__{}), do: nil
 
   def validate_duration(value), do: AshWorkflow.Duration.validate(value)
 end

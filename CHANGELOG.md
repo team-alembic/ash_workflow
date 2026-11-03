@@ -9,6 +9,84 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`max_fires` and `backoff` on `every`.** `max_fires` stops an `every` after a number of fires in the current step visit. `backoff` grows the gap after each fire, taking a duration tuple or `:exponential` like `retry`'s `backoff`, and both schedulers compute it from `AshWorkflow.Entities.Retry.delay_ms/2`. Either option adds a `<step>_<every>_fires` integer column, so run `mix ash.codegen` on AshPostgres. An `every` without them is unchanged.
+- `mix ash_workflow.gen.approval` adds an approval workflow to a resource: a sibling approval resource with `pending`, `approved`, `rejected`, `cancelled` and an optional `overdue` step, a decision resource, quorum routing, and policies that stop a requester approving their own request. Who may open a request and who may approve live in generated `Checks.CanRequest` and `Checks.CanApprove` modules, which deny everyone until the application fills them in. See the [approval recipe](documentation/recipes/approval.md).
+- `mix ash_workflow.gen.expiry` adds an expiry workflow to a resource: a sibling expiry resource with `active`, `expired` and an optional `expiring` step, whose deadlines read `expires_at` and move when the expiry is renewed. The subject gains `has_one :expiry`, an `expired?` calculation and a `:set_expiry` update action, which creates the subject's expiry or renews the one it has. A subject with no expiry never expires. The generated `Changes.SetExpiry` change does the same work on any other subject action, taking an `expires_in:` option such as `{365, :day}` where the action has no `:expires_at` argument. `--default-expiry 365d` adds that change to the subject's `changes` block for every create, which then fails until `Checks.CanCreate` lets the creating actor through. Who may create an expiry and who may renew one live in generated `Checks.CanCreate` and `Checks.CanRenew` modules, which deny everyone until the application fills them in. See the [expiry recipe](documentation/recipes/expiry.md).
+- `mix ash_workflow.gen.transition_log` accepts a workflow resource generated earlier in the same Igniter run, before it has compiled, by reading its source. A resource on disk that fails to compile is still reported as an issue.
+- `mix ash_workflow.gen.publication` adds a publication workflow to a resource: a sibling publication resource with `draft`, `scheduled`, `published` and `unpublished` steps, which goes live at `publish_at` and, with `--with-unpublish-at`, comes down at `unpublish_at`. The subject gains `has_one :publication` and a `published?` calculation. Who may create a publication and who may schedule, publish and unpublish one live in generated `Checks.CanCreate` and `Checks.CanPublish` modules, which deny everyone until the application fills them in. See the [publication recipe](documentation/recipes/publication.md).
+
+### Fixed
+
+- A create action that upserts onto an existing row no longer appends an `:initial` row to the transition log, emits the workflow's signals or calls `AshWorkflow.Scheduler.notify_state_change/2`. The row stays in the step it was in. `AshWorkflow.Changes.RecordEvent` skips all three when the returned record carries `upsert_action: :update` metadata, or `upsert_skipped: true` metadata from an `upsert_condition` that did not match. This covers `Ash.create/2` and `Ash.bulk_create/4`. The `[:ash_workflow, :transition]` span still emits `:stop`, because its `:start` event fires before the data layer reports whether the row was inserted. Ash sets `upsert_action` on ETS and Mnesia from 3.29, which ash_workflow already requires. AshPostgres sets it from 2.10.0 on PostgreSQL 17 and later, and from 2.13.1 on every PostgreSQL version. With an older AshPostgres, an upsert onto an existing row is still logged.
+- Transition and timeout actions that `AshWorkflow.Transformers.AddActions` generates on a workflow resource with a `pre_check_with` identity now set `require_atomic? false`. Ash adds a `before_action` for such an identity, so the generated actions failed with `MustBeAtomic`. Those actions now run non-atomically on that resource.
+
+## [0.11.0] - 2026-10-29
+
+### Upgrading from 0.10.2
+
+- `ash_workflow` now depends on `ash ~> 3.35`, for `Ash.Signals`.
+
+### Added
+
+- **Workflow signals.** The new `signals` option on the `workflow` section names an `Ash.Signals` module, and `emit` declares a signal at four levels: the workflow (every state change), a step (`on: :enter` or `on: :exit`), a `transition`, and a `timeout` or `every`. `AshWorkflow.Changes.RecordEvent` emits each matching signal in its `after_action` hook, after the log row, with a payload of the workflow fields `from_state`, `to_state`, `transition_name`, `triggered_by` and `occurred_at`, the attributes that share a signal field's name, the `emit`'s `fields` and its literal `values`. A failing listener fails the action and rolls it back. `AshWorkflow.Transformers.AddActions` declares each planned signal as a dynamic emit on the action, and `AshWorkflow.Verifiers.ValidateSignals` checks the names and phases. `AshWorkflow.Info.signals/1`, `emits/1` and `action_signals/2` read the configuration. A `transition`, `timeout` or `every` that contains an `emit` takes its options inside the `do` block. See the Signals guide.
+- **Receiving signals with `on_signal`.** A step can declare `on_signal`, which moves a record to `transition_to`, or runs an update `action`, when a signal from the workflow's `signals` module (or `from`) selects that record while it is in the step. `filter` selects records with `^signal(:field)` templates, or `read_action` names a read action of the resource. `AshWorkflow.Transformers.AddActions` generates the `:__signal_<step>_<signal>_read` read action, the `:__signal_<step>_<signal>` transition action and a `signals_in` listener named `:<step>_<signal>`, and the log row records `triggered_by: :signal`. `AshWorkflow.Transformers.AddPolicies` authorizes the generated actions with `signal_in/2`. `AshWorkflow.Verifiers.ValidateOnSignal` checks the signal, its fields and the outcome, and a step whose only exits are `on_signal` handlers with `transition_to` is a wait state. Charts draw an `on_signal` edge with `📨`. See the Signals guide.
+
+## [0.10.2] - 2026-10-28
+
+### Upgrading from 0.10.1
+
+- Under `AshWorkflow.Scheduler.Oban`, an action that moves a record into an automatic step now inserts an Oban job. A test that runs such an action needs a repo connection checked out, even when the workflow resource uses the ETS data layer. With Oban's `testing: :inline`, the step's action now runs inside the action that moved the record.
+- A `run_oban_trigger/1` change that queued an automatic step after a create or a transition is no longer needed. Leaving it in place queues no second job, because ash_oban's trigger worker is unique while a job is incomplete.
+
+### Added
+
+- **A Workflows lens for Clarity.** With [Clarity](https://hex.pm/packages/clarity) installed, `AshWorkflow.Clarity.Lensmaker` adds a Workflows lens that lists each workflow resource with its steps. `AshWorkflow.Clarity.Introspector` adds an `AshWorkflow.Clarity.Vertex.Step` for each step. A workflow resource gets Workflow Overview, Workflow Diagram and Workflow Timing tabs, and a step gets Step Overview, Step Diagram and Step Timeline tabs. The timing tabs place each automatic action, retry attempt, timeout, `every` firing and undo window at its offset from entering the step, and say how long a record can stay in each step. Clarity is an optional dependency, so a project without it compiles none of these modules.
+- **An `:actor` option for `AshWorkflow.Scheduler.Oban`.** The value becomes each generated trigger's `default_actor`. A cron-fired scheduler has no caller and read with a `nil` actor, so on a resource whose read policy needs an actor it matched no rows and the workflow never advanced. With `scheduler {AshWorkflow.Scheduler.Oban, actor: ...}` the scheduler reads as that actor, and the worker runs the step's or timeout's action as it when the job stored no actor. See issue #150.
+
+### Fixed
+
+- `AshWorkflow.Scheduler.Oban` runs an automatic step as soon as a record enters it, as `AshWorkflow.Scheduler.Precise` already did. Before, the record waited for the trigger's next `check_interval`, because `AshWorkflow.Scheduler.notify_state_change/1` called only `deadline_changed/2` and `cancel/2`, and the Oban scheduler implements neither. `notify_state_change/2` now also calls the new optional `AshWorkflow.Scheduler.step_entered/2` callback when `AshWorkflow.Changes.RecordEvent` reports that the record entered its step. `AshWorkflow.Scheduler.Oban.step_entered/2` queues the step's trigger with `AshOban.run_trigger/3`. A step whose action routes the record back into the same step does not count as entering it, so that record still waits for the poll. An action timeout and an `every` do not count either. The queued job carries no actor, the same as a job the poll queues. A transition declared directly in the `state_machine` block does not run `RecordEvent`, so a record it moves into an automatic step still waits for the poll.
+- `AshWorkflow.Scheduler.Precise` arms a timeout whose `fire_at` or `field` names an expression calculation as soon as a record enters the step. `AshWorkflow.Scheduler.notify_state_change/1` handed `deadline_changed/2` the record without that calculation loaded, so `AshWorkflow.Scheduler.due_at/2` returned `nil`, no timer was armed, and only the recovery sweep caught the deadline, up to `look_ahead_ms` late. `notify_state_change/1` now loads the calculations returned by the new `AshWorkflow.Scheduler.Work.deadline_loads/1` before calling `deadline_changed/2`. `AshWorkflow.Scheduler.Oban` was not affected, because its trigger evaluates the calculation in the `where` clause.
+
+### Security
+
+- The development lock now resolves `ash` 3.37.2, `ash_postgres` 2.15.2 and `plug_crypto` 2.2.1, which fix the advisories `mix hex.audit` reported against `ash` 3.34.6 (EEF-CVE-2026-96581, EEF-CVE-2026-114214), `ash_postgres` 2.13.1 (EEF-CVE-2026-115627, EEF-CVE-2026-115635) and `plug_crypto` 2.2.0 (EEF-CVE-2026-105963). The `ash ~> 3.0` requirement in `mix.exs` is unchanged, so applications pick their own versions. Upgrade them in your own lock to get the fixes.
+
+## [0.10.1] - 2026-10-19
+
+### Upgrading from 0.10.0
+
+- A conditional route that reads a related field, a calculation or an aggregate now loads it when the transition runs. A route that relied on an unloaded relationship reading as `nil`, such as `is_nil(sponsor.name)`, now sees the real value. A route on a relationship the caller had already loaded now reads the current value, not the loaded copy. `AshWorkflow.Info.transition_target/3` still loads nothing.
+
+### Fixed
+
+- A transition whose action the resource declares without `accept` no longer crashes `AshWorkflow.Transformers.AddActions` with `nil ++ []`. The action keeps Ash's `default_accept` unless the transition accepts attributes of its own.
+- A conditional route that references a calculation, an aggregate or a related field now reads its current value. `AshWorkflow.Changes.ConditionalTransition` loads those fields before evaluating routes, as the `:transition_targets` calculation already did. The action used to read them off the record it was called on, so an unloaded field read as `nil` and no route matched. A route over a relationship the caller had already loaded now reads the current value rather than the loaded copy.
+
+## [0.10.0] - 2026-10-18
+
+### Upgrading from 0.9.x
+
+- **Generate a migration.** Each action timeout (a `timeout` with `action` and no `transition_to`) adds a nilable `<step>_<timeout>_fired_at` column. On AshPostgres, run `mix ash.codegen` after upgrading.
+- A record whose action timeout already fired before the upgrade has a `nil` column, so that timeout fires once more for it after the upgrade.
+
+### Added
+
+- A generated `:workflow_terminated_at` calculation returns `state_entered_at` while a record is in a terminal step, and `nil` while the workflow is still running. A terminal step has no outgoing transitions, so the time the record entered it is the time the workflow ended, and no new attribute or migration is needed. The calculation is an expression, so it filters and sorts in the data layer: `Ash.Query.filter(workflow_terminated_at > ago(7, :day))`. The new `terminated_at_calculation` option on the `workflow` section renames it, for a resource that already has a field by that name. `AshWorkflow.Transformers.AddCalculations` adds it with `add_new_calculation`, so a user-defined calculation with the configured name takes precedence. (#120)
+
+### Fixed
+
+- An action timeout fires once for each deadline under both schedulers. `AshWorkflow.Scheduler.Precise` fired a due action timeout in a loop: firing left the record matching, `AshWorkflow.Changes.RecordEvent` rearmed it, and `run_due/2` never returned 0. `AshWorkflow.Scheduler.Oban` relied on `trigger_once?`, so the completed job row was the only record of a firing. Pruning the row fired the timeout again, keeping it stopped a second visit to the step from firing, and a `fire_at` timeout whose action moved its own field later never fired a second time. Each action timeout now writes its own `<step>_<timeout>_fired_at` column (`AshWorkflow.Entities.Timeout.fired_field/2`) when it fires, and `AshWorkflow.Scheduler.Work.not_fired/1` adds `is_nil(fired_at) or fired_at < deadline` to the timeout's `match`. The timeout fires again once its deadline moves past the column. A new visit to the step and a later `fire_at` value both do that. `AshWorkflow.Scheduler.Work` replaces `once?` with `fired_field`, the generated Oban trigger no longer sets `trigger_once?`, and `pending_deadlines` omits an action timeout that has fired for its current deadline. `AshWorkflow.Verifiers.ValidateTimeoutFiredFields` rejects a fired column that names an existing non-datetime attribute, and two timeouts, or a timeout and an `every`, that resolve to the same column. (#106)
+- The exported `locals_without_parens` now includes `last_fired_field`. A project with `import_deps: [:ash_workflow]` in its `.formatter.exs` had `mix format` rewrite `last_fired_field :reminder_fired_at` as `last_fired_field(:reminder_fired_at)`. (#120)
+
+## [0.9.0] - 2026-10-17
+
+### Upgrading from 0.8.x
+
+- `ash_workflow` now depends on `jason ~> 1.4`, for the `:json` chart backend.
+
+### Added
+
 - **Workflow diagrams.** `AshWorkflow.Charts` draws a workflow from its DSL. `AshWorkflow.Charts.mermaid_state_diagram/2` returns a Mermaid `stateDiagram-v2` that marks each step as automatic, manual, wait state or terminal. It labels a timeout with its name and its deadline (`⏱ auto_escalate after 4 hours`, `⏱ go_live at publish_at`) and gives each conditional route its `when` expression. It notes a step's policy through the check's own `describe/1`, its `retry`, the timeouts that run an action and its `every` entries. It draws each undo move that `AshWorkflow.Info.undoable_edges/1` allows, with the undo window when `within` is set (`↶ undo within 1 hour`). `AshWorkflow.Charts.render/3` takes `:mermaid`, `:json` or any module that implements `AshWorkflow.Charts.Backend`. Every format draws from one `AshWorkflow.Charts.Graph`, so all formats show the same workflow. `:json` gives that graph as plain data, for a client that draws the workflow itself. `mix ash_workflow.diagram` prints a diagram, or with `--output` writes one file for each workflow resource in the project's domains. The Diagrams guide shows four small workflows from `examples/basic` with their charts, and both the definitions and the charts are generated from the code: `bin/update-chart-examples` rewrites them, and `test/documentation_charts_test.exs` fails when one is stale. (#16)
 - **Graphviz DOT diagrams.** `AshWorkflow.Charts.render(resource, :dot)` and `mix ash_workflow.diagram --format dot` give a [Graphviz](https://graphviz.org) DOT chart of a workflow. It shows the same steps, edges and labels as the Mermaid chart, with colour and line styles. It takes its colours from `AshWorkflow.Charts.Palette`.
   - `svg: true`, or `--svg`, runs `dot` from the `PATH` and returns the SVG. You install Graphviz. `:path` under `config :ash_workflow, :dot` selects another `dot`, for example in a release. Without a `dot`, `svg: true` raises an `ArgumentError` that says to install Graphviz.

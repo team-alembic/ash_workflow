@@ -9,6 +9,25 @@ defmodule AshWorkflow do
 
   alias AshWorkflow.Entities
 
+  @emit %Spark.Dsl.Entity{
+    name: :emit,
+    describe: "Fires a signal from the workflow's `signals` module when this runs.",
+    target: Entities.Emit,
+    args: [:name],
+    schema: Entities.Emit.attribute_schema(),
+    transform: {Entities.Emit, :transform, []}
+  }
+
+  @step_emit %Spark.Dsl.Entity{
+    name: :emit,
+    describe:
+      "Fires a signal from the workflow's `signals` module when the record enters or leaves this step.",
+    target: Entities.Emit,
+    args: [:name],
+    schema: Entities.Emit.step_attribute_schema(),
+    transform: {Entities.Emit, :transform, []}
+  }
+
   @route %Spark.Dsl.Entity{
     name: :route,
     describe: "A conditional target for a transition. Evaluated at runtime.",
@@ -57,7 +76,8 @@ defmodule AshWorkflow do
     args: [:name],
     schema: Entities.Transition.attribute_schema(),
     entities: [
-      routes: [@route]
+      routes: [@route],
+      emits: [@emit]
     ]
   }
 
@@ -82,7 +102,8 @@ defmodule AshWorkflow do
     args: [:name],
     schema: Entities.Timeout.attribute_schema(),
     entities: [
-      retry: [@retry]
+      retry: [@retry],
+      emits: [@emit]
     ],
     singleton_entity_keys: [:retry]
   }
@@ -95,9 +116,24 @@ defmodule AshWorkflow do
     args: [:name, {:optional, :interval}],
     schema: Entities.Every.attribute_schema(),
     entities: [
-      retry: [@retry]
+      retry: [@retry],
+      emits: [@emit]
     ],
     singleton_entity_keys: [:retry]
+  }
+
+  @on_signal %Spark.Dsl.Entity{
+    name: :on_signal,
+    describe:
+      "Moves the record on, or runs an action, when a signal from an `Ash.Signals` module selects it while it is in this step.",
+    target: Entities.OnSignal,
+    args: [:name],
+    imports: [Ash.Expr, AshWorkflow.Expr],
+    schema: Entities.OnSignal.attribute_schema(),
+    transform: {Entities.OnSignal, :transform, []},
+    entities: [
+      emits: [@emit]
+    ]
   }
 
   @belongs_to_actor %Spark.Dsl.Entity{
@@ -145,8 +181,10 @@ defmodule AshWorkflow do
       transitions: [@transition],
       timeouts: [@timeout],
       everys: [@every],
+      on_signals: [@on_signal],
       on_success: [@on_success],
-      retry: [@retry]
+      retry: [@retry],
+      emits: [@step_emit]
     ],
     singleton_entity_keys: [:retry]
   }
@@ -186,6 +224,13 @@ defmodule AshWorkflow do
         satisfies.
         """
       ],
+      signals: [
+        type: :atom,
+        doc: """
+        The `Ash.Signals` module that declares every signal this workflow's
+        `emit` entities name. Required once anything declares `emit`.
+        """
+      ],
       queue: [
         type: :atom,
         default: :workflow,
@@ -206,6 +251,17 @@ defmodule AshWorkflow do
         individual timeouts with `check_interval` on the timeout itself.
         """
       ],
+      terminated_at_calculation: [
+        type: :atom,
+        default: :workflow_terminated_at,
+        doc: """
+        The name of the generated calculation that returns when the record
+        entered a terminal step, or `nil` while the workflow is still running.
+        Defaults to `workflow_terminated_at`.
+
+        Rename it when the resource already has a field by that name.
+        """
+      ],
       generate_indexes?: [
         type: :boolean,
         default: true,
@@ -223,7 +279,7 @@ defmodule AshWorkflow do
         """
       ]
     ],
-    entities: [@step, @transition_log, @undo]
+    entities: [@step, @transition_log, @undo, @emit]
   }
 
   use Spark.Dsl.Extension,
@@ -244,10 +300,13 @@ defmodule AshWorkflow do
       AshWorkflow.Verifiers.ValidateWorkflow,
       AshWorkflow.Verifiers.ValidateTimeoutFields,
       AshWorkflow.Verifiers.ValidateEvery,
+      AshWorkflow.Verifiers.ValidateTimeoutFiredFields,
       AshWorkflow.Verifiers.ValidateTimeoutPrecision,
       AshWorkflow.Verifiers.ValidateRetry,
       AshWorkflow.Verifiers.ValidateTransitionLog,
       AshWorkflow.Verifiers.ValidateUndo,
-      AshWorkflow.Verifiers.ValidateStepPolicies
+      AshWorkflow.Verifiers.ValidateStepPolicies,
+      AshWorkflow.Verifiers.ValidateSignals,
+      AshWorkflow.Verifiers.ValidateOnSignal
     ]
 end

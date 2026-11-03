@@ -27,6 +27,10 @@ config :my_app, Oban,
 
 The queue name must match the workflow's `queue` option, which defaults to `:workflow`. A trigger publishing to a queue Oban does not run inserts jobs that never execute.
 
+## Start from a recipe
+
+If your workflow is a common one, such as an approval or an expiry, a recipe can generate it for you. A recipe is a Mix task that writes the workflow onto your resource, and you edit the result like any other code. See the [recipes index](documentation/recipes/index.md) for the catalogue. The rest of this guide writes a workflow by hand.
+
 ## Define the workflow
 
 Create a resource with the `AshWorkflow` and `AshOban` extensions.
@@ -219,6 +223,14 @@ doc.current_step
 
 These are useful for rendering progress bars, step lists, or workflow visualisations.
 
+The `:workflow_terminated_at` calculation returns the time the record entered a terminal step. It is `nil` while the workflow is still running. Set `terminated_at_calculation` in the `workflow` section to give it another name. It is an expression, so it can be used in filters and sorts:
+
+```elixir
+Document
+|> Ash.Query.filter(workflow_terminated_at > ago(7, :day))
+|> Ash.read!()
+```
+
 ### Runtime calculation
 
 Every workflow resource gets a generated `:available_actions` calculation. Load it on a record to get the transitions for its current state:
@@ -260,7 +272,7 @@ Both resolve routes through the same code the generated action runs, so the prev
 
 A preview has no action input. A route that reads an accepted attribute sees the value on the record, not the one a caller is about to submit. To preview a particular call, pass the input: `AshWorkflow.Info.transition_target(doc, :decide, %{decision: :approve})`.
 
-`transition_target/3` loads nothing, and a route that reads an unloaded relationship sees `nil`. The generated action reads the record it is called on the same way. The calculation loads the fields its routes reference.
+`transition_target/3` loads nothing, and a route that reads an unloaded relationship sees `nil`. The generated action and the calculation both load the fields their routes reference.
 
 ## Stale transitions are refused
 

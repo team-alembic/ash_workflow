@@ -4,7 +4,7 @@ defmodule AshWorkflowTest.CustomActionWorkflow do
   and state_entered_at changes merged in by the transformer, rather than
   being silently skipped.
 
-  start → review ──(approve)──→ approved  (user-defined with extra timestamp)
+  start → review ──(approve)──→ approved  (user-defined with extra timestamp, no accept)
                   └─(reject)───→ rejected (user-defined with accept [:reason])
   """
 
@@ -33,7 +33,6 @@ defmodule AshWorkflowTest.CustomActionWorkflow do
     end
 
     update :approve do
-      accept []
       change set_attribute(:approved_at, &DateTime.utc_now/0)
     end
 

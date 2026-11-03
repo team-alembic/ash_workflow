@@ -117,7 +117,7 @@ every :follow_up do
 end
 ```
 
-An action timeout fires once after the deadline and then stops. `every` fires every interval (e.g., every 3 days) as long as the workflow remains in that step. `every` always requires `action` and has no `transition_to`, since firing never leaves the step — a repeating action that also left the step would never come round to repeat.
+An action timeout fires once for each deadline and then stops. It records the firing in its own `<step>_<timeout>_fired_at` column, so it fires again only when the deadline moves later: a new visit to the step for a `state_entered_at` deadline, or a later value in its `field` or `fire_at`. `every` fires every interval (e.g., every 3 days) as long as the workflow remains in that step. `every` always requires `action` and has no `transition_to`, since firing never leaves the step — a repeating action that also left the step would never come round to repeat.
 
 ### Bounding `every` with `until`
 
@@ -158,6 +158,33 @@ step :awaiting_response do
   timeout :give_up, fire_after: {8, :days}, transition_to: :escalated
 end
 ```
+
+### Bounding `every` with `max_fires`, and spacing it out with `backoff`
+
+`max_fires` stops an `every` after a number of fires in the current step
+visit. `backoff` grows the gap after each fire:
+
+```elixir
+every :reminder do
+  interval {1, :days}
+  action :send_review_reminder
+  max_fires 4
+  backoff :exponential
+end
+```
+
+The first fire lands one `interval` after entry. After fire `n`, the next gap
+is `interval` plus `AshWorkflow.Entities.Retry.delay_ms/2` for attempt `n`. A
+duration tuple such as `{2, :days}` adds the same delay to every later gap.
+`:exponential` adds `n^4 + 15` seconds, the same curve as `retry`, which
+matters for intervals of minutes and barely moves a daily one.
+
+Either option adds a `<step>_<every>_fires` integer column, defaulting to 0,
+so generate a migration. A last fire from before `state_entered_at` belongs to
+an earlier visit, so the count restarts when the record re-enters the step.
+`max_fires` and `until` may be declared together, and whichever is reached
+first stops the firing. `backoff` with `max_fires 1` is rejected, since no
+later fire exists to delay.
 
 ### Durations are constants
 

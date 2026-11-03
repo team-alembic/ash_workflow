@@ -44,6 +44,14 @@ config :ash_workflow, scheduler: {AshWorkflow.Scheduler.Oban, queue: :workflow}
 
 `AshWorkflow.Scheduler.Oban` polls: it turns each automatic step and each timeout into an AshOban trigger whose `where` clause finds eligible records. Polling is what puts a floor under accuracy — cron cannot ask for less than a minute, which is why a sub-minute `fire_after` is rejected.
 
+A cron-fired trigger has no caller, so it reads and runs with a `nil` actor. On a resource whose read policy needs an actor, pass one with the `:actor` option, or the trigger finds no records and the workflow never moves:
+
+```elixir
+scheduler {AshWorkflow.Scheduler.Oban, actor: %MyApp.SystemActor{reason: "workflow"}}
+```
+
+The value becomes each trigger's `default_actor`, which ash_oban uses for the scheduler's read and for the worker's action when the job stored no actor.
+
 `AshWorkflow.Scheduler.Precise` arms a timer per deadline instead, so its floor is a millisecond and a sub-minute `fire_after` compiles. Select it in the `workflow` block and start `AshWorkflow.Scheduler.Precise.Timeline` with the resources it recovers deadlines for:
 
 ```elixir
@@ -301,7 +309,7 @@ record.transition_targets
 ```
 
 - `transition_target/3` returns `{:ok, step}`, `{:ok, nil}` when the current step does not declare the transition or no route matches, and `{:error, error}` when a route fails to evaluate. It raises `ArgumentError` for a name no step declares.
-- It loads nothing. A route that reads an unloaded relationship sees `nil`, in the preview and in the real action alike.
+- It loads nothing. A route that reads an unloaded relationship or calculation sees `nil` in the preview. The real action loads what its routes reference.
 - A route that reads accepted input sees it only when the transition runs. Pass the input as the third argument to preview a particular call.
 - `:transition_targets` has one key per transition of the current step, is not filtered by authorization, and maps a transition to `nil` when no route matches or a route fails to evaluate. It is an empty map at an automatic or terminal step. It loads the fields its routes reference.
 
@@ -328,6 +336,7 @@ timeout :reminder, fire_after: {3, :days}, action: :send_reminder
 ```
 
 - `action`: References a user-defined update action. The workflow stays in the current state.
+- The extension adds a nilable `<step>_<timeout>_fired_at` attribute that records the firing. The timeout fires again only when its deadline moves later, such as on a new visit to the step. On AshPostgres, generate a migration after adding an action timeout.
 
 ### Recurring Action (`every`, fires on every interval)
 
@@ -351,6 +360,19 @@ end
 ```
 
 `until` is measured against `state_entered_at` directly — `interval` measures against the `every`'s own last-fired column instead, so firing never moves it. `until` must be strictly longer than `interval`. See `usage-rules/timeouts.md` for the full explanation.
+
+`max_fires` bounds `every` to a number of fires in the current step visit, and `backoff` grows the gap after each fire. `backoff` takes a duration tuple or `:exponential`, the same values as `retry`'s `backoff`:
+
+```elixir
+every :follow_up do
+  interval {1, :days}
+  action :send_follow_up
+  max_fires 4
+  backoff {2, :days}
+end
+```
+
+This fires at day 1, 4, 7 and 10, then stops. After fire `n` the next gap is `interval` plus `AshWorkflow.Entities.Retry.delay_ms/2` for attempt `n`. Either option adds a `<step>_<every>_fires` integer column, so generate a migration. `max_fires` and `until` may be declared together, and whichever is reached first stops the firing.
 
 ### Transition Timeout (force state change)
 
@@ -376,9 +398,10 @@ workflow do
 end
 ```
 
-- `state_attribute` (optional): the attribute the current step is stored in. Defaults to `:state`. AshWorkflow passes it down to `ash_state_machine`, so set it here rather than in a `state_machine` block. Everything generated follows it: the `match` expression on each unit of scheduled work, the `current_step`, `available_actions`, `transition_targets` and `pending_deadlines` calculations, and the recommended indexes. `state_entered_at` keeps its name either way.
+- `state_attribute` (optional): the attribute the current step is stored in. Defaults to `:state`. AshWorkflow passes it down to `ash_state_machine`, so set it here rather than in a `state_machine` block. Everything generated follows it: the `match` expression on each unit of scheduled work, the `current_step`, `available_actions`, `transition_targets`, `pending_deadlines` and `workflow_terminated_at` calculations, and the recommended indexes. `state_entered_at` keeps its name either way.
 - `queue` (optional): the Oban queue for all generated triggers. Defaults to `:workflow`. The queue MUST exist in your Oban config or Oban raises at boot.
 - `check_interval` (optional): Oban cron expression controlling how often every trigger on the resource polls — automatic steps and timeouts alike. Defaults to `"* * * * *"` (every minute). Individual timeouts can override it.
+- `terminated_at_calculation` (optional): the name of the generated calculation that returns when the record entered a terminal step, or `nil` while it is still running. Defaults to `:workflow_terminated_at`. Rename it when the resource already has a field by that name.
 
 Prefer raising `check_interval` over leaving the default when deadlines are measured in days. Every automatic step and every timeout gets its own scheduler, and each runs a query on every tick regardless of whether any record is waiting, so the cost scales with the number of triggers on the resource.
 
@@ -387,6 +410,7 @@ Prefer raising `check_interval` over leaving the default when deadlines are meas
 - Each timeout must have EITHER `action` OR `transition_to` — not both, not neither.
 - Supported duration units: `:seconds`, `:minutes`, `:hours`, `:days`.
 - `check_interval` (optional): Oban cron expression for how often to poll. Defaults to the workflow-level `check_interval`, which itself defaults to `"* * * * *"` (every minute).
+- `terminated_at_calculation` (optional): the name of the generated calculation that returns when the record entered a terminal step, or `nil` while it is still running. Defaults to `:workflow_terminated_at`. Rename it when the resource already has a field by that name.
 - A timeout can also declare a `retry` block, with the same `max_attempts` and `backoff` options as a step's — see [Retry](#retry) under Automatic Steps.
 
 ## Transition Log (Workflow History)
@@ -464,9 +488,60 @@ Undo is refused, with a reason on `AshWorkflow.Errors.UndoNotPermitted`, when: t
 
 A transition whose target is an *automatic* step is undoable only until that step runs: once its Oban trigger fires, the head of the log is the automatic step's own row, and undo refuses with `:not_undoable`.
 
+## Signals
+
+A workflow fires `Ash.Signals` signals on workflow events. Name the signals module once with `signals`, then declare `emit` where the event happens:
+
+```elixir
+workflow do
+  signals MyApp.Orders.Signals
+
+  # Fires on every state change.
+  emit :order_transitioned
+
+  step :review do
+    emit :review_started              # on: :enter is the default
+    emit :review_finished, on: :exit
+
+    transition :approve do
+      to :fulfilment
+      emit :order_approved, fields: [:customer_id], values: [channel: "web"]
+    end
+
+    timeout :escalate do
+      fire_after {2, :days}
+      transition_to :escalated
+      emit :order_escalated
+    end
+  end
+end
+```
+
+`emit` also works inside `timeout` and `every`. `fields` maps signal fields to resource attributes (`signal_field: :attribute`, or a bare name for the same name). `values` sets signal fields to literal values. Only a step-level `emit` takes `on`.
+
+AshWorkflow fills the signal fields `from_state`, `to_state`, `transition_name`, `triggered_by` and `occurred_at`, and any field named after a resource attribute. `AshWorkflow.Verifiers.ValidateSignals` rejects at compile time a signal that is missing from the module, is not an `:after_action` signal, has a required field nothing fills, or declares `from_state`/`to_state` with a type other than `:atom`. Every action that may emit a signal declares it as a dynamic `emit` of the signals module, so `mix ash.signals` lists the workflow.
+
+### Receiving signals
+
+`on_signal` moves a record on, or runs an action, when a signal selects it while it is in the step. It sits beside the step's transitions and timeouts:
+
+```elixir
+step :awaiting_payment do
+  transition :mark_paid, to: :fulfilling
+
+  on_signal :payment_settled do
+    filter expr(id == ^signal(:order_id))
+    transition_to :fulfilling
+    inputs paid_at: :settled_at
+  end
+end
+```
+
+The signal comes from the workflow's `signals` module unless `from` names another. `filter` selects the records, with `^signal(:field)` for signal fields. `read_action` names a read action of your own instead, whose arguments are set from signal fields of the same name. Either way only records in the step are selected, so a signal for a record that has already left does nothing. `transition_to` moves the record; `action` runs an update action without leaving the step. `inputs` and `delivery` pass through to the generated `signals_in` listener. The generated transition is `:__signal_<step>_<signal>` and logs `triggered_by: :signal`. With `Ash.Policy.Authorizer`, the generated actions are authorized by `signal_in/2` only.
+
 ## Telemetry
 
-Every state change emits a `[:ash_workflow, :transition]` span, and a conditional transition also emits `[:ash_workflow, :route_evaluation]`. `AshWorkflow.Changes.RecordEvent` emits the span, so one span covers a manual transition, an automatic step, a timeout, an error path, an undo and the initial create.
+Every state change emits a `[:ash_workflow, :transition]` span, and a conditional transition also emits `[:ash_workflow, :route_evaluation]`. `AshWorkflow.Changes.RecordEvent` emits the span, so one span covers a manual transition, an automatic step, a timeout, an error path, an undo, a received signal and the initial create.
 
 ```elixir
 :telemetry.attach("workflow-transitions", [:ash_workflow, :transition, :stop], &handle/4, nil)
@@ -524,6 +599,7 @@ AshWorkflow generates these automatically — do NOT define them yourself:
 |---|---|
 | `:state` attribute | Added by `ash_state_machine`. Rename it with `state_attribute` |
 | `:state_entered_at` attribute | `utc_datetime_usec`, tracks when current state was entered |
+| `:workflow_terminated_at` calculation | `state_entered_at` while in a terminal step, `nil` otherwise. Rename it with `terminated_at_calculation` |
 | Primary `:read` action | Added if automatic steps exist (needed for Oban triggers) |
 | Transition update actions | One per manual transition |
 | Timeout transition actions | Hidden `__timeout_<step>_<name>` actions |

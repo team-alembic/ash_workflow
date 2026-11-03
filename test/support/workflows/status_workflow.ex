@@ -1,7 +1,8 @@
 defmodule AshWorkflowTest.StatusWorkflow do
   @moduledoc """
   A workflow that stores its state in `status` rather than `state`, declared
-  through `state_attribute` on the `workflow` section.
+  through `state_attribute` on the `workflow` section. It also renames the
+  terminated-at calculation to `closed_at`.
 
   It carries one of everything that has to follow the renamed attribute: an
   automatic step, a manual transition, a conditional transition, a timeout,
@@ -19,6 +20,7 @@ defmodule AshWorkflowTest.StatusWorkflow do
 
   workflow do
     state_attribute :status
+    terminated_at_calculation :closed_at
 
     transition_log AshWorkflowTest.StatusLog
 

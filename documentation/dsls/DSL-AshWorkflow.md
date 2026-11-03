@@ -17,15 +17,22 @@ Define a workflow by declaring steps, transitions, and timeouts.
  * [step](#workflow-step)
    * transition
      * route
+     * emit
    * timeout
      * retry
+     * emit
    * every
      * retry
+     * emit
+   * on_signal
+     * emit
    * on_success
    * retry
+   * emit
  * [transition_log](#workflow-transition_log)
    * belongs_to_actor
  * [undo](#workflow-undo)
+ * [emit](#workflow-emit)
 
 
 
@@ -37,8 +44,10 @@ Define a workflow by declaring steps, transitions, and timeouts.
 |------|------|---------|------|
 | [`state_attribute`](#workflow-state_attribute){: #workflow-state_attribute } | `atom` |  | The attribute the workflow's current step is stored in. Defaults to `state`. AshWorkflow passes this down to `ash_state_machine`, so set it here rather than in the `state_machine` section. Use it when the resource already has a lifecycle column of its own, such as `status`. |
 | [`scheduler`](#workflow-scheduler){: #workflow-scheduler } | `any` |  | The module that decides when this workflow's automatic steps and timeouts run, optionally with its options:     scheduler AshWorkflow.Scheduler.Oban     scheduler {AshWorkflow.Scheduler.Oban, check_interval: "0 * * * *"} Defaults to the `:scheduler` application environment for `:ash_workflow`, and to `AshWorkflow.Scheduler.Oban` when that is unset. `AshWorkflow.Scheduler.Oban` requires the resource to also have the `AshOban` extension. AshWorkflow does not add it, so that a workflow using a scheduler unrelated to Oban does not carry the ash_oban DSL. See `AshWorkflow.Scheduler` for the behaviour an implementation satisfies. |
+| [`signals`](#workflow-signals){: #workflow-signals } | `atom` |  | The `Ash.Signals` module that declares every signal this workflow's `emit` entities name. Required once anything declares `emit`. |
 | [`queue`](#workflow-queue){: #workflow-queue } | `atom` | `:workflow` | The Oban queue to use for all generated triggers. Defaults to :workflow. |
 | [`check_interval`](#workflow-check_interval){: #workflow-check_interval } | `String.t` | `"* * * * *"` | Oban cron expression controlling how often every generated trigger on this resource polls — both automatic steps and timeouts. Defaults to every minute. Each automatic step and each timeout gets its own scheduler, and every scheduler runs a query on every tick, so this multiplies: a resource with four automatic steps and four timeouts polls eight times a minute at the default. Raise it for workflows measured in days, and override individual timeouts with `check_interval` on the timeout itself. |
+| [`terminated_at_calculation`](#workflow-terminated_at_calculation){: #workflow-terminated_at_calculation } | `atom` | `:workflow_terminated_at` | The name of the generated calculation that returns when the record entered a terminal step, or `nil` while the workflow is still running. Defaults to `workflow_terminated_at`. Rename it when the resource already has a field by that name. |
 | [`generate_indexes?`](#workflow-generate_indexes?){: #workflow-generate_indexes? } | `boolean` | `true` | Whether to add the composite indexes the generated triggers rely on. Only applies to resources using `AshPostgres.DataLayer`; other data layers ignore it. Every trigger filters on the state attribute, and every timeout also filters on its `field`, so without `(state, field)` indexes each poll is a sequential scan. Set to `false` if you manage these indexes yourself — a `custom_indexes` entry on the same fields already takes precedence. See `AshWorkflow.Info.recommended_indexes/1`. |
 
 
@@ -54,12 +63,18 @@ Declares a step in the workflow. Each step becomes a state in the generated stat
 ### Nested DSLs
  * [transition](#workflow-step-transition)
    * route
+   * emit
  * [timeout](#workflow-step-timeout)
    * retry
+   * emit
  * [every](#workflow-step-every)
    * retry
+   * emit
+ * [on_signal](#workflow-step-on_signal)
+   * emit
  * [on_success](#workflow-step-on_success)
  * [retry](#workflow-step-retry)
+ * [emit](#workflow-step-emit)
 
 
 
@@ -90,6 +105,7 @@ Declares a named transition from this manual step to another step.
 
 ### Nested DSLs
  * [route](#workflow-step-transition-route)
+ * [emit](#workflow-step-transition-emit)
 
 
 
@@ -139,6 +155,38 @@ A conditional target for a transition. Evaluated at runtime.
 
 Target: `AshWorkflow.Entities.Route`
 
+### workflow.step.transition.emit
+```elixir
+emit name
+```
+
+
+Fires a signal from the workflow's `signals` module when this runs.
+
+
+
+
+
+### Arguments
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`name`](#workflow-step-transition-emit-name){: #workflow-step-transition-emit-name .spark-required} | `atom` |  | The name of the signal, declared in the workflow's `signals` module. |
+### Options
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`fields`](#workflow-step-transition-emit-fields){: #workflow-step-transition-emit-fields } | `list(atom \| {atom, atom})` | `[]` | Signal fields to take from attributes of the record, as a keyword list of `signal_field: attribute`. A bare name takes the attribute with the same name. |
+| [`values`](#workflow-step-transition-emit-values){: #workflow-step-transition-emit-values } | `keyword` | `[]` | Signal fields to set to the given literal values. |
+
+
+
+
+
+### Introspection
+
+Target: `AshWorkflow.Entities.Emit`
+
 
 
 
@@ -156,6 +204,7 @@ Declares a time-based action or forced transition if the workflow stays in this 
 
 ### Nested DSLs
  * [retry](#workflow-step-timeout-retry)
+ * [emit](#workflow-step-timeout-emit)
 
 
 
@@ -208,6 +257,38 @@ way, `on_error` runs only after the final attempt fails.
 
 Target: `AshWorkflow.Entities.Retry`
 
+### workflow.step.timeout.emit
+```elixir
+emit name
+```
+
+
+Fires a signal from the workflow's `signals` module when this runs.
+
+
+
+
+
+### Arguments
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`name`](#workflow-step-timeout-emit-name){: #workflow-step-timeout-emit-name .spark-required} | `atom` |  | The name of the signal, declared in the workflow's `signals` module. |
+### Options
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`fields`](#workflow-step-timeout-emit-fields){: #workflow-step-timeout-emit-fields } | `list(atom \| {atom, atom})` | `[]` | Signal fields to take from attributes of the record, as a keyword list of `signal_field: attribute`. A bare name takes the attribute with the same name. |
+| [`values`](#workflow-step-timeout-emit-values){: #workflow-step-timeout-emit-values } | `keyword` | `[]` | Signal fields to set to the given literal values. |
+
+
+
+
+
+### Introspection
+
+Target: `AshWorkflow.Entities.Emit`
+
 
 
 
@@ -225,6 +306,7 @@ Declares a recurring action that runs on an interval for as long as the workflow
 
 ### Nested DSLs
  * [retry](#workflow-step-every-retry)
+ * [emit](#workflow-step-every-emit)
 
 
 
@@ -244,6 +326,8 @@ Declares a recurring action that runs on an interval for as long as the workflow
 | [`self_scheduled?`](#workflow-step-every-self_scheduled?){: #workflow-step-every-self_scheduled? } | `boolean` | `false` | Declares that you run this action's trigger yourself, more often than a cron expression can ask for. Cron cannot poll more often than once a minute, so a sub-minute `interval` is normally a compile error — the action would fire up to 60 seconds late. Setting this asserts that something else drives the trigger at the resolution the interval needs, and permits the shorter duration. This changes nothing about what is generated: the scheduler module and its cron are still created, so `AshOban.schedule/2` and `AshOban.schedule_and_run_triggers/1` keep working. It only records the claim, and silences the check that would otherwise reject the duration. |
 | [`check_interval`](#workflow-step-every-check_interval){: #workflow-step-every-check_interval } | `String.t` |  | Oban cron expression for how often to check this action, overriding the workflow-level `check_interval`. Defaults to the workflow's setting, which itself defaults to every minute. |
 | [`last_fired_field`](#workflow-step-every-last_fired_field){: #workflow-step-every-last_fired_field } | `atom` |  | The datetime attribute this `every` writes its last-fired instant to, and measures `interval` against. Defaults to `<step>_<every>_last_fired_at`. AshWorkflow adds this attribute and owns every write to it — see `AshWorkflow.Transformers.AddAttributes`. |
+| [`max_fires`](#workflow-step-every-max_fires){: #workflow-step-every-max_fires } | `pos_integer` |  | Stop firing after this many fires in the current step visit. Adds a `<step>_<every>_fires` integer column. May be combined with `until`, and whichever bound is reached first stops the firing. |
+| [`backoff`](#workflow-step-every-backoff){: #workflow-step-every-backoff } | `any \| :exponential` |  | Grow the gap between fires. After fire `n`, the next fire lands `interval` plus `AshWorkflow.Entities.Retry.delay_ms/2` for attempt `n` later. A duration tuple adds a fixed delay, and `:exponential` adds `n^4 + 15` seconds. Adds a `<step>_<every>_fires` integer column. |
 
 
 ### workflow.step.every.retry
@@ -276,12 +360,115 @@ way, `on_error` runs only after the final attempt fails.
 
 Target: `AshWorkflow.Entities.Retry`
 
+### workflow.step.every.emit
+```elixir
+emit name
+```
+
+
+Fires a signal from the workflow's `signals` module when this runs.
+
+
+
+
+
+### Arguments
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`name`](#workflow-step-every-emit-name){: #workflow-step-every-emit-name .spark-required} | `atom` |  | The name of the signal, declared in the workflow's `signals` module. |
+### Options
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`fields`](#workflow-step-every-emit-fields){: #workflow-step-every-emit-fields } | `list(atom \| {atom, atom})` | `[]` | Signal fields to take from attributes of the record, as a keyword list of `signal_field: attribute`. A bare name takes the attribute with the same name. |
+| [`values`](#workflow-step-every-emit-values){: #workflow-step-every-emit-values } | `keyword` | `[]` | Signal fields to set to the given literal values. |
+
+
+
+
+
+### Introspection
+
+Target: `AshWorkflow.Entities.Emit`
+
 
 
 
 ### Introspection
 
 Target: `AshWorkflow.Entities.Every`
+
+### workflow.step.on_signal
+```elixir
+on_signal name
+```
+
+
+Moves the record on, or runs an action, when a signal from an `Ash.Signals` module selects it while it is in this step.
+
+### Nested DSLs
+ * [emit](#workflow-step-on_signal-emit)
+
+
+
+
+### Arguments
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`name`](#workflow-step-on_signal-name){: #workflow-step-on_signal-name .spark-required} | `atom` |  | The name of the signal. |
+### Options
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`from`](#workflow-step-on_signal-from){: #workflow-step-on_signal-from } | `atom` |  | The `Ash.Signals` module that declares the signal. Defaults to the workflow's `signals` module. |
+| [`filter`](#workflow-step-on_signal-filter){: #workflow-step-on_signal-filter } | `any` |  | An expression that selects the records to act on, with `^signal(:field)` for fields of the signal, e.g. `expr(id == ^signal(:order_id))`. Exactly one of `filter` or `read_action` is required. |
+| [`read_action`](#workflow-step-on_signal-read_action){: #workflow-step-on_signal-read_action } | `atom` |  | A read action of the resource that selects the records to act on. Its arguments are set from the signal fields of the same name. Only records in the step are acted on. |
+| [`transition_to`](#workflow-step-on_signal-transition_to){: #workflow-step-on_signal-transition_to } | `atom` |  | The step to move to. Exactly one of `transition_to` or `action` is required. |
+| [`action`](#workflow-step-on_signal-action){: #workflow-step-on_signal-action } | `atom` |  | An update action to run without leaving the step. |
+| [`inputs`](#workflow-step-on_signal-inputs){: #workflow-step-on_signal-inputs } | `list(atom \| {atom, atom})` |  | Inputs of the action to set from the signal, as `input: :signal_field`. A bare name takes the field with the same name. Passed to the listener unchanged. |
+| [`delivery`](#workflow-step-on_signal-delivery){: #workflow-step-on_signal-delivery } | `module` |  | How the signal reaches the handler. Passed to the listener unchanged. |
+
+
+### workflow.step.on_signal.emit
+```elixir
+emit name
+```
+
+
+Fires a signal from the workflow's `signals` module when this runs.
+
+
+
+
+
+### Arguments
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`name`](#workflow-step-on_signal-emit-name){: #workflow-step-on_signal-emit-name .spark-required} | `atom` |  | The name of the signal, declared in the workflow's `signals` module. |
+### Options
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`fields`](#workflow-step-on_signal-emit-fields){: #workflow-step-on_signal-emit-fields } | `list(atom \| {atom, atom})` | `[]` | Signal fields to take from attributes of the record, as a keyword list of `signal_field: attribute`. A bare name takes the attribute with the same name. |
+| [`values`](#workflow-step-on_signal-emit-values){: #workflow-step-on_signal-emit-values } | `keyword` | `[]` | Signal fields to set to the given literal values. |
+
+
+
+
+
+### Introspection
+
+Target: `AshWorkflow.Entities.Emit`
+
+
+
+
+### Introspection
+
+Target: `AshWorkflow.Entities.OnSignal`
 
 ### workflow.step.on_success
 ```elixir
@@ -343,6 +530,39 @@ way, `on_error` runs only after the final attempt fails.
 ### Introspection
 
 Target: `AshWorkflow.Entities.Retry`
+
+### workflow.step.emit
+```elixir
+emit name
+```
+
+
+Fires a signal from the workflow's `signals` module when the record enters or leaves this step.
+
+
+
+
+
+### Arguments
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`name`](#workflow-step-emit-name){: #workflow-step-emit-name .spark-required} | `atom` |  | The name of the signal, declared in the workflow's `signals` module. |
+### Options
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`fields`](#workflow-step-emit-fields){: #workflow-step-emit-fields } | `list(atom \| {atom, atom})` | `[]` | Signal fields to take from attributes of the record, as a keyword list of `signal_field: attribute`. A bare name takes the attribute with the same name. |
+| [`values`](#workflow-step-emit-values){: #workflow-step-emit-values } | `keyword` | `[]` | Signal fields to set to the given literal values. |
+| [`on`](#workflow-step-emit-on){: #workflow-step-emit-on } | `:enter \| :exit` | `:enter` | Whether the signal fires when the record enters or leaves the step. |
+
+
+
+
+
+### Introspection
+
+Target: `AshWorkflow.Entities.Emit`
 
 
 
@@ -441,6 +661,38 @@ one transition marked `undoable?: true`. See `AshWorkflow.Entities.Undo`.
 ### Introspection
 
 Target: `AshWorkflow.Entities.Undo`
+
+### workflow.emit
+```elixir
+emit name
+```
+
+
+Fires a signal from the workflow's `signals` module when this runs.
+
+
+
+
+
+### Arguments
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`name`](#workflow-emit-name){: #workflow-emit-name .spark-required} | `atom` |  | The name of the signal, declared in the workflow's `signals` module. |
+### Options
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`fields`](#workflow-emit-fields){: #workflow-emit-fields } | `list(atom \| {atom, atom})` | `[]` | Signal fields to take from attributes of the record, as a keyword list of `signal_field: attribute`. A bare name takes the attribute with the same name. |
+| [`values`](#workflow-emit-values){: #workflow-emit-values } | `keyword` | `[]` | Signal fields to set to the given literal values. |
+
+
+
+
+
+### Introspection
+
+Target: `AshWorkflow.Entities.Emit`
 
 
 

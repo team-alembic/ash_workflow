@@ -1,7 +1,7 @@
 defmodule AshWorkflow.MixProject do
   use Mix.Project
 
-  @version "0.8.0"
+  @version "0.11.0"
   @source_url "https://github.com/team-alembic/ash_workflow"
 
   @description """
@@ -87,7 +87,19 @@ defmodule AshWorkflow.MixProject do
   # Run "mix help compile.app" to learn about applications.
   def application do
     [
-      extra_applications: [:logger]
+      extra_applications: [:logger],
+      env: [
+        clarity_introspectors: [AshWorkflow.Clarity.Introspector],
+        clarity_content_providers: [
+          AshWorkflow.Clarity.Content.WorkflowOverview,
+          AshWorkflow.Clarity.Content.WorkflowDiagram,
+          AshWorkflow.Clarity.Content.WorkflowTiming,
+          AshWorkflow.Clarity.Content.StepOverview,
+          AshWorkflow.Clarity.Content.StepDiagram,
+          AshWorkflow.Clarity.Content.StepTimeline
+        ],
+        clarity_perspective_lensmakers: [AshWorkflow.Clarity.Lensmaker]
+      ]
     ]
   end
 
@@ -101,8 +113,8 @@ defmodule AshWorkflow.MixProject do
 
   defp deps do
     [
-      {:mix_test_watch, "~> 1.2", only: [:dev, :test]},
-      {:ash, "~> 3.0"},
+      {:mix_test_watch, "~> 1.2", only: [:dev, :test], runtime: false},
+      {:ash, "~> 3.35"},
       {:ash_state_machine, "~> 0.2"},
       {:ash_oban, "~> 0.2"},
       {:jason, "~> 1.4"},
@@ -112,6 +124,7 @@ defmodule AshWorkflow.MixProject do
       # with "could not find application file: igniter.app" whenever the
       # optional dep was fetched but not compiled.
       {:igniter, "~> 0.6", optional: true, runtime: false},
+      {:clarity, "~> 0.6", optional: true},
       {:simple_sat, "~> 0.1", only: [:dev, :test]},
 
       # Postgres + Oban integration tests
@@ -143,14 +156,20 @@ defmodule AshWorkflow.MixProject do
         "documentation/topics/undo.md",
         "documentation/topics/authorization.md",
         "documentation/topics/telemetry.md",
+        "documentation/topics/signals.md",
         "documentation/topics/workflows-and-relationships.md",
         "documentation/topics/diagrams.md",
         "documentation/topics/bpmn-comparison.md",
+        {"documentation/recipes/index.md", filename: "recipes"},
+        "documentation/recipes/approval.md",
+        "documentation/recipes/expiry.md",
+        "documentation/recipes/publication.md",
         "documentation/dsls/DSL-AshWorkflow.md"
       ],
       groups_for_extras: [
         Tutorials: ~r'documentation/tutorials',
         Topics: ~r'documentation/topics',
+        Recipes: ~r'documentation/recipes',
         DSLs: ~r'documentation/dsls'
       ],
       groups_for_modules: [

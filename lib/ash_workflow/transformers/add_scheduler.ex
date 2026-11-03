@@ -105,7 +105,7 @@ defmodule AshWorkflow.Transformers.AddScheduler do
         timeout.action
       end
 
-    %Work{
+    work = %Work{
       # Scoped by step so two steps can declare a timeout with the same name.
       name: :"__timeout_trigger_#{step_name}_#{timeout.name}",
       kind: :timeout,
@@ -113,18 +113,23 @@ defmodule AshWorkflow.Transformers.AddScheduler do
       step: step_name,
       timeout: timeout.name,
       action: action,
-      match: Ash.Expr.expr(^in_step(state_attribute, step_name) and ^due(timeout, field)),
       deadline: %{field: field, fire_after: timeout.fire_after},
       repeat?: false,
-      # A timeout never repeats: an action timeout does not change state, so
-      # `once?` stops it matching again on the next poll. A transition timeout
-      # leaves the step it matched on, which is itself a durable record that
-      # it fired.
-      once?: timeout.action != nil,
+      # A transition timeout leaves the step it matched on, which is itself a
+      # durable record that it fired. An action timeout stays, so it writes
+      # this column instead.
+      fired_field: Timeout.fired_field(step_name, timeout),
       self_scheduled?: timeout.self_scheduled?,
       retry: timeout.retry || %Retry{},
       opts: [check_interval: timeout.check_interval]
     }
+
+    match =
+      Ash.Expr.expr(
+        ^in_step(state_attribute, step_name) and ^due(timeout, field) and ^Work.not_fired(work)
+      )
+
+    %{work | match: match}
   end
 
   defp every_works(steps, resource, state_attribute) do
@@ -153,6 +158,14 @@ defmodule AshWorkflow.Transformers.AddScheduler do
              ^ref(field) <= ago(^duration_value, ^ago_unit))
       )
 
+    fires_field = Every.fires_field(step_name, every)
+
+    match =
+      base_match
+      |> backoff_match(every, field, fires_field)
+      |> max_fires_match(every, field, fires_field)
+      |> until_match(every)
+
     %Work{
       # Scoped by step so two steps can declare an every with the same name.
       name: :"__every_trigger_#{step_name}_#{every.name}",
@@ -161,11 +174,13 @@ defmodule AshWorkflow.Transformers.AddScheduler do
       step: step_name,
       timeout: every.name,
       action: every.action,
-      match: until_match(base_match, every),
+      match: match,
       deadline: %{field: field, fire_after: every.interval},
       repeat?: true,
       until: every.until,
-      once?: false,
+      max_fires: every.max_fires,
+      backoff: every.backoff,
+      fires_field: fires_field,
       self_scheduled?: every.self_scheduled?,
       retry: every.retry || %Retry{},
       opts: [check_interval: every.check_interval]
@@ -183,6 +198,48 @@ defmodule AshWorkflow.Transformers.AddScheduler do
     ago_unit = singular_unit(unit)
 
     Ash.Expr.expr(^ref(field) <= ago(^value, ^ago_unit))
+  end
+
+  # The fire count belongs to the current step visit only. A last fire from
+  # before `state_entered_at` was in an earlier visit, so it counts as none.
+  defp fired_this_visit(field) do
+    Ash.Expr.expr(not is_nil(^ref(field)) and ^ref(field) >= state_entered_at)
+  end
+
+  defp max_fires_match(match, %Every{max_fires: nil}, _field, _fires_field), do: match
+
+  defp max_fires_match(match, %Every{max_fires: max_fires}, field, fires_field) do
+    Ash.Expr.expr(^match and (not (^fired_this_visit(field)) or ^ref(fires_field) < ^max_fires))
+  end
+
+  # After `n` fires the gap is `interval` plus `Retry.delay_ms/2` for attempt
+  # `n`. A fixed backoff makes that one constant, so it stays a bind parameter
+  # against the `(state, field)` index. `:exponential` adds `n^4 + 15` seconds,
+  # the formula `Retry.delay_ms/2` uses, which has to be computed per row.
+  defp backoff_match(match, %Every{backoff: nil}, _field, _fires_field), do: match
+
+  defp backoff_match(match, %Every{backoff: {_value, _unit} = backoff} = every, field, _fires) do
+    gap_seconds =
+      AshWorkflow.Duration.to_seconds(every.interval) + AshWorkflow.Duration.to_seconds(backoff)
+
+    Ash.Expr.expr(
+      ^match and (not (^fired_this_visit(field)) or ^ref(field) <= ago(^gap_seconds, :second))
+    )
+  end
+
+  # AshSQL renders `datetime_add/3` as `datetime + amount * interval` without
+  # parenthesising `amount`, so only the product goes in it. The constant part
+  # of the gap moves to the other side as a bind parameter.
+  defp backoff_match(match, %Every{backoff: :exponential} = every, field, fires_field) do
+    constant_seconds = AshWorkflow.Duration.to_seconds(every.interval) + 15
+    fires = ref(fires_field)
+
+    Ash.Expr.expr(
+      ^match and
+        (not (^fired_this_visit(field)) or
+           datetime_add(^ref(field), ^fires * ^fires * ^fires * ^fires, :second) <=
+             ago(^constant_seconds, :second))
+    )
   end
 
   # `until` is checked against `state_entered_at`, which an `every`'s own

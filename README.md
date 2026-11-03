@@ -31,7 +31,7 @@ Add `ash_workflow` to your dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:ash_workflow, "~> 0.8"}
+    {:ash_workflow, "~> 0.11"}
   ]
 end
 ```
@@ -48,6 +48,10 @@ so do not declare them in `mix.exs` yourself. On the resource, add
 `AshWorkflow.Transformers.AddStateMachine` adds that extension and writes its
 DSL. `AshOban` stays explicit because the scheduler that generates its
 triggers is one choice among several. See `AshWorkflow.Scheduler`.
+
+## Start from a recipe
+
+Most applications need the same few workflows, such as approval, expiry and publication. A recipe is a Mix task that generates one of them on your resource, and the generated code is yours to edit. See the [recipes index](documentation/recipes/index.md) for the catalogue.
 
 ## Concepts
 
@@ -330,7 +334,7 @@ From the workflow DSL, the extension generates:
 | **Indexes** | One `(state, field)` composite per deadline field | `AshPostgres.DataLayer` resources; opt out with `generate_indexes? false` |
 | **Policies** | Step-level `policy` declarations | Ash policies on generated transition actions |
 | **Code interface** | One function per transition name | Ash code interface definitions |
-| **Calculations** | `:steps`, `:current_step`, `:available_actions`, `:transition_targets`, `:pending_deadlines` | Workflow introspection |
+| **Calculations** | `:steps`, `:current_step`, `:available_actions`, `:transition_targets`, `:pending_deadlines`, `:workflow_terminated_at` | Workflow introspection |
 | **Attributes** | `state_entered_at`, plus one last-fired column per `every` | Added if not already defined |
 
 The initial state is the step with `initial true`, or the first non-terminal step by declaration order if none is marked. Declaration order is easy to trip over, so mark the step when the reading order is not the running order:

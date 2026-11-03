@@ -11,17 +11,18 @@ defmodule AshWorkflow.Calculations.PendingDeadlines do
 
   This is the schedule *implied* by the DSL and the record's current field
   values — `field + fire_after`, or the `fire_at` field itself, computed on read.
-  It is not a record of what has already fired.
 
-  For a transition timeout that distinction does not arise: firing changes the
-  state, so the deadline leaves the list. But a non-repeating action timeout
-  does not change state, so its deadline keeps being derivable after it has
-  fired, and it will still appear here with a `due_at` in the past. Read a past
-  `due_at` as "was due", not "will fire".
+  A deadline leaves the list once it has fired. A transition timeout changes
+  the state when it fires. An action timeout does not, so its entry is omitted
+  while its `<step>_<timeout>_fired_at` column holds an instant at or after
+  its `due_at`. A timeout that is due but has not fired yet still appears with
+  a `due_at` in the past.
 
-  An `every` entry does not have the stale-past-`due_at` problem a
-  non-repeating action timeout has: firing an `every` writes its own
-  last-fired column, so its `due_at` is always the next instant it will run.
+  Firing an `every` writes its own last-fired column, so its `due_at` is
+  always the next instant it will run.
+
+  An `every` with `backoff` reports the grown gap, and one that has used up
+  its `max_fires` in the current step visit is omitted.
 
   A timeout whose `field` is `nil` on the record has no derivable deadline and
   is omitted. An `every` whose column is `nil` is different: it has never
@@ -30,6 +31,8 @@ defmodule AshWorkflow.Calculations.PendingDeadlines do
   the record entered the step, rather than being omitted.
   """
   use Ash.Resource.Calculation
+
+  alias AshWorkflow.Entities.Every
 
   @impl true
   @spec init(Keyword.t()) :: {:ok, Keyword.t()}
@@ -42,7 +45,9 @@ defmodule AshWorkflow.Calculations.PendingDeadlines do
       opts[:timeouts]
       |> Map.values()
       |> List.flatten()
-      |> Enum.map(& &1.field)
+      |> Enum.flat_map(
+        &[&1.field | List.wrap(Map.get(&1, :fired_field)) ++ List.wrap(Map.get(&1, :fires_field))]
+      )
       |> Enum.uniq()
 
     [Keyword.fetch!(opts, :state_attribute), :state_entered_at | fields]
@@ -65,21 +70,47 @@ defmodule AshWorkflow.Calculations.PendingDeadlines do
   # same fallback `AshWorkflow.Transformers.AddScheduler` compiles into the
   # trigger's `where`.
   defp deadline(%{kind: :every} = every, record) do
-    from =
-      as_datetime(Map.get(record, every.field)) ||
-        as_datetime(Map.get(record, :state_entered_at))
+    last_fired_at = as_datetime(Map.get(record, every.field))
+    state_entered_at = as_datetime(Map.get(record, :state_entered_at))
+    fires = every.fires_field && Map.get(record, every.fires_field)
 
-    case from do
-      nil -> []
-      from -> [entry(every, due_at(from, every.fire_after))]
+    cond do
+      is_nil(state_entered_at) ->
+        []
+
+      exhausted?(every, last_fired_at, fires, state_entered_at) ->
+        []
+
+      true ->
+        due_at =
+          Every.next_due_at(
+            every.fire_after,
+            every.backoff,
+            last_fired_at,
+            fires,
+            state_entered_at
+          )
+
+        [entry(every, due_at)]
     end
   end
 
   defp deadline(timeout, record) do
-    case as_datetime(Map.get(record, timeout.field)) do
+    with %DateTime{} = from <- as_datetime(Map.get(record, timeout.field)),
+         {:ok, true} <-
+           Ash.Expr.eval(timeout.not_fired, record: record, resource: record.__struct__) do
+      [entry(timeout, due_at(from, timeout.fire_after))]
+    else
       nil -> []
-      from -> [entry(timeout, due_at(from, timeout.fire_after))]
+      {:ok, false} -> []
     end
+  end
+
+  defp exhausted?(%{max_fires: nil}, _last_fired_at, _fires, _state_entered_at), do: false
+  defp exhausted?(_every, nil, _fires, _state_entered_at), do: false
+
+  defp exhausted?(%{max_fires: max_fires}, last_fired_at, fires, state_entered_at) do
+    DateTime.compare(last_fired_at, state_entered_at) != :lt and (fires || 0) >= max_fires
   end
 
   defp entry(timeout, due_at) do
