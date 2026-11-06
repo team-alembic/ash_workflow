@@ -1,5 +1,7 @@
 import Config
 
+config :elixir, :time_zone_database, Tz.TimeZoneDatabase
+
 config :ash,
   include_embedded_source_by_default?: false,
   default_string_length_count: :codepoints,

@@ -181,6 +181,24 @@ defmodule AshWorkflow.Clarity.Timeline do
   defp every_events(%Step{everys: everys}, exit_ms),
     do: Enum.flat_map(everys, &firings(&1, exit_ms))
 
+  # A wall-clock `every`'s first fire depends on the local time the record
+  # entered the step, so it has no fixed offset and is listed by its schedule.
+  defp firings(%Every{at: %Time{}} = every, _exit_ms) do
+    text = "#{every.name} runs #{every.action}" <> retried(every.retry)
+    fires = %Event{at: {:anchor, Format.every(%{every | until: nil})}, kind: :repeats, text: text}
+
+    case every.until do
+      nil ->
+        [fires]
+
+      until ->
+        [
+          event(AshWorkflow.Duration.to_milliseconds(until), :closes, "#{every.name} stops"),
+          fires
+        ]
+    end
+  end
+
   # An `every` fires until its `until`, or until a timeout moves the record on.
   # With neither, the first few firings stand for the rest.
   defp firings(%Every{interval: interval, until: until} = every, exit_ms) do
