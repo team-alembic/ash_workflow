@@ -160,6 +160,7 @@ defmodule AshWorkflow.MixProject do
         "documentation/recipes/dormancy.md",
         "documentation/recipes/sync.md",
         "documentation/recipes/publication.md",
+        "documentation/recipes/review.md",
         "documentation/dsls/DSL-AshWorkflow.md"
       ],
       groups_for_extras: [
