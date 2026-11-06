@@ -14,7 +14,6 @@ defmodule Mix.AshWorkflow.RecipeTest do
         {"ash_workflow.gen.dormancy", ["--dormant-after", "30d"]},
         {"ash_workflow.gen.sync", []},
         {"ash_workflow.gen.publication", []},
-        {"ash_workflow.gen.publication", []},
         {"ash_workflow.gen.review", ["--reviewer", inspect(User)]}
       ] do
     test "#{task} stops when a missing subject has no data layer to copy" do
