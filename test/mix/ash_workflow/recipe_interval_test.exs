@@ -52,4 +52,27 @@ defmodule Mix.AshWorkflow.RecipeIntervalTest do
 
     assert approval("30s").issues == []
   end
+
+  test "reports an acknowledgement --overdue-after below the default scheduler's floor" do
+    Application.delete_env(:ash_workflow, :scheduler)
+
+    issues =
+      [
+        "test/support/recipe_fixtures/acknowledgement/domain.ex",
+        "test/support/recipe_fixtures/acknowledgement/user.ex",
+        "test/support/recipe_fixtures/acknowledgement/policy.ex"
+      ]
+      |> project()
+      |> Igniter.compose_task("ash_workflow.gen.acknowledgement", [
+        "AshWorkflowTest.RecipeFixtures.Acknowledgement.Policy",
+        "--person",
+        "AshWorkflowTest.RecipeFixtures.Acknowledgement.User",
+        "--overdue-after",
+        "30s"
+      ])
+      |> Map.fetch!(:issues)
+
+    assert [issue] = issues
+    assert issue =~ "--overdue-after is shorter than AshWorkflow.Scheduler.Oban can honour"
+  end
 end

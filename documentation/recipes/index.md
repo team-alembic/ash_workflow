@@ -15,13 +15,8 @@ A recipe without a link has not been released yet. Each row links to its page on
 | [`gen.review`](review.md) | `in_review → changes_requested → in_review → approved` | Content, design review, sign-off |
 | [`gen.publication`](publication.md) | `draft → scheduled → published → unpublished` | Posts, announcements, listings |
 | [`gen.invitation`](invitation.md) | `sent → accepted \| declined \| expired \| revoked`, with `resend` | Team invites, RSVPs, access grants |
-| `gen.acknowledgement` | `pending → acknowledged \| overdue` | Policy attestations, terms updates |
-| `gen.deletion` | `requested → scheduled → deleted`, with `restore` | Account closure, GDPR erasure |
+| [`gen.acknowledgement`](acknowledgement.md) | `pending → acknowledged \| overdue` | Policy attestations, terms updates |
 | [`gen.dormancy`](dormancy.md) | `active → dormant → archived` | Accounts, projects, leads |
 | [`gen.deletion`](deletion.md) | `requested → purging → deleted`, with `restore` | Account closure, GDPR erasure |
-| `gen.dormancy` | `active → dormant → archived` | Accounts, projects, leads |
-| `gen.verification` | `submitted → verifying → verified \| rejected` | Identity documents, registrations |
 | [`gen.sync`](sync.md) | `syncing → synced \| failed`, with `resync` | CRM push, payment provider, search index |
-| `gen.dormancy` | `active → dormant → archived` | Accounts, projects, leads |
 | [`gen.verification`](verification.md) | `submitted → verifying → verified \| rejected` | Identity documents, registrations |
-| `gen.sync` | `pending → syncing → synced \| failed` | CRM push, payment provider, search index |

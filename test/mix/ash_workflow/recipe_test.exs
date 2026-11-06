@@ -17,7 +17,8 @@ defmodule Mix.AshWorkflow.RecipeTest do
         {"ash_workflow.gen.publication", []},
         {"ash_workflow.gen.review", ["--reviewer", inspect(User)]},
         {"ash_workflow.gen.invitation", ["--invitee", inspect(User)]},
-        {"ash_workflow.gen.verification", []}
+        {"ash_workflow.gen.verification", []},
+        {"ash_workflow.gen.acknowledgement", ["--person", inspect(User)]}
       ] do
     test "#{task} stops when a missing subject has no data layer to copy" do
       igniter =
@@ -47,7 +48,8 @@ defmodule Mix.AshWorkflow.RecipeTest do
         {"ash_workflow.gen.review", ["--reviewer", inspect(User)]},
         {"ash_workflow.gen.invitation", ["--invitee", inspect(User)]},
         {"ash_workflow.gen.verification", []},
-        {"ash_workflow.gen.deletion", ["--grace-period", "30d"]}
+        {"ash_workflow.gen.deletion", ["--grace-period", "30d"]},
+        {"ash_workflow.gen.acknowledgement", ["--person", inspect(User)]}
       ] do
     test "#{task} stops when an existing subject has no data layer" do
       igniter =

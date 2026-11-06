@@ -162,6 +162,7 @@ defmodule AshWorkflow.MixProject do
         "documentation/recipes/invitation.md",
         "documentation/recipes/verification.md",
         "documentation/recipes/deletion.md",
+        "documentation/recipes/acknowledgement.md",
         "documentation/recipes/publication.md",
         "documentation/recipes/review.md",
         "documentation/dsls/DSL-AshWorkflow.md"
