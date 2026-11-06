@@ -18,7 +18,7 @@ A recipe is an Igniter task, `mix ash_workflow.gen.<recipe>`, that adds one of t
 | `gen.publication` | `draft → scheduled → published → unpublished` | Posts, announcements, listings | Two `fire_at` deadlines on one record |
 | `gen.invitation` | `sent → accepted \| declined \| expired`, with `resend` | Team invites, RSVPs, access grants | Expiry with a transition that moves the deadline |
 | `gen.acknowledgement` | `pending → acknowledged \| overdue` | Policy attestations, terms updates | One row per person per subject |
-| `gen.deletion` | `requested → scheduled → deleted`, with `restore` | Account closure, GDPR erasure | Grace-period timeout, `undo` |
+| `gen.deletion` | `requested → purging → deleted`, with `restore` | Account closure, GDPR erasure | Grace-period timeout, automatic step with `on_error` and `retry` |
 | `gen.dormancy` | `active → dormant → archived` | Accounts, projects, leads | `field: :last_activity_at`, an anchor the application writes |
 | `gen.verification` | `submitted → verifying → verified \| rejected` | Identity documents, registrations | Automatic step with `on_success`, `on_error` and `retry` |
 | `gen.sync` | `pending → syncing → synced \| failed` | CRM push, payment provider, search index | Automatic step with `retry` and backoff |
