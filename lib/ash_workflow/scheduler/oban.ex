@@ -63,6 +63,15 @@ defmodule AshWorkflow.Scheduler.Oban do
   after the final attempt has failed, which is the same rule
   `AshWorkflow.Scheduler.execute/3` documents.
 
+  ## Pausing
+
+  Every generated trigger's `where` also requires that
+  `AshWorkflow.Scheduler.pause/1` does not hold the scheduler, read through the
+  private `:ash_workflow_scheduler_paused?` calculation this scheduler adds to
+  the resource. While paused, a poll queues nothing, and a job already queued
+  finds its record no longer matching and cancels itself. The first poll after
+  `AshWorkflow.Scheduler.resume/1` finds the work again.
+
   ## Module names
 
   Worker and scheduler module names are derived from the resource, the step and
@@ -72,15 +81,31 @@ defmodule AshWorkflow.Scheduler.Oban do
   """
   use AshWorkflow.Scheduler
 
+  alias Ash.Resource.Builder
   alias AshWorkflow.Scheduler.Work
   alias Spark.Dsl.Transformer
   alias Spark.Error.DslError
 
+  require Ash.Expr
+
   @impl AshWorkflow.Scheduler
   def transform(dsl, works, opts) do
-    with :ok <- verify_extension(dsl) do
+    with :ok <- verify_extension(dsl),
+         {:ok, dsl} <- add_paused_calculation(dsl, works) do
       {:ok, Enum.reduce(works, dsl, &add_trigger(&2, &1, opts))}
     end
+  end
+
+  defp add_paused_calculation(dsl, []), do: {:ok, dsl}
+
+  defp add_paused_calculation(dsl, _works) do
+    Builder.add_new_calculation(
+      dsl,
+      :ash_workflow_scheduler_paused?,
+      :boolean,
+      AshWorkflow.Calculations.SchedulerPaused,
+      public?: false
+    )
   end
 
   defp verify_extension(dsl) do
@@ -112,7 +137,7 @@ defmodule AshWorkflow.Scheduler.Oban do
       Transformer.build_entity!(AshOban, [:oban, :triggers], :trigger,
         name: work.name,
         action: work.action,
-        where: work.match,
+        where: Ash.Expr.expr(^work.match and not ash_workflow_scheduler_paused?),
         queue: queue(dsl, opts),
         on_error: work.on_error,
         max_attempts: work.retry.max_attempts,
