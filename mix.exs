@@ -157,6 +157,8 @@ defmodule AshWorkflow.MixProject do
         {"documentation/recipes/index.md", filename: "recipes"},
         "documentation/recipes/approval.md",
         "documentation/recipes/expiry.md",
+        "documentation/recipes/dormancy.md",
+        "documentation/recipes/sync.md",
         "documentation/recipes/publication.md",
         "documentation/recipes/review.md",
         "documentation/dsls/DSL-AshWorkflow.md"

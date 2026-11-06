@@ -24,6 +24,23 @@ if Code.ensure_loaded?(Igniter.Mix.Task.Info) do
       end
     end
 
+    @doc "Parses a `retry` backoff: `exponential`, or a fixed delay such as `10s`."
+    @spec parse_backoff(String.t() | nil, String.t()) ::
+            {:ok, AshWorkflow.Entities.Retry.backoff() | nil} | {:error, String.t()}
+    def parse_backoff(nil, _flag), do: {:ok, nil}
+    def parse_backoff("exponential", _flag), do: {:ok, :exponential}
+
+    def parse_backoff(value, flag) do
+      case parse_duration(value, flag) do
+        {:ok, delay} ->
+          {:ok, delay}
+
+        {:error, _message} ->
+          {:error,
+           "#{flag} must be exponential or look like 10s, 30m, 12h, 2d or 2w, got: #{value}"}
+      end
+    end
+
     defp duration(count, "s"), do: {count, :seconds}
     defp duration(count, "m"), do: {count, :minutes}
     defp duration(count, "h"), do: {count, :hours}
