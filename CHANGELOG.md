@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Under `AshWorkflow.Scheduler.Precise`, a record in an automatic step that is waiting out a `retry` backoff now keeps its pending retry when the timeline sweeps. The sweep ran every record in the step as attempt 1, so a backoff longer than `look_ahead_ms` restarted the attempts and `on_error` never ran. The default `:exponential` backoff waits 16 seconds before attempt 2, and `look_ahead_ms` defaults to 5 seconds.
+
 ## [0.12.0] - 2026-11-06
 
 ### Added
