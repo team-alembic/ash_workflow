@@ -1,7 +1,7 @@
 defmodule AshWorkflow.MixProject do
   use Mix.Project
 
-  @version "0.11.0"
+  @version "0.12.0"
   @source_url "https://github.com/team-alembic/ash_workflow"
 
   @description """

@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-06
+
 ### Added
 
 - **`max_fires` and `backoff` on `every`.** `max_fires` stops an `every` after a number of fires in the current step visit. `backoff` grows the gap after each fire, taking a duration tuple or `:exponential` like `retry`'s `backoff`, and both schedulers compute it from `AshWorkflow.Entities.Retry.delay_ms/2`. Either option adds a `<step>_<every>_fires` integer column, so run `mix ash.codegen` on AshPostgres. An `every` without them is unchanged.
