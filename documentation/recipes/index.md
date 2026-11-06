@@ -20,3 +20,6 @@ A recipe without a link has not been released yet. Each row links to its page on
 | [`gen.dormancy`](dormancy.md) | `active → dormant → archived` | Accounts, projects, leads |
 | `gen.verification` | `submitted → verifying → verified \| rejected` | Identity documents, registrations |
 | [`gen.sync`](sync.md) | `syncing → synced \| failed`, with `resync` | CRM push, payment provider, search index |
+| `gen.dormancy` | `active → dormant → archived` | Accounts, projects, leads |
+| [`gen.verification`](verification.md) | `submitted → verifying → verified \| rejected` | Identity documents, registrations |
+| `gen.sync` | `pending → syncing → synced \| failed` | CRM push, payment provider, search index |

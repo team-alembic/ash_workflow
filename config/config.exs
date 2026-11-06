@@ -48,7 +48,8 @@ if Mix.env() == :test do
     AshWorkflowTest.RecipeFixtures.Publication.Domain,
     AshWorkflowTest.RecipeFixtures.Review.Domain,
     AshWorkflowTest.RecipeFixtures.TransitionLog.Domain,
-    AshWorkflowTest.RecipeFixtures.TransitionLog.PostgresDomain
+    AshWorkflowTest.RecipeFixtures.TransitionLog.PostgresDomain,
+    AshWorkflowTest.RecipeFixtures.Verification.Domain
   ]
 
   config :ash_workflow,
