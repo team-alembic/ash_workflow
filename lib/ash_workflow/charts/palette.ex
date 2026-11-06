@@ -1,8 +1,8 @@
 defmodule AshWorkflow.Charts.Palette do
   @moduledoc """
-  The colours of the charts that `AshWorkflow.Charts.Dot` draws, for each
-  theme. A backend that draws in colour reads them here, so every such chart
-  has the same look.
+  The colours of the charts that `AshWorkflow.Charts.D2` and
+  `AshWorkflow.Charts.Dot` draw, for each theme. A backend that draws in
+  colour reads them here, so every such chart has the same look.
 
   The palette has one class for each step kind, terminal outcome and edge
   kind.
@@ -36,8 +36,8 @@ defmodule AshWorkflow.Charts.Palette do
   # | Edge label text on the background | above 18.9  | above 15.6  |
   # | Any stroke on the background      | above 3.6   | above 6.4   |
   #
-  # The table measures the light step text as `#0A0F25`, the light edge
-  # label colour.
+  # The table measures the light step text as `#0A0F25`, the text colour of
+  # D2's light theme and the light edge label colour.
   #
   # A step class keeps its key order: `fill`, `stroke`, then `text`. A
   # backend adds its own keys after these, so its output keeps one order.
@@ -69,6 +69,8 @@ defmodule AshWorkflow.Charts.Palette do
     undo: [stroke: "#9CA3AF"]
   ]
 
+  # The dark background is `#1E1E2E`, the background of D2's dark theme,
+  # "Dark Mauve".
   @backgrounds %{light: "#FFFFFF", dark: "#1E1E2E"}
 
   @edge_label_colours %{light: "#0A0F25", dark: "#F8FAFC"}

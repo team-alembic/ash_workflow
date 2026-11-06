@@ -7,8 +7,8 @@ defmodule AshWorkflow.Charts.Format do
   condition.
 
   `kind_text/1`, `node_text/1`, `edge_text/1` and `note_text/1` turn a node
-  or an edge of the graph into a label. The Mermaid and DOT backends call
-  them, so both charts use the same words. A custom
+  or an edge of the graph into a label. The Mermaid, D2 and DOT backends
+  call them, so the three charts use the same words. A custom
   `AshWorkflow.Charts.Backend` can call them too.
   """
 
