@@ -53,6 +53,8 @@ step :escalated, terminal: true
 
 The extension generates a hidden update action (`:__timeout_review_escalation` — `__timeout_<step>_<name>`) that performs the state transition. You don't need to define this action yourself. Because the name includes the step, several steps can each declare an `:escalation` timeout of their own.
 
+The generated action is a real update action on the resource, built atomic. A change in the resource's top-level `changes` block applies to every update action, so it runs on this action too, and it must implement `atomic/3`. AshWorkflow rejects a non-atomic resource-level change at compile time when the workflow has a generated action built atomic. Restrict such a change with `on: [:create]`, or move it into the `change` declarations of the actions that need it.
+
 ## Recurring actions with `every`
 
 A timeout fires once for each deadline. For an action that keeps firing on an interval for as long as the workflow remains in a step, use `every` instead — it is a sibling entity to `timeout`, declared inside the same `step` block:
