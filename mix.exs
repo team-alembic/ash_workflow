@@ -159,6 +159,7 @@ defmodule AshWorkflow.MixProject do
         "documentation/recipes/expiry.md",
         "documentation/recipes/dormancy.md",
         "documentation/recipes/sync.md",
+        "documentation/recipes/invitation.md",
         "documentation/recipes/publication.md",
         "documentation/recipes/review.md",
         "documentation/dsls/DSL-AshWorkflow.md"
