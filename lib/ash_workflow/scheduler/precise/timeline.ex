@@ -126,7 +126,10 @@ defmodule AshWorkflow.Scheduler.Precise.Timeline do
     resource
     |> Info.scheduled_work()
     |> Enum.reduce(0, fn work, count ->
-      records = read(work.resource, work.match, state)
+      records =
+        work.resource
+        |> read(recheck_filter(work), state, Work.deadline_loads(work))
+        |> Enum.filter(&due_now?(work, &1))
 
       Enum.each(records, &run_once(work, &1, state))
 
@@ -246,6 +249,16 @@ defmodule AshWorkflow.Scheduler.Precise.Timeline do
   # scheduler gets.
   defp due_records(%Work{deadline: nil} = work, state, _cutoff) do
     read(work.resource, work.match, state)
+  end
+
+  # A wall-clock `every`'s occurrence depends on the zone in the row, so there
+  # is no bound to fold into the filter the way `fire_after` arithmetic folds
+  # in. Read the records in the step and let `arm/3` compute each occurrence
+  # through `AshWorkflow.Scheduler.due_at/2`.
+  defp due_records(%Work{deadline: %{wall_clock: _schedule}} = work, state, _cutoff) do
+    filter = until_filter(Ash.Expr.expr(^in_step(work)), work)
+
+    read(work.resource, filter, state, Work.deadline_loads(work))
   end
 
   defp due_records(%Work{deadline: %{field: field, fire_after: fire_after}} = work, state, cutoff) do
@@ -472,15 +485,37 @@ defmodule AshWorkflow.Scheduler.Precise.Timeline do
       |> Ash.Resource.Info.primary_key()
       |> Enum.zip(primary_key)
 
-    filter = Ash.Expr.expr(^Ash.Expr.expr(^pk_filter) and ^work.match)
+    filter = Ash.Expr.expr(^Ash.Expr.expr(^pk_filter) and ^recheck_filter(work))
 
     case read(work.resource, filter, state, Work.deadline_loads(work)) do
       # The record left the step, or its deadline moved. Whatever armed this
       # timer is out of date, and doing nothing is the correct outcome.
       [] -> state
-      [record] -> run(work, record, attempt, state)
+      [record] -> if due_now?(work, record), do: run(work, record, attempt, state), else: state
     end
   end
+
+  # `Work.match` for a wall-clock `every` is a SQL fragment, because the polled
+  # scheduler has to ask the data layer to read the zone out of each row. This
+  # scheduler computes the same occurrence in Elixir through
+  # `AshWorkflow.WallClock`, so it re-checks the step and the `until` bound in
+  # the data layer and the occurrence itself in `due_now?/2`. That keeps
+  # `AshWorkflow.Scheduler.Precise` working on a data layer with no `fragment`
+  # support at all.
+  defp recheck_filter(%Work{deadline: %{wall_clock: _schedule}} = work) do
+    until_filter(Ash.Expr.expr(^in_step(work)), work)
+  end
+
+  defp recheck_filter(%Work{match: match}), do: match
+
+  defp due_now?(%Work{deadline: %{wall_clock: _schedule}} = work, record) do
+    case Scheduler.due_at(work, record) do
+      nil -> false
+      due_at -> not DateTime.after?(due_at, DateTime.utc_now())
+    end
+  end
+
+  defp due_now?(%Work{}, _record), do: true
 
   defp run(%Work{} = work, record, attempt, state) do
     action_opts = Keyword.put(state.action_opts, :attempt, attempt)
