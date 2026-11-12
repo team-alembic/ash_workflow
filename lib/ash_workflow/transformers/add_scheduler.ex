@@ -142,21 +142,11 @@ defmodule AshWorkflow.Transformers.AddScheduler do
 
   defp every_work(step, every, resource, state_attribute) do
     step_name = step.name
-    {duration_value, duration_unit} = every.interval
-    ago_unit = singular_unit(duration_unit)
     field = Every.last_fired_field(step_name, every)
+    wall_clock = Every.wall_clock(every)
 
-    # A record whose column is still `nil` has never fired this `every`, so the
-    # interval is measured from `state_entered_at` instead: the first firing is
-    # one whole interval after the record entered the step, not on entry. See
-    # `AshWorkflow.Entities.Every`. Written as a disjunction rather than with a
-    # coalescing function, which Ash's expression language does not have.
     base_match =
-      Ash.Expr.expr(
-        ^in_step(state_attribute, step_name) and
-          ((is_nil(^ref(field)) and state_entered_at <= ago(^duration_value, ^ago_unit)) or
-             ^ref(field) <= ago(^duration_value, ^ago_unit))
-      )
+      Ash.Expr.expr(^in_step(state_attribute, step_name) and ^every_due(every, wall_clock, field))
 
     fires_field = Every.fires_field(step_name, every)
 
@@ -175,7 +165,7 @@ defmodule AshWorkflow.Transformers.AddScheduler do
       timeout: every.name,
       action: every.action,
       match: match,
-      deadline: %{field: field, fire_after: every.interval},
+      deadline: every_deadline(field, every, wall_clock),
       repeat?: true,
       until: every.until,
       max_fires: every.max_fires,
@@ -185,6 +175,145 @@ defmodule AshWorkflow.Transformers.AddScheduler do
       retry: every.retry || %Retry{},
       opts: [check_interval: every.check_interval]
     }
+  end
+
+  # An `every` declaring neither `interval` nor `at` is rejected by
+  # `AshWorkflow.Verifiers.ValidateEvery`, but transformers run before
+  # verifiers. Matching nothing here lets that verifier report the real error
+  # instead of this function raising a FunctionClauseError first.
+  defp every_due(%Every{interval: nil}, nil, _field), do: Ash.Expr.expr(false)
+
+  # A record whose column is still `nil` has never fired this `every`, so the
+  # interval is measured from `state_entered_at` instead: the first firing is
+  # one whole interval after the record entered the step, not on entry. See
+  # `AshWorkflow.Entities.Every`. Written as a disjunction rather than with a
+  # coalescing function, which Ash's expression language does not have.
+  defp every_due(%Every{interval: {value, unit}}, nil, field) do
+    ago_unit = singular_unit(unit)
+
+    Ash.Expr.expr(
+      (is_nil(^ref(field)) and state_entered_at <= ago(^value, ^ago_unit)) or
+        ^ref(field) <= ago(^value, ^ago_unit)
+    )
+  end
+
+  # A wall-clock `every` is due when the most recent occurrence of its local
+  # time is at or before now, and the last fire is older than that occurrence.
+  # The zone comes out of the row, so the occurrence cannot be computed in
+  # Elixir at query-build time the way every other deadline's bound is. The
+  # data layer has to do the arithmetic per row.
+  #
+  # The subquery tries today and each of the seven local dates before it. `on`
+  # is never empty, so the most recent occurrence is one of them even when
+  # today's time has not arrived yet and the last one fell a week ago today, and any older occurrence the
+  # last fire predates means the most recent one is predated too. A missed
+  # occurrence therefore fires late, once, on whichever day polling resumes,
+  # the same as `AshWorkflow.WallClock.next_occurrence/3`.
+  #
+  # Postgres raises on a zone it does not recognise, which would fail the
+  # whole trigger query rather than the one row. `known_zone_guard/2` skips
+  # that row instead, as `AshWorkflow.WallClock.next_occurrence/3` does. It is
+  # an `if`, which renders as `CASE`, the one construct whose evaluation order
+  # Postgres guarantees.
+  #
+  # The occurrence is measured from the later of the last fire and
+  # `state_entered_at`. A fire from before entry belongs to an earlier visit to
+  # the step, and must not make the record due on re-entry. `greatest` ignores
+  # a `NULL`, so a record that has never fired measures from entry.
+  #
+  # This is one `fragment` rather than a composition of Ash operators so that
+  # nothing has to infer a type for a `time` or for an `AT TIME ZONE` result.
+  # Everything that varies is a bound parameter, since `fragment` refuses an
+  # interpolated string.
+  #
+  # `state_entered_at` and the last-fired column are stored as naive
+  # timestamps holding UTC, so they are lifted to an instant with an explicit
+  # `AT TIME ZONE 'UTC'` before being shifted into the row's own zone. Leaving
+  # that implicit would resolve against the session's `TimeZone` setting.
+  #
+  # A stride compares the occurrence's local date with the last fire's, and
+  # `date - date` is an integer count of days in Postgres. See
+  # `AshWorkflow.WallClock` for why a duration comparison is not exact.
+  #
+  # `every ... at` therefore runs on a SQL data layer only.
+  # `AshWorkflow.Scheduler.Precise` reads `Work.deadline` instead and computes
+  # the same occurrence in Elixir through `AshWorkflow.WallClock`, so it needs
+  # no data layer support at all.
+  defp every_due(%Every{}, %AshWorkflow.WallClock{} = wall_clock, field) do
+    wall_clock
+    |> occurrence_due(field)
+    |> known_zone_guard(wall_clock)
+  end
+
+  defp occurrence_due(%AshWorkflow.WallClock{stride: nil} = wall_clock, field) do
+    zone = time_zone_expr(wall_clock)
+
+    Ash.Expr.expr(
+      fragment(
+        "EXISTS (SELECT 1 FROM (SELECT (now() AT TIME ZONE ?)::date - back AS day FROM generate_series(0, 7) AS back) AS o WHERE EXTRACT(ISODOW FROM o.day)::int = ANY(?) AND ((o.day + ?::time) AT TIME ZONE ?) <= now() AND (greatest(?, ?) AT TIME ZONE 'UTC') < ((o.day + ?::time) AT TIME ZONE ?))",
+        ^zone,
+        ^days(wall_clock),
+        ^time(wall_clock),
+        ^zone,
+        ^ref(field),
+        ^ref(:state_entered_at),
+        ^time(wall_clock),
+        ^zone
+      )
+    )
+  end
+
+  defp occurrence_due(%AshWorkflow.WallClock{stride: stride} = wall_clock, field) do
+    zone = time_zone_expr(wall_clock)
+
+    Ash.Expr.expr(
+      fragment(
+        "EXISTS (SELECT 1 FROM (SELECT (now() AT TIME ZONE ?)::date - back AS day FROM generate_series(0, 7) AS back) AS o WHERE EXTRACT(ISODOW FROM o.day)::int = ANY(?) AND ((o.day + ?::time) AT TIME ZONE ?) <= now() AND (greatest(?, ?) AT TIME ZONE 'UTC') < ((o.day + ?::time) AT TIME ZONE ?) AND o.day - ((greatest(?, ?) AT TIME ZONE 'UTC') AT TIME ZONE ?)::date >= ?)",
+        ^zone,
+        ^days(wall_clock),
+        ^time(wall_clock),
+        ^zone,
+        ^ref(field),
+        ^ref(:state_entered_at),
+        ^time(wall_clock),
+        ^zone,
+        ^ref(field),
+        ^ref(:state_entered_at),
+        ^zone,
+        ^Ash.Expr.expr(type(^stride, :integer))
+      )
+    )
+  end
+
+  # A literal zone was checked against the time zone database at compile time
+  # by `AshWorkflow.Verifiers.ValidateEvery`, so only a zone read from the row
+  # needs the guard and its scan of `pg_timezone_names`.
+  defp known_zone_guard(due, %AshWorkflow.WallClock{time_zone: zone}) when is_binary(zone),
+    do: due
+
+  defp known_zone_guard(due, %AshWorkflow.WallClock{time_zone: attribute}) do
+    Ash.Expr.expr(
+      if(fragment("? IN (SELECT name FROM pg_timezone_names)", ^ref(attribute)),
+        do: ^due,
+        else: false
+      )
+    )
+  end
+
+  defp time(wall_clock), do: Ash.Expr.expr(type(^wall_clock.time, :time))
+  defp days(wall_clock), do: Ash.Expr.expr(type(^wall_clock.days, {:array, :integer}))
+
+  defp time_zone_expr(%AshWorkflow.WallClock{time_zone: zone}) when is_binary(zone), do: zone
+  defp time_zone_expr(%AshWorkflow.WallClock{time_zone: attribute}), do: ref(attribute)
+
+  # A wall-clock `every` has no duration to add to its last fire, so it carries
+  # the schedule itself. `AshWorkflow.Scheduler.due_at/2` resolves both shapes.
+  defp every_deadline(field, %Every{interval: interval}, nil) do
+    %{field: field, fire_after: interval}
+  end
+
+  defp every_deadline(field, %Every{}, %AshWorkflow.WallClock{} = wall_clock) do
+    %{field: field, fire_after: nil, wall_clock: wall_clock}
   end
 
   # A `fire_after` timeout is due once its anchor is older than the duration. A
@@ -217,6 +346,10 @@ defmodule AshWorkflow.Transformers.AddScheduler do
   # against the `(state, field)` index. `:exponential` adds `n^4 + 15` seconds,
   # the formula `Retry.delay_ms/2` uses, which has to be computed per row.
   defp backoff_match(match, %Every{backoff: nil}, _field, _fires_field), do: match
+
+  # Rejected by `AshWorkflow.Verifiers.ValidateEvery`, which runs after this
+  # transformer.
+  defp backoff_match(match, %Every{at: at}, _field, _fires_field) when not is_nil(at), do: match
 
   defp backoff_match(match, %Every{backoff: {_value, _unit} = backoff} = every, field, _fires) do
     gap_seconds =

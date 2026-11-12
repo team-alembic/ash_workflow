@@ -41,13 +41,33 @@ defmodule AshWorkflow.Charts.Format do
     do: "#{duration(duration)} after #{field}"
 
   @doc """
-  The schedule of an `every` entry from `AshWorkflow.Info.workflow_graph/1`.
+  The schedule of an `every` entry from `AshWorkflow.Info.workflow_graph/1`:
+  "every 2 days", or "at 09:00 on mon, fri in time_zone" for one that fires
+  at a wall-clock time. An `until` adds "for" and its duration.
   """
   @spec every(map()) :: String.t()
-  def every(%{interval: interval, until: nil}), do: "every #{duration(interval)}"
+  def every(%{at: %Time{}} = every), do: wall_clock(every) <> bounded(every.until)
 
   def every(%{interval: interval, until: until}),
-    do: "every #{duration(interval)} for #{duration(until)}"
+    do: "every #{duration(interval)}" <> bounded(until)
+
+  # An `interval` alongside `at` is a stride in days, not a duration.
+  defp wall_clock(%{at: at, on: on, time_zone: time_zone, interval: stride}) do
+    [
+      stride && "every #{duration(stride)}",
+      "at #{time(at)}",
+      on && "on " <> Enum.map_join(on, ", ", &to_string/1),
+      "in #{time_zone}"
+    ]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join(" ")
+  end
+
+  defp bounded(nil), do: ""
+  defp bounded(until), do: " for #{duration(until)}"
+
+  defp time(%Time{second: 0, microsecond: {0, _}} = time), do: Calendar.strftime(time, "%H:%M")
+  defp time(time), do: Time.to_string(time)
 
   @doc """
   The label of an undo edge, with the window when the `undo` block sets

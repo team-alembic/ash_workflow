@@ -56,6 +56,26 @@ defmodule AshWorkflow.Charts.FormatTest do
       assert Format.every(%{interval: {1, :hours}, until: {3, :hours}}) ==
                "every 1 hour for 3 hours"
     end
+
+    test "at a wall-clock time" do
+      assert Format.every(%{
+               at: ~T[09:00:00],
+               on: [:mon, :fri],
+               time_zone: :candidate_time_zone,
+               interval: nil,
+               until: nil
+             }) == "at 09:00 on mon, fri in candidate_time_zone"
+    end
+
+    test "at a wall-clock time every day, with a stride and until" do
+      assert Format.every(%{
+               at: ~T[09:30:15],
+               on: nil,
+               time_zone: "Australia/Sydney",
+               interval: {14, :days},
+               until: {60, :days}
+             }) == "every 14 days at 09:30:15 in Australia/Sydney for 60 days"
+    end
   end
 
   describe "undo/1" do
