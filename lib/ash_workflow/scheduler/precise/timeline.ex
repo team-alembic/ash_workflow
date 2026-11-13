@@ -230,8 +230,11 @@ defmodule AshWorkflow.Scheduler.Precise.Timeline do
   defp sweep_work(state, %Work{deadline: nil} = work) do
     # An automatic step is eligible as soon as a record occupies it, so there
     # is no instant to arm a timer for. Run the matching records now.
+    # A record that already holds a timer is waiting out a retry backoff, and
+    # running it here as attempt 1 again would mean its attempts never run out.
     work
     |> due_records(state, nil)
+    |> Enum.reject(&Map.has_key?(state.timers, key(work, &1)))
     |> Enum.reduce(state, &run(work, &1, 1, &2))
   end
 

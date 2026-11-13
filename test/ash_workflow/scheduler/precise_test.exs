@@ -352,6 +352,16 @@ defmodule AshWorkflow.Scheduler.PreciseTest do
       # :failed.
       assert {:ok, :failed} = await_state(record, :failed, 2_000, @retry_resource)
     end
+
+    test "a sweep during the backoff leaves the pending retry alone, so on_error still runs" do
+      # Sweeping every 100ms puts several sweeps inside the one-second backoff.
+      start_timeline(resources: [@retry_resource], look_ahead_ms: 100)
+
+      record =
+        @retry_resource |> Ash.Changeset.for_create(:create, %{title: "one"}) |> Ash.create!()
+
+      assert {:ok, :failed} = await_state(record, :failed, 3_000, @retry_resource)
+    end
   end
 
   defp work_for(step) do
