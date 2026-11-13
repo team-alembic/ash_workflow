@@ -154,7 +154,11 @@ defmodule AshWorkflow.Transformers.AddCalculations do
     %{
       name: every.name,
       field: Every.last_fired_field(step.name, every),
+      fires_field: Every.fires_field(step.name, every),
       fire_after: every.interval,
+      wall_clock: Every.wall_clock(every),
+      backoff: every.backoff,
+      max_fires: every.max_fires,
       kind: :every,
       target: nil
     }

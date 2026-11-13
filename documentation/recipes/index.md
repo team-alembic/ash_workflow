@@ -1,0 +1,22 @@
+# Recipes
+
+A recipe is a Mix task that adds a common workflow to one of your resources, such as an approval or an expiry. Run `mix ash_workflow.gen.<recipe>` with the resource to attach it to, and the task writes the workflow resource, its relationship to your resource, and the actions it needs.
+
+The generated code belongs to your application. Edit it like any other code you wrote: rename steps, change deadlines, and fill in the policy checks. AshWorkflow does not regenerate the code or keep it in step with later versions of the recipe.
+
+## Catalogue
+
+A recipe without a link has not been released yet. Each row links to its page once the recipe is available.
+
+| Recipe | Steps | Example uses |
+|---|---|---|
+| [`gen.approval`](approval.md) | `pending → approved \| rejected \| cancelled`, optional `overdue` | Expenses, leave requests, purchase orders |
+| [`gen.expiry`](expiry.md) | `active → expiring → expired`, with `renew` | Contracts, certifications, licences |
+| [`gen.review`](review.md) | `in_review → changes_requested → in_review → approved` | Content, design review, sign-off |
+| [`gen.publication`](publication.md) | `draft → scheduled → published → unpublished` | Posts, announcements, listings |
+| [`gen.invitation`](invitation.md) | `sent → accepted \| declined \| expired \| revoked`, with `resend` | Team invites, RSVPs, access grants |
+| [`gen.acknowledgement`](acknowledgement.md) | `pending → acknowledged \| overdue` | Policy attestations, terms updates |
+| [`gen.dormancy`](dormancy.md) | `active → dormant → archived` | Accounts, projects, leads |
+| [`gen.deletion`](deletion.md) | `requested → purging → deleted`, with `restore` | Account closure, GDPR erasure |
+| [`gen.sync`](sync.md) | `syncing → synced \| failed`, with `resync` | CRM push, payment provider, search index |
+| [`gen.verification`](verification.md) | `submitted → verifying → verified \| rejected` | Identity documents, registrations |

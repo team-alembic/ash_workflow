@@ -31,7 +31,7 @@ Add `ash_workflow` to your dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:ash_workflow, "~> 0.11"}
+    {:ash_workflow, "~> 0.12"}
   ]
 end
 ```
@@ -48,6 +48,10 @@ so do not declare them in `mix.exs` yourself. On the resource, add
 `AshWorkflow.Transformers.AddStateMachine` adds that extension and writes its
 DSL. `AshOban` stays explicit because the scheduler that generates its
 triggers is one choice among several. See `AshWorkflow.Scheduler`.
+
+## Start from a recipe
+
+Most applications need the same few workflows, such as approval, expiry and publication. A recipe is a Mix task that generates one of them on your resource, and the generated code is yours to edit. See the [recipes index](documentation/recipes/index.md) for the catalogue.
 
 ## Concepts
 

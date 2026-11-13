@@ -27,6 +27,12 @@ defmodule AshWorkflow.Scheduler.Work do
   `DateTime`, so an implementation that only arms timers never has to match on
   the shape.
 
+  An `every` that fires at a wall-clock time adds a third shape,
+  `%{field: last_fired_field, fire_after: nil, wall_clock: %AshWorkflow.WallClock{}}`.
+  Its instant is the next occurrence after `field`, in a zone that may be read
+  off the record. `AshWorkflow.Scheduler.due_at/2` resolves it through
+  `AshWorkflow.WallClock`.
+
   A step has no `deadline` — it is eligible as soon as a record occupies it.
   A timeout has both, and they agree: `match` is true exactly when `deadline`
   has passed.
@@ -58,6 +64,14 @@ defmodule AshWorkflow.Scheduler.Work do
   match evaluation, the way `AshWorkflow.Scheduler.Precise.Timeline`'s
   recovery sweep does.
 
+  ## `max_fires`, `backoff` and `fires_field`
+
+  Only set for an `every` that declares them. `fires_field` names the integer
+  column counting its fires in the current step visit, and `match` folds in
+  both the count bound and the grown gap. `deadline` still describes the gap
+  before the first fire, so an implementation that arms timers computes later
+  instants with `AshWorkflow.Entities.Every.next_due_at/5`.
+
   ## `fired_field`
 
   Only set for an action timeout. An action timeout does not change state, so
@@ -76,8 +90,10 @@ defmodule AshWorkflow.Scheduler.Work do
   @type kind :: :step | :timeout
 
   @type deadline :: %{
-          field: atom(),
-          fire_after: {pos_integer(), AshWorkflow.Entities.Timeout.duration_unit()} | nil
+          required(:field) => atom(),
+          required(:fire_after) =>
+            {pos_integer(), AshWorkflow.Entities.Timeout.duration_unit()} | nil,
+          optional(:wall_clock) => AshWorkflow.WallClock.t()
         }
 
   @type t :: %__MODULE__{
@@ -93,6 +109,9 @@ defmodule AshWorkflow.Scheduler.Work do
           repeat?: boolean(),
           until: AshWorkflow.Duration.t() | nil,
           fired_field: atom() | nil,
+          max_fires: pos_integer() | nil,
+          backoff: AshWorkflow.Entities.Retry.backoff() | nil,
+          fires_field: atom() | nil,
           self_scheduled?: boolean(),
           retry: AshWorkflow.Entities.Retry.t(),
           opts: keyword()
@@ -111,6 +130,9 @@ defmodule AshWorkflow.Scheduler.Work do
     repeat?: false,
     until: nil,
     fired_field: nil,
+    max_fires: nil,
+    backoff: nil,
+    fires_field: nil,
     self_scheduled?: false,
     retry: %AshWorkflow.Entities.Retry{},
     opts: []
@@ -153,14 +175,21 @@ defmodule AshWorkflow.Scheduler.Work do
   can compute this work's deadline.
 
   A timeout may name an expression calculation as its `field` or its `fire_at`,
-  and `due_at/2` reads that field straight off the record.
+  and a wall-clock `every` may name one as its `time_zone`. `due_at/2` reads
+  both straight off the record.
   """
   @spec deadline_loads(t()) :: [atom()]
-  def deadline_loads(%__MODULE__{deadline: %{field: field}, resource: resource}) do
-    if Info.calculation(resource, field), do: [field], else: []
+  def deadline_loads(%__MODULE__{deadline: %{field: field} = deadline, resource: resource}) do
+    Enum.filter([field | time_zone_field(deadline)], &Info.calculation(resource, &1))
   end
 
   def deadline_loads(%__MODULE__{}), do: []
+
+  defp time_zone_field(%{wall_clock: %AshWorkflow.WallClock{time_zone: zone}})
+       when is_atom(zone) and not is_nil(zone),
+       do: [zone]
+
+  defp time_zone_field(_deadline), do: []
 
   defp deadline_expr(%{field: field, fire_after: nil}), do: ref(field)
 

@@ -265,4 +265,451 @@ defmodule AshWorkflow.Verifiers.ValidateEveryTest do
       )
     end
   end
+
+  describe "wall-clock schedule validation" do
+    defp wall_clock_workflow(module, every_body, extra_attributes \\ "") do
+      """
+      defmodule #{module} do
+        use Ash.Resource,
+          domain: AshWorkflowTest.Domain,
+          data_layer: Ash.DataLayer.Ets,
+          extensions: [AshWorkflow, AshOban]
+
+        workflow do
+          step :waiting do
+            transition :resolve, to: :done
+
+            every :digest do
+      #{every_body}
+              action :send_digest
+            end
+          end
+
+          step :done, terminal: true
+        end
+
+        actions do
+          update :send_digest do
+            accept []
+          end
+        end
+
+        attributes do
+          uuid_v7_primary_key :id
+          attribute :title, :string, allow_nil?: false, public?: true
+      #{extra_attributes}
+        end
+      end
+      """
+    end
+
+    test "rejects an every declaring neither interval nor at" do
+      assert_dsl_error(
+        wall_clock_workflow("NoScheduleWorkflow", ""),
+        ~r/declares neither interval nor at/
+      )
+    end
+
+    test "accepts an interval in days alongside at, as a stride between fires" do
+      every =
+        AshWorkflowTest.StrideWorkflow
+        |> AshWorkflow.Info.workflow_graph()
+        |> Map.fetch!(:waiting)
+        |> Map.fetch!(:everys)
+        |> Enum.find(&(&1.name == :digest))
+
+      assert every.interval == {14, :days}
+      assert every.at == ~T[09:00:00]
+      assert every.on == [:mon]
+    end
+
+    test "rejects an interval alongside at given in anything but days" do
+      assert_dsl_error(
+        wall_clock_workflow("SubDayStrideWorkflow", """
+                  interval {36, :hours}
+                  at ~T[09:00:00]
+                  time_zone "Australia/Sydney"
+        """),
+        ~r/counts local days between fires, so it must be given in :days/
+      )
+    end
+
+    test "rejects an until not longer than a stride, saying the first fire is one stride out" do
+      assert_dsl_error(
+        wall_clock_workflow("StrideUntilWorkflow", """
+                  interval {14, :days}
+                  at ~T[09:00:00]
+                  time_zone "Australia/Sydney"
+                  until {10, :days}
+        """),
+        ~r/the first fire lands one stride after entry/
+      )
+    end
+
+    test "rejects at without a time_zone, since a wall-clock time is not an instant" do
+      assert_dsl_error(
+        wall_clock_workflow("NoTimeZoneWorkflow", """
+                  at ~T[09:00:00]
+        """),
+        ~r/declares at: ~T\[09:00:00\] without a time_zone/
+      )
+    end
+
+    test "rejects on without an at to fire" do
+      assert_dsl_error(
+        wall_clock_workflow("DaysWithoutAtWorkflow", """
+                  interval {1, :days}
+                  on [:mon]
+        """),
+        ~r/declares on: \[:mon\] without an at to fire/
+      )
+    end
+
+    test "rejects time_zone without an at to place in that zone" do
+      assert_dsl_error(
+        wall_clock_workflow("TimeZoneWithoutAtWorkflow", """
+                  interval {1, :days}
+                  time_zone "Australia/Sydney"
+        """),
+        ~r/declares time_zone: "Australia\/Sydney" without an at to place in that zone/
+      )
+    end
+
+    test "rejects a literal zone the time zone database does not know" do
+      assert_dsl_error(
+        wall_clock_workflow("UnknownZoneWorkflow", """
+                  at ~T[09:00:00]
+                  time_zone "Mars/Olympus_Mons"
+        """),
+        ~r/declares time_zone: "Mars\/Olympus_Mons", which the configured time zone database rejected/
+      )
+    end
+
+    test "rejects a time_zone attribute that does not exist" do
+      assert_dsl_error(
+        wall_clock_workflow("MissingZoneAttributeWorkflow", """
+                  at ~T[09:00:00]
+                  time_zone :candidate_time_zone
+        """),
+        ~r/declares time_zone: :candidate_time_zone, but no attribute or calculation with that name exists/
+      )
+    end
+
+    test "rejects a time_zone attribute that is not a string" do
+      assert_dsl_error(
+        wall_clock_workflow(
+          "NonStringZoneAttributeWorkflow",
+          """
+                    at ~T[09:00:00]
+                    time_zone :candidate_time_zone
+          """,
+          "    attribute :candidate_time_zone, :integer, public?: true"
+        ),
+        ~r/declares time_zone: :candidate_time_zone, which has type/
+      )
+    end
+
+    test "accepts a time_zone naming an expression calculation that reaches a related record" do
+      every =
+        AshWorkflowTest.RelatedZoneWorkflow
+        |> AshWorkflow.Info.workflow_graph()
+        |> Map.fetch!(:waiting)
+        |> Map.fetch!(:everys)
+        |> Enum.find(&(&1.name == :digest))
+
+      assert every.time_zone == :candidate_time_zone
+
+      assert Ash.Resource.Info.attribute(
+               AshWorkflowTest.RelatedZoneWorkflow,
+               :candidate_time_zone
+             ) == nil
+
+      assert Ash.Resource.Info.calculation(
+               AshWorkflowTest.RelatedZoneWorkflow,
+               :candidate_time_zone
+             )
+    end
+
+    test "rejects a time_zone naming a module calculation, which no filter can evaluate" do
+      assert_dsl_error(
+        """
+        defmodule ModuleCalcZoneWorkflow do
+          use Ash.Resource,
+            domain: AshWorkflowTest.Domain,
+            data_layer: Ash.DataLayer.Ets,
+            extensions: [AshWorkflow, AshOban]
+
+          defmodule ZoneCalculation do
+            use Ash.Resource.Calculation
+
+            @impl true
+            def calculate(records, _opts, _context), do: Enum.map(records, fn _ -> "Etc/UTC" end)
+          end
+
+          workflow do
+            step :waiting do
+              transition :resolve, to: :done
+
+              every :digest do
+                at ~T[09:00:00]
+                time_zone :computed_zone
+                action :send_digest
+              end
+            end
+
+            step :done, terminal: true
+          end
+
+          actions do
+            update :send_digest do
+              accept []
+            end
+          end
+
+          attributes do
+            uuid_v7_primary_key :id
+            attribute :title, :string, allow_nil?: false, public?: true
+          end
+
+          calculations do
+            calculate :computed_zone, :string, ZoneCalculation
+          end
+        end
+        """,
+        ~r/which is a module calculation and so cannot be evaluated by the data layer/
+      )
+    end
+
+    test "rejects a time_zone calculation that is not a string" do
+      assert_dsl_error(
+        """
+        defmodule NonStringCalcZoneWorkflow do
+          use Ash.Resource,
+            domain: AshWorkflowTest.Domain,
+            data_layer: Ash.DataLayer.Ets,
+            extensions: [AshWorkflow, AshOban]
+
+          workflow do
+            step :waiting do
+              transition :resolve, to: :done
+
+              every :digest do
+                at ~T[09:00:00]
+                time_zone :computed_zone
+                action :send_digest
+              end
+            end
+
+            step :done, terminal: true
+          end
+
+          actions do
+            update :send_digest do
+              accept []
+            end
+          end
+
+          attributes do
+            uuid_v7_primary_key :id
+            attribute :title, :string, allow_nil?: false, public?: true
+          end
+
+          calculations do
+            calculate :computed_zone, :integer, expr(1)
+          end
+        end
+        """,
+        ~r/declares time_zone: :computed_zone, which has type/
+      )
+    end
+
+    test "rejects a day name that is not a day" do
+      assert_dsl_error(
+        wall_clock_workflow("BadDayWorkflow", """
+                  at ~T[09:00:00]
+                  on [:mon, :caturday]
+                  time_zone "Australia/Sydney"
+        """),
+        ~r/Expected day names from/
+      )
+    end
+
+    test "accepts a wall-clock every, and exposes it on workflow_graph" do
+      every =
+        AshWorkflowTest.WallClockWorkflow
+        |> AshWorkflow.Info.workflow_graph()
+        |> Map.fetch!(:waiting)
+        |> Map.fetch!(:everys)
+        |> Enum.find(&(&1.name == :digest))
+
+      assert every.interval == nil
+      assert every.at == ~T[09:00:00]
+      assert every.on == [:mon, :tue, :wed, :thu, :fri]
+      assert every.time_zone == :candidate_time_zone
+    end
+
+    test "an at every is exempt from the scheduler precision floor" do
+      # A daily occurrence clears every scheduler's floor, so
+      # `AshWorkflow.Verifiers.ValidateTimeoutPrecision` has nothing to check.
+      # A one-second `interval` on the same Oban scheduler would be rejected.
+      assert Code.ensure_compiled(AshWorkflowTest.WallClockWorkflow) ==
+               {:module, AshWorkflowTest.WallClockWorkflow}
+    end
+  end
+
+  describe "max_fires and backoff validation" do
+    defp every_workflow(module, every_body, extra_attributes \\ "") do
+      """
+      defmodule #{module} do
+        use Ash.Resource,
+          domain: AshWorkflowTest.Domain,
+          data_layer: Ash.DataLayer.Ets,
+          extensions: [AshWorkflow, AshOban]
+
+        workflow do
+          step :waiting do
+            transition :resolve, to: :done
+
+            #{every_body}
+          end
+
+          step :done, terminal: true
+        end
+
+        actions do
+          update :send_reminder do
+            accept []
+          end
+
+          update :send_nudge do
+            accept []
+          end
+        end
+
+        attributes do
+          uuid_v7_primary_key :id
+          #{extra_attributes}
+        end
+      end
+      """
+    end
+
+    test "accepts max_fires and until together" do
+      assert_dsl_compiles(
+        every_workflow(MaxFiresAndUntilWorkflow, """
+        every :reminder do
+          interval {1, :days}
+          action :send_reminder
+          until {8, :days}
+          max_fires 3
+          backoff :exponential
+        end
+        """)
+      )
+    end
+
+    test "adds the fire count column only when max_fires or backoff asks for it" do
+      attributes = Ash.Resource.Info.attributes(AshWorkflowTest.EveryBackoffWorkflow)
+      fires = Enum.find(attributes, &(&1.name == :waiting_capped_fires))
+
+      assert fires.type == Ash.Type.Integer
+      assert fires.default == 0
+      refute fires.allow_nil?
+
+      refute Ash.Resource.Info.attribute(
+               AshWorkflowTest.EveryUntilWorkflow,
+               :waiting_reminder_fires
+             )
+    end
+
+    test "rejects backoff alongside at, which has no interval gap to grow" do
+      assert_dsl_error(
+        every_workflow(BackoffWallClockWorkflow, """
+        every :reminder do
+          at ~T[09:00:00]
+          time_zone "Australia/Sydney"
+          action :send_reminder
+          backoff {1, :days}
+        end
+        """),
+        ~r/backoff: \{1, :days\} and at: ~T\[09:00:00\]/
+      )
+    end
+
+    test "rejects a max_fires of 0" do
+      assert_dsl_error(
+        every_workflow(ZeroMaxFiresWorkflow, """
+        every :reminder do
+          interval {1, :days}
+          action :send_reminder
+          max_fires 0
+        end
+        """),
+        ~r/max_fires/
+      )
+    end
+
+    test "rejects backoff with max_fires 1, since no later fire exists to delay" do
+      assert_dsl_error(
+        every_workflow(BackoffSingleFireWorkflow, """
+        every :reminder do
+          interval {1, :days}
+          action :send_reminder
+          max_fires 1
+          backoff {1, :days}
+        end
+        """),
+        ~r/backoff: \{1, :days\} and max_fires: 1/
+      )
+    end
+
+    test "rejects a backoff that is neither a duration nor :exponential" do
+      assert_dsl_error(
+        every_workflow(LinearBackoffWorkflow, """
+        every :reminder do
+          interval {1, :days}
+          action :send_reminder
+          backoff :linear
+        end
+        """),
+        ~r/backoff/
+      )
+    end
+
+    test "rejects an existing fire count attribute that is not an integer" do
+      assert_dsl_error(
+        every_workflow(
+          StringFiresWorkflow,
+          """
+          every :reminder do
+            interval {1, :days}
+            action :send_reminder
+            max_fires 3
+          end
+          """,
+          "attribute :waiting_reminder_fires, :string, public?: true"
+        ),
+        ~r/counts its fires in :waiting_reminder_fires.*must be an integer type/s
+      )
+    end
+
+    test "rejects a last_fired_field that is another every's fire count column" do
+      assert_dsl_error(
+        every_workflow(LastFiredOnFiresWorkflow, """
+        every :reminder do
+          interval {1, :days}
+          action :send_reminder
+          max_fires 3
+        end
+
+        every :nudge do
+          interval {1, :days}
+          action :send_nudge
+          last_fired_field :waiting_reminder_fires
+        end
+        """),
+        ~r/:waiting_reminder_fires is shared by more than one every/
+      )
+    end
+  end
 end

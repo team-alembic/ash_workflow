@@ -1,5 +1,7 @@
 import Config
 
+config :elixir, :time_zone_database, Tz.TimeZoneDatabase
+
 config :ash,
   include_embedded_source_by_default?: false,
   default_string_length_count: :codepoints,
@@ -34,8 +36,30 @@ if Mix.env() == :test do
   # The suite deliberately exercises failure paths; their logging is noise.
   config :logger, level: :critical
 
+  # The recipe fixture domains are listed in `:ash_domains` because
+  # `Ash.Domain.Igniter` only edits a domain listed there. Without them, a
+  # recipe task does not recognise the fixture as a domain and adds a second
+  # `use Ash.Domain` to it. `test_helper.exs` leaves them out of the Oban
+  # config, and the Postgres fixture sets `migrate? false`.
+  recipe_fixture_domains = [
+    AshWorkflowTest.RecipeFixtures.Acknowledgement.Domain,
+    AshWorkflowTest.RecipeFixtures.Approval.Domain,
+    AshWorkflowTest.RecipeFixtures.Deletion.Domain,
+    AshWorkflowTest.RecipeFixtures.Expiry.Domain,
+    AshWorkflowTest.RecipeFixtures.Dormancy.Domain,
+    AshWorkflowTest.RecipeFixtures.Sync.Domain,
+    AshWorkflowTest.RecipeFixtures.Invitation.Domain,
+    AshWorkflowTest.RecipeFixtures.Publication.Domain,
+    AshWorkflowTest.RecipeFixtures.Review.Domain,
+    AshWorkflowTest.RecipeFixtures.TransitionLog.Domain,
+    AshWorkflowTest.RecipeFixtures.TransitionLog.PostgresDomain,
+    AshWorkflowTest.RecipeFixtures.Verification.Domain
+  ]
+
   config :ash_workflow,
-    ash_domains: [AshWorkflowTest.Domain, AshWorkflowTest.Postgres.Domain],
+    ash_domains:
+      [AshWorkflowTest.Domain, AshWorkflowTest.Postgres.Domain] ++ recipe_fixture_domains,
+    recipe_fixture_domains: recipe_fixture_domains,
     ecto_repos: [AshWorkflowTest.Repo]
 
   config :ash_workflow, AshWorkflowTest.Repo,
