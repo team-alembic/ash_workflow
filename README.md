@@ -333,7 +333,7 @@ From the workflow DSL, the extension generates:
 | **Calculations** | `:steps`, `:current_step`, `:available_actions`, `:transition_targets`, `:pending_deadlines`, `:workflow_terminated_at` | Workflow introspection |
 | **Attributes** | `state_entered_at`, plus one last-fired column per `every` | Added if not already defined |
 
-The initial state is the step with `initial true`, or the first non-terminal step by declaration order if none is marked. Declaration order is easy to trip over, so mark the step when the reading order is not the running order:
+The initial state is the step with `initial true`, or the first non-terminal step by declaration order if none is marked. Several steps can be marked initial when records start in different places. See [Initial state](documentation/topics/automatic-vs-manual-steps.md#initial-state). Declaration order is easy to trip over, so mark the step when the reading order is not the running order:
 
 ```elixir
 workflow do

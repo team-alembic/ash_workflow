@@ -705,6 +705,6 @@ AshWorkflow validates your workflow at compile time and raises clear errors for:
 
 - **Do not add `AshStateMachine` or `AshOban` to your extensions list** — AshWorkflow injects their DSL automatically. Adding them manually will cause conflicts.
 - **Shared transition names merge** — same-named transitions across steps become one action that routes based on current state.
-- **The first non-terminal step is the initial state** — order matters for the first step.
+- **The first non-terminal step is the initial state unless a step sets `initial true`** — several steps can set it. A create that sets no state starts in the first of them, and `change transition_state(:step)` starts a record in another.
 - **Automatic steps use Oban** — ensure your application has Oban configured and running.
 - **`state_entered_at` is managed automatically** — do not set it manually in your actions.
