@@ -50,9 +50,17 @@ with {:module, _} <- Code.ensure_loaded(Clarity.Content),
       ]
     end
 
+    defp initial_label([_]), do: "Initial step"
+    defp initial_label(_), do: "Initial steps"
+
+    defp initial_links(_resource, []), do: "—"
+
+    defp initial_links(resource, nodes),
+      do: nodes |> Enum.map(&step_link(resource, &1.id)) |> Enum.intersperse(", ")
+
     defp summary(resource, graph) do
       counts = Enum.frequencies_by(graph.nodes, & &1.kind)
-      initial = Enum.find(graph.nodes, & &1.initial?)
+      initial_nodes = Enum.filter(graph.nodes, & &1.initial?)
 
       kinds =
         for kind <- [:automatic, :manual, :wait_state, :terminal], count = counts[kind] do
@@ -63,7 +71,7 @@ with {:module, _} <- Code.ensure_loaded(Clarity.Content),
         ["Property", "Value"],
         [
           ["State attribute", code(Info.state_attribute(resource))],
-          ["Initial step", if(initial, do: step_link(resource, initial.id), else: "—")],
+          [initial_label(initial_nodes), initial_links(resource, initial_nodes)],
           ["Steps", "#{length(graph.nodes)} (#{Enum.join(kinds, ", ")})"],
           ["Moves", Integer.to_string(Enum.count(graph.edges, &(&1.kind != :undo)))],
           ["Undo", undo(resource)],

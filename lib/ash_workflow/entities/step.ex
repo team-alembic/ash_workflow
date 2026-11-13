@@ -49,7 +49,7 @@ defmodule AshWorkflow.Entities.Step do
       type: :boolean,
       default: false,
       doc:
-        "If true, this step is the initial state. At most one step can be marked initial. If none are, the first non-terminal step by declaration order is used."
+        "If true, a create action can start a record in this step. Several steps can be marked initial, and the first by declaration order is the state a create starts in when it sets none. If no step is marked, the first non-terminal step by declaration order is the only initial step."
     ],
     terminal: [
       type: :boolean,
@@ -167,12 +167,25 @@ defmodule AshWorkflow.Entities.Step do
     do: is_nil(List.last(routes).when)
 
   @doc """
-  Finds the initial step from a list of steps.
+  Finds the steps a record can be created in.
 
-  Returns the step with `initial: true`, or falls back to the first
-  non-terminal step by declaration order.
+  Returns every step with `initial: true` in declaration order, or the first
+  non-terminal step when none is marked.
   """
-  def find_initial(steps) do
-    Enum.find(steps, & &1.initial) || steps |> Enum.reject(&terminal?/1) |> List.first()
+  @spec find_initials([t()]) :: [t()]
+  def find_initials(steps) do
+    case Enum.filter(steps, & &1.initial) do
+      [] -> steps |> Enum.reject(&terminal?/1) |> Enum.take(1)
+      initial_steps -> initial_steps
+    end
   end
+
+  @doc """
+  Finds the step a record starts in when its create action sets no state.
+
+  Returns the first of `find_initials/1`, or `nil` when the workflow has no
+  non-terminal step.
+  """
+  @spec find_initial([t()]) :: t() | nil
+  def find_initial(steps), do: steps |> find_initials() |> List.first()
 end

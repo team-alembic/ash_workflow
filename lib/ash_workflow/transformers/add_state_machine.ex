@@ -5,9 +5,9 @@ defmodule AshWorkflow.Transformers.AddStateMachine do
   Injects the following into the resource's `state_machine` DSL:
 
   - **`state_attribute`** — the workflow's `state_attribute`, when it declares one.
-  - **`initial_states`** — set to the step with `initial: true`, or the first
+  - **`initial_states`** — every step with `initial: true`, or the first
     non-terminal step by declaration order if none is marked.
-  - **`default_initial_state`** — same as above
+  - **`default_initial_state`** — the first of `initial_states`
   - **Transitions** for each step type:
     - *Automatic steps* — `transition :step_action, from: [:step_name], to: [...]`, where
       `to` is every target across the step's `on_success` entries.
@@ -43,9 +43,9 @@ defmodule AshWorkflow.Transformers.AddStateMachine do
       |> Transformer.get_entities([:workflow])
       |> Enum.filter(&match?(%Step{}, &1))
 
-    case Step.find_initial(steps) do
-      nil -> raise no_steps_error()
-      first_step -> add_state_machine(dsl, steps, first_step)
+    case Step.find_initials(steps) do
+      [] -> raise no_steps_error()
+      initial_steps -> add_state_machine(dsl, steps, initial_steps)
     end
   end
 
@@ -63,12 +63,16 @@ defmodule AshWorkflow.Transformers.AddStateMachine do
     )
   end
 
-  defp add_state_machine(dsl, steps, first_step) do
+  defp add_state_machine(dsl, steps, [default_step | _] = initial_steps) do
     dsl =
       dsl
       |> put_state_attribute()
-      |> Transformer.set_option([:state_machine], :initial_states, [first_step.name])
-      |> Transformer.set_option([:state_machine], :default_initial_state, first_step.name)
+      |> Transformer.set_option(
+        [:state_machine],
+        :initial_states,
+        Enum.map(initial_steps, & &1.name)
+      )
+      |> Transformer.set_option([:state_machine], :default_initial_state, default_step.name)
 
     transitions = build_transitions(steps) ++ undo_transitions(dsl)
 

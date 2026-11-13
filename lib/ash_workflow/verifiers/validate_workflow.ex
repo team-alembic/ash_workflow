@@ -16,7 +16,7 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
       |> Enum.filter(&match?(%Step{}, &1))
 
     with :ok <- validate_has_steps(steps),
-         :ok <- validate_single_initial(steps),
+         :ok <- validate_initial_steps(steps),
          :ok <- validate_step_configs(steps),
          :ok <- validate_references(steps),
          :ok <- validate_timeout_actions(dsl, steps),
@@ -46,32 +46,17 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
     end
   end
 
-  defp validate_single_initial(steps) do
-    initial_steps = Enum.filter(steps, & &1.initial)
+  defp validate_initial_steps(steps) do
+    case Enum.find(steps, &(&1.initial and Step.terminal?(&1))) do
+      nil ->
+        :ok
 
-    case initial_steps do
-      [_, _ | _] ->
-        names = Enum.map(initial_steps, & &1.name)
-
+      step ->
         {:error,
          DslError.exception(
-           path: [:workflow],
-           message: "Only one step can have initial: true, but found: #{inspect(names)}"
+           path: [:workflow, :step, step.name],
+           message: "Terminal step :#{step.name} cannot have initial: true."
          )}
-
-      [step] ->
-        if Step.terminal?(step) do
-          {:error,
-           DslError.exception(
-             path: [:workflow, :step, step.name],
-             message: "Terminal step :#{step.name} cannot have initial: true."
-           )}
-        else
-          :ok
-        end
-
-      _ ->
-        :ok
     end
   end
 
@@ -510,15 +495,16 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
   end
 
   defp validate_reachability(steps) do
-    case Step.find_initial(steps) do
-      nil -> :ok
-      initial -> do_validate_reachability(initial, steps)
+    case Step.find_initials(steps) do
+      [] -> :ok
+      initial_steps -> do_validate_reachability(initial_steps, steps)
     end
   end
 
-  defp do_validate_reachability(first_step, steps) do
+  defp do_validate_reachability(initial_steps, steps) do
     step_map = Map.new(steps, &{&1.name, &1})
-    reachable = MapSet.new(bfs([first_step.name], step_map, []))
+    initial_names = Enum.map(initial_steps, & &1.name)
+    reachable = MapSet.new(bfs(initial_names, step_map, []))
     all_names = MapSet.new(steps, & &1.name)
     unreachable = MapSet.difference(all_names, reachable)
 
@@ -531,10 +517,13 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
        DslError.exception(
          path: [:workflow],
          message:
-           "The following steps are not reachable from the first step :#{first_step.name}: #{inspect(unreachable_list)}"
+           "The following steps are not reachable from #{describe_initial(initial_names)}: #{inspect(unreachable_list)}"
        )}
     end
   end
+
+  defp describe_initial([name]), do: "the initial step #{inspect(name)}"
+  defp describe_initial(names), do: "any initial step #{inspect(names)}"
 
   # `visited` is a plain list rather than a MapSet: workflows have a handful of
   # steps, so the linear membership check costs nothing at compile time.

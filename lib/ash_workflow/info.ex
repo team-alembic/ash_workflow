@@ -270,11 +270,19 @@ defmodule AshWorkflow.Info do
   end
 
   @doc """
-  Returns the initial step for the workflow.
+  Returns the step a record starts in when its create action sets no state.
   """
   @spec initial_step(Ash.Resource.t()) :: Step.t() | nil
   def initial_step(resource) do
     Step.find_initial(steps(resource))
+  end
+
+  @doc """
+  Returns every step a record can be created in, in declaration order.
+  """
+  @spec initial_steps(Ash.Resource.t()) :: [Step.t()]
+  def initial_steps(resource) do
+    Step.find_initials(steps(resource))
   end
 
   @doc """
@@ -482,8 +490,8 @@ defmodule AshWorkflow.Info do
   * `:action` — the action an automatic step runs, `nil` for every other step
   * `:policy` — the step's `policy` check, or `nil`
   * `:retry` — the step's `AshWorkflow.Entities.Retry`, or `nil`
-  * `:initial` — `true` for the step the workflow starts in, as
-    `AshWorkflow.Entities.Step.find_initial/1` picks it
+  * `:initial` — `true` for each step a record can be created in, as
+    `AshWorkflow.Entities.Step.find_initials/1` picks them
   * `:terminal` — `true` for an end state
   * `:manual` — `true` when nothing runs on entry
   * `:wait_state` — `true` when a timeout is the step's only exit
@@ -547,20 +555,20 @@ defmodule AshWorkflow.Info do
   @spec workflow_graph(Ash.Resource.t()) :: %{atom() => map()}
   def workflow_graph(resource) do
     steps = steps(resource)
-    initial = Step.find_initial(steps)
+    initial_steps = Step.find_initials(steps)
     undo_enabled? = undo(resource) != nil
 
-    Map.new(steps, &step_to_graph_entry(&1, initial, undo_enabled?))
+    Map.new(steps, &step_to_graph_entry(&1, initial_steps, undo_enabled?))
   end
 
-  defp step_to_graph_entry(step, initial, undo_enabled?) do
+  defp step_to_graph_entry(step, initial_steps, undo_enabled?) do
     {step.name,
      %{
        name: step.name,
        action: step.action,
        policy: step.policy,
        retry: step.retry,
-       initial: step == initial,
+       initial: step in initial_steps,
        terminal: Step.terminal?(step),
        manual: Step.manual?(step),
        wait_state: Step.wait_state?(step),

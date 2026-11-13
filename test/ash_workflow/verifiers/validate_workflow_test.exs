@@ -579,7 +579,7 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflowTest do
         ])
 
       assert {:error, %Spark.Error.DslError{message: message}} = ValidateWorkflow.verify(dsl)
-      assert message =~ "not reachable from the first step"
+      assert message =~ "not reachable from the initial step :start"
       assert message =~ ":orphan"
     end
 
