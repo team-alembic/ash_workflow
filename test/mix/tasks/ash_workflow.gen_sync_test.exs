@@ -135,13 +135,23 @@ defmodule Mix.Tasks.AshWorkflow.Gen.SyncTest do
   # A wait spans real backoffs of whole seconds, the smallest `--backoff` takes.
   # Two waits of 25s stay inside ExUnit's 60s test timeout on a slow runner.
   defp await_state(sync, state, timeout_ms \\ 25_000) do
+    await(fn -> reload(sync).state end, state, timeout_ms)
+  end
+
+  # On ETS the timeline's new state is visible before `RecordEvent`'s
+  # `after_action` appends the log row, so a log read waits for the row too.
+  defp await_log(recipe, read_rows, expected, timeout_ms \\ 1_000) do
+    await(fn -> recipe |> log() |> read_rows.() end, expected, timeout_ms)
+  end
+
+  defp await(read, expected, timeout_ms) do
     deadline = System.monotonic_time(:millisecond) + timeout_ms
 
     Stream.repeatedly(fn ->
       Process.sleep(10)
-      reload(sync).state
+      read.()
     end)
-    |> Enum.find(&(&1 == state or System.monotonic_time(:millisecond) > deadline))
+    |> Enum.find(&(&1 == expected or System.monotonic_time(:millisecond) > deadline))
   end
 
   defp resync(sync, actor \\ @operator) do
@@ -378,8 +388,9 @@ defmodule Mix.Tasks.AshWorkflow.Gen.SyncTest do
       assert await_state(sync, :synced) == :synced
       assert FakePush.remaining(sync) == []
 
-      assert recipe |> log() |> Enum.map(& &1.to_state) |> Enum.sort() ==
-               [:failed, :synced, :syncing, :syncing]
+      to_states = &(&1 |> Enum.map(fn row -> row.to_state end) |> Enum.sort())
+      expected = [:failed, :synced, :syncing, :syncing]
+      assert await_log(recipe, to_states, expected) == expected
     end
   end
 
@@ -507,7 +518,8 @@ defmodule Mix.Tasks.AshWorkflow.Gen.SyncTest do
       assert await_state(sync, :synced) == :synced
       assert FakePush.remaining(sync) == [:ok]
 
-      assert recipe |> log() |> Enum.filter(&(&1.triggered_by == :timeout)) |> length() == 1
+      timeouts = &Enum.count(&1, fn row -> row.triggered_by == :timeout end)
+      assert await_log(recipe, timeouts, 1) == 1
     end
 
     test "an update during a push resyncs once the push fails", %{tmp_dir: tmp_dir} do
