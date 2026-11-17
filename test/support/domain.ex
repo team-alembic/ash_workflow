@@ -91,5 +91,7 @@ defmodule AshWorkflowTest.Domain do
     resource AshWorkflowTest.OrderWorkflow
     resource AshWorkflowTest.AuthorizedOrderWorkflow
     resource AshWorkflowTest.Payment
+    resource AshWorkflowTest.MultipleInitialRuntimeWorkflow
+    resource AshWorkflowTest.MultipleInitialRuntimeLog
   end
 end
