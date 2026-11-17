@@ -90,7 +90,7 @@ stateDiagram-v2
 | Automatic step | `⚙️ automatic` under the step name |
 | Manual step | `✋ manual` under the step name |
 | Wait state, where a timeout is the only exit | `⏳ wait state` under the step name |
-| Initial step | An edge from the start marker |
+| Initial step | An edge from the start marker, one per initial step |
 | Terminal step | An edge to the end marker |
 | `on_success` | `⚙` and the step's action |
 | `on_error` | `✖ on_error` |
@@ -526,7 +526,7 @@ colours".
 
 #### Layout
 
-`dot` puts the steps in ranks, from the initial step down to the end steps.
+`dot` puts the steps in ranks, from the initial steps down to the end steps.
 An undo edge points back up to the earlier step, next to the edge that it
 undoes. The file writes it from the earlier step, with `dir="back"`, so the
 steps keep their forward order. The arrowhead is at the tail, so the `undo`

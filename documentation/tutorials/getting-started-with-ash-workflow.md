@@ -108,7 +108,7 @@ From that DSL, AshWorkflow generates:
 >
 > AshWorkflow does not generate one. A workflow record's creation inputs are specific to your application, so the extension leaves `create` to you and only adds the changes that set the initial state and `state_entered_at`. A resource with a `workflow` block and no create action compiles, and then nothing can start a workflow.
 
-`:auto_check` becomes the initial state because it is the first step by declaration order that is not terminal. `AshWorkflow.Entities.Step.find_initial/1` picks it. To name the initial step instead of relying on declaration order, mark it:
+`:auto_check` becomes the initial state because it is the first step by declaration order that is not terminal. `AshWorkflow.Entities.Step.find_initials/1` picks it. To name the initial step instead of relying on declaration order, mark it:
 
 ```elixir
 workflow do
@@ -126,6 +126,8 @@ end
 ```
 
 Without `initial true` that workflow would start in `:review`, because `:review` is declared first. A step that declares transitions has to set `initial` inside its block: `step :intake, initial: true do ... end` does not compile, because the DSL macro takes either options or a block.
+
+Several steps can set `initial true` when records start in different places. See [Several initial steps](../topics/automatic-vs-manual-steps.md#several-initial-steps).
 
 ## Use the workflow
 

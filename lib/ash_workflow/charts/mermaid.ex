@@ -13,8 +13,8 @@ defmodule AshWorkflow.Charts.Mermaid do
   * Each step that is not terminal has a description line with its kind:
     `⚙\u{FE0F} automatic`, `✋ manual` or `⏳ wait state`. The gear carries
     U+FE0F, so it draws as a colour emoji, the same as the other two.
-  * The initial step has an edge from `[*]`, and every terminal step has an
-    edge to `[*]`.
+  * Every initial step has an edge from `[*]`, and every terminal step has
+    an edge to `[*]`.
   * An edge label starts with a symbol for its kind: `⚙` for `on_success`,
     `✖` for `on_error`, `📨` for an `on_signal`, `⏱` for a timeout and `↶`
     for undo. A transition has no symbol. A timeout edge gives the timeout's

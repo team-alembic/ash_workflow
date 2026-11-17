@@ -19,7 +19,7 @@ defmodule AshWorkflow.Charts.Dot do
   | Manual step | Amber box, `✋ manual` under the name |
   | Wait state | Lavender box with a dashed border, `⏳ wait state` under the name |
   | Terminal step | Double border. Green, red, amber or grey: see "Terminal steps" |
-  | Initial step | An edge from a small filled circle |
+  | Initial step | An edge from a small filled circle, one per initial step |
   | `on_success` | Thick blue edge, `⚙` and the action |
   | `on_error` | Red edge, `✖ on_error` |
   | Timeout | Dashed amber edge, `⏱`, the timeout's name and its deadline |
@@ -48,7 +48,7 @@ defmodule AshWorkflow.Charts.Dot do
 
   ## Layout
 
-  `dot` puts the steps in ranks, from the initial step to the end steps. An
+  `dot` puts the steps in ranks, from the initial steps to the end steps. An
   edge that closes a loop, such as a transition back to an earlier step,
   goes back up the ranks.
 
