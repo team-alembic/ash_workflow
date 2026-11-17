@@ -31,7 +31,6 @@ defmodule AshWorkflowTest.MultipleInitialWorkflow do
   code_interface do
     define :create
     define :create_at_start_two
-    define :create_at_done
   end
 
   actions do
@@ -42,11 +41,6 @@ defmodule AshWorkflowTest.MultipleInitialWorkflow do
     create :create_at_start_two do
       accept [:title]
       change transition_state(:start_two)
-    end
-
-    create :create_at_done do
-      accept [:title]
-      change transition_state(:done)
     end
   end
 

@@ -9,11 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Several initial steps.** More than one step can set `initial true`. `AshWorkflow.Transformers.AddStateMachine` passes every initial step to the state machine's `initial_states`, and a create action starts a record in one with `change transition_state(:step)`. A create that sets no state starts in the first initial step by declaration order. The reachability check in `AshWorkflow.Verifiers.ValidateWorkflow` starts from every initial step, so a step only an initial step reaches is no longer reported as unreachable. `AshWorkflow.Info.initial_steps/1` and `AshWorkflow.Entities.Step.find_initials/1` list the initial steps, and `AshWorkflow.Info.workflow_graph/1`, the charts and the Clarity overview mark each of them.
+- **Several initial steps.** More than one step can set `initial true`. `AshWorkflow.Transformers.AddStateMachine` passes every initial step to the state machine's `initial_states`, and a create action starts a record in one with `change transition_state(:step)`. A create that sets no state starts in the first initial step by declaration order. The reachability check in `AshWorkflow.Verifiers.ValidateWorkflow` starts from every initial step. A step reached only from a second initial step is no longer reported as unreachable. `AshWorkflow.Info.initial_steps/1` and `AshWorkflow.Entities.Step.find_initials/1` list the initial steps, and `AshWorkflow.Info.workflow_graph/1`, the charts and the Clarity overview mark each of them.
 
 ### Changed
 
 - The unreachable-step error names the initial step it searched from ("not reachable from the initial step :review") rather than "the first step".
+- `AshWorkflow.Verifiers.ValidateWorkflow` no longer raises "Only one step can have initial: true".
+- `AshWorkflow.Verifiers.ValidateWorkflow` rejects a create action whose `transition_state` names a step that is not initial. Before, the create failed at runtime.
+- `AshWorkflow.Verifiers.ValidateWorkflow` rejects an initial step after the first that no create action names with `transition_state`. A create that takes its starting step from an argument turns this check off.
+- `AshWorkflow.Verifiers.ValidateWorkflow` rejects an upserting create action that calls `transition_state`. ash_state_machine only lets an upsert move to a state that a transition declares for that action, and a workflow declares none for creates.
+- The unreachable-step error suggests `initial true` for an unreachable step that no other step leads into.
 
 ## [0.12.0] - 2026-11-06
 

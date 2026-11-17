@@ -89,7 +89,7 @@ Call `AshWorkflow.Scheduler.execute/3` when the moment arrives. It runs the acti
 
 ## Defining a Workflow
 
-All workflow configuration goes inside a single `workflow do ... end` block. Steps are declared in order — the first non-terminal step becomes the initial state.
+All workflow configuration goes inside a single `workflow do ... end` block. Steps are declared in order. The first non-terminal step becomes the initial state unless one or more steps set `initial true`.
 
 A step that declares no action, no transitions, no timeouts, no `on_success` and no `on_error` is terminal, whether or not it sets `terminal: true`. Setting it states the intent, and the verifier then rejects the step if it grows an outgoing declaration.
 
@@ -712,12 +712,15 @@ AshWorkflow validates your workflow at compile time and raises clear errors for:
 - An automatic step declaring no `on_success`
 - More than one unconditional `on_success` on a step, or an unconditional `on_success` declared before a conditional one (it would shadow it)
 - An automatic step whose `on_success` is entirely conditional (no trailing unconditional fallback) and declares neither `on_error` nor a timeout with `transition_to`
-- Unreachable steps (not connected to the first step via any path)
+- Unreachable steps (not connected to any initial step via any path)
+- A create action whose `transition_state` names a step that is not initial
+- An initial step after the first that no create action names with `transition_state`
+- An upserting create action that calls `transition_state`
 
 ## Important Caveats
 
 - **Do not add `AshStateMachine` or `AshOban` to your extensions list** — AshWorkflow injects their DSL automatically. Adding them manually will cause conflicts.
 - **Shared transition names merge** — same-named transitions across steps become one action that routes based on current state.
-- **The first non-terminal step is the initial state unless a step sets `initial true`** — several steps can set it. A create that sets no state starts in the first of them, and `change transition_state(:step)` starts a record in another.
+- **The first non-terminal step is the initial state unless a step sets `initial true`** — several steps can set it. A create that sets no state starts in the first of them, and `change transition_state(:step)` starts a record in another. Every initial step after the first needs a create that names it, and an upserting create cannot call `transition_state`. Both are compile errors.
 - **Automatic steps use Oban** — ensure your application has Oban configured and running.
 - **`state_entered_at` is managed automatically** — do not set it manually in your actions.
