@@ -61,15 +61,10 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
     end
   end
 
-  # A create picks its starting step with `transition_state`, so a literal
-  # target is checked here rather than when the first record is created.
+  # Checks a literal `transition_state` target at compile time rather than on the first create.
   defp validate_create_starting_steps(dsl, steps) do
     initial_names = steps |> Step.find_initials() |> Enum.map(& &1.name)
-    starts = create_starting_steps(dsl)
-
-    with :ok <- validate_start_targets(starts, initial_names) do
-      validate_initial_steps_started(starts, initial_names)
-    end
+    validate_start_targets(create_starting_steps(dsl), initial_names)
   end
 
   defp validate_start_targets(starts, initial_names) do
@@ -95,34 +90,9 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
     end
   end
 
-  defp invalid_start?(%{target: target}, _initial_names) when not is_atom(target), do: false
   defp invalid_start?(%{upsert?: true}, _initial_names), do: true
+  defp invalid_start?(%{target: target}, _initial_names) when not is_atom(target), do: false
   defp invalid_start?(%{target: target}, initial_names), do: target not in initial_names
-
-  # Every initial step after the first needs a create that starts records in
-  # it. One that no create names is most often a copied `initial true`.
-  defp validate_initial_steps_started(starts, [_default | other_initial_names]) do
-    if Enum.any?(starts, &(not is_atom(&1.target))) do
-      :ok
-    else
-      targets = MapSet.new(starts, & &1.target)
-
-      case Enum.reject(other_initial_names, &MapSet.member?(targets, &1)) do
-        [] ->
-          :ok
-
-        [name | _] ->
-          {:error,
-           DslError.exception(
-             path: [:workflow, :step, name],
-             message:
-               "Step #{inspect(name)} is marked `initial true`, but no create action starts a record in it. Only the first initial step is the default for a create. Add `change transition_state(#{inspect(name)})` to a create action, or remove `initial true`."
-           )}
-      end
-    end
-  end
-
-  defp validate_initial_steps_started(_starts, []), do: :ok
 
   defp create_starting_steps(dsl) do
     global_changes =

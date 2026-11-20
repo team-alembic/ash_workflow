@@ -16,7 +16,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The unreachable-step error names the initial step it searched from ("not reachable from the initial step :review") rather than "the first step".
 - `AshWorkflow.Verifiers.ValidateWorkflow` no longer raises "Only one step can have initial: true".
 - `AshWorkflow.Verifiers.ValidateWorkflow` rejects a create action whose `transition_state` names a step that is not initial. Before, the create failed at runtime.
-- `AshWorkflow.Verifiers.ValidateWorkflow` rejects an initial step after the first that no create action names with `transition_state`. A create that takes its starting step from an argument turns this check off.
 - `AshWorkflow.Verifiers.ValidateWorkflow` rejects an upserting create action that calls `transition_state`. ash_state_machine only lets an upsert move to a state that a transition declares for that action, and a workflow declares none for creates.
 - The unreachable-step error suggests `initial true` for an unreachable step that no other step leads into.
 

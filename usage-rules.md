@@ -714,13 +714,12 @@ AshWorkflow validates your workflow at compile time and raises clear errors for:
 - An automatic step whose `on_success` is entirely conditional (no trailing unconditional fallback) and declares neither `on_error` nor a timeout with `transition_to`
 - Unreachable steps (not connected to any initial step via any path)
 - A create action whose `transition_state` names a step that is not initial
-- An initial step after the first that no create action names with `transition_state`
 - An upserting create action that calls `transition_state`
 
 ## Important Caveats
 
 - **Do not add `AshStateMachine` or `AshOban` to your extensions list** — AshWorkflow injects their DSL automatically. Adding them manually will cause conflicts.
 - **Shared transition names merge** — same-named transitions across steps become one action that routes based on current state.
-- **The first non-terminal step is the initial state unless a step sets `initial true`** — several steps can set it. A create that sets no state starts in the first of them, and `change transition_state(:step)` starts a record in another. Every initial step after the first needs a create that names it, and an upserting create cannot call `transition_state`. Both are compile errors.
+- **The first non-terminal step is the initial state unless a step sets `initial true`.** Several steps can set it. A create that sets no state starts in the first of them, and `change transition_state(:step)` starts a record in another. An upserting create cannot call `transition_state`, and the compiler rejects one that does.
 - **Automatic steps use Oban** — ensure your application has Oban configured and running.
 - **`state_entered_at` is managed automatically** — do not set it manually in your actions.

@@ -319,10 +319,9 @@ actions do
 end
 ```
 
-Every step must be reachable from at least one initial step. The compiler also checks the create actions:
+Every step must be reachable from at least one initial step. The compiler also reports:
 
 - A create whose `transition_state` names a step that is not marked initial is a compile error.
-- Each initial step after the first needs a create action that names it with `transition_state`. A step marked `initial true` that no create names is a compile error, which catches a copied `initial true`. A create that takes its starting step from an argument, such as `transition_state(arg(:start))`, turns this check off.
 - An unreachable step that no other step leads into gets a hint to mark it `initial true`.
 
 Once any step sets `initial true`, the first non-terminal step is no longer initial unless it sets `initial true` too.

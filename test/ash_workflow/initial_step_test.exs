@@ -198,40 +198,8 @@ defmodule AshWorkflow.InitialStepTest do
       )
     end
 
-    test "rejects a later initial step that no create starts records in" do
-      assert_dsl_error(
-        """
-        defmodule UnstartedInitialWorkflow do
-          use Ash.Resource,
-            domain: AshWorkflowTest.Domain,
-            data_layer: Ash.DataLayer.Ets,
-            extensions: [AshWorkflow, AshOban]
-
-          workflow do
-            step :draft do
-              initial true
-              transition :submit, to: :review
-            end
-
-            step :review do
-              initial true
-              transition :approve, to: :done
-            end
-
-            step :done, terminal: true
-          end
-
-          attributes do
-            uuid_v7_primary_key :id
-          end
-        end
-        """,
-        ~r/Step :review is marked `initial true`, but no create action starts a record in it/
-      )
-    end
-
-    test "accepts a create whose starting step comes from an argument" do
-      defmodule ArgumentStartWorkflow do
+    test "accepts a later initial step that no create names with transition_state" do
+      defmodule SetAttributeStartWorkflow do
         use Ash.Resource,
           domain: AshWorkflowTest.Domain,
           data_layer: Ash.DataLayer.Ets,
@@ -253,9 +221,8 @@ defmodule AshWorkflow.InitialStepTest do
         end
 
         actions do
-          create :create_at do
-            argument :start, :atom, allow_nil?: false
-            change transition_state(arg(:start))
+          create :create_at_two do
+            change set_attribute(:state, :start_two)
           end
         end
 
@@ -265,7 +232,7 @@ defmodule AshWorkflow.InitialStepTest do
       end
 
       assert {:ok, [:start_one, :start_two]} =
-               SMInfo.state_machine_initial_states(ArgumentStartWorkflow)
+               SMInfo.state_machine_initial_states(SetAttributeStartWorkflow)
     end
 
     test "rejects a terminal step marked initial: true" do
