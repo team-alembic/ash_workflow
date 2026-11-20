@@ -16,12 +16,13 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
       |> Enum.filter(&match?(%Step{}, &1))
 
     with :ok <- validate_has_steps(steps),
-         :ok <- validate_single_initial(steps),
+         :ok <- validate_initial_steps(steps),
          :ok <- validate_step_configs(steps),
          :ok <- validate_references(steps),
          :ok <- validate_timeout_actions(dsl, steps),
          :ok <- validate_every_actions(dsl, steps),
-         :ok <- validate_shared_transition_policies(steps) do
+         :ok <- validate_shared_transition_policies(steps),
+         :ok <- validate_create_starting_steps(dsl, steps) do
       validate_reachability(steps)
     end
   end
@@ -46,34 +47,75 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
     end
   end
 
-  defp validate_single_initial(steps) do
-    initial_steps = Enum.filter(steps, & &1.initial)
+  defp validate_initial_steps(steps) do
+    case Enum.find(steps, &(&1.initial and Step.terminal?(&1))) do
+      nil ->
+        :ok
 
-    case initial_steps do
-      [_, _ | _] ->
-        names = Enum.map(initial_steps, & &1.name)
-
+      step ->
         {:error,
          DslError.exception(
-           path: [:workflow],
-           message: "Only one step can have initial: true, but found: #{inspect(names)}"
+           path: [:workflow, :step, step.name],
+           message: "Terminal step :#{step.name} cannot have initial: true."
          )}
-
-      [step] ->
-        if Step.terminal?(step) do
-          {:error,
-           DslError.exception(
-             path: [:workflow, :step, step.name],
-             message: "Terminal step :#{step.name} cannot have initial: true."
-           )}
-        else
-          :ok
-        end
-
-      _ ->
-        :ok
     end
   end
+
+  # Checks a literal `transition_state` target at compile time rather than on the first create.
+  defp validate_create_starting_steps(dsl, steps) do
+    initial_names = steps |> Step.find_initials() |> Enum.map(& &1.name)
+    validate_start_targets(create_starting_steps(dsl), initial_names)
+  end
+
+  defp validate_start_targets(starts, initial_names) do
+    case Enum.find(starts, &invalid_start?(&1, initial_names)) do
+      nil ->
+        :ok
+
+      %{action: action, upsert?: true, target: target} ->
+        {:error,
+         DslError.exception(
+           path: [:actions, :create, action],
+           message:
+             "Create action :#{action} upserts and calls transition_state(#{inspect(target)}). ash_state_machine only lets an upsert move to a state that a transition declares for that action, and a workflow declares none for creates. An upserting create starts records in the first initial step. Remove `upsert? true` or the transition_state change."
+         )}
+
+      %{action: action, target: target} ->
+        {:error,
+         DslError.exception(
+           path: [:actions, :create, action],
+           message:
+             "Create action :#{action} starts records in #{inspect(target)}, which is not an initial step. Mark step #{inspect(target)} with `initial true`, or start in one of #{inspect(initial_names)}."
+         )}
+    end
+  end
+
+  defp invalid_start?(%{upsert?: true}, _initial_names), do: true
+  defp invalid_start?(%{target: target}, _initial_names) when not is_atom(target), do: false
+  defp invalid_start?(%{target: target}, initial_names), do: target not in initial_names
+
+  defp create_starting_steps(dsl) do
+    global_changes =
+      dsl
+      |> Verifier.get_entities([:changes])
+      |> Enum.filter(&(:create in List.wrap(Map.get(&1, :on))))
+
+    dsl
+    |> Verifier.get_entities([:actions])
+    |> Enum.filter(&match?(%Ash.Resource.Actions.Create{}, &1))
+    |> Enum.flat_map(fn action ->
+      (Map.get(action, :changes, []) ++ global_changes)
+      |> Enum.flat_map(&transition_state_target/1)
+      |> Enum.map(&%{action: action.name, upsert?: action.upsert?, target: &1})
+    end)
+  end
+
+  defp transition_state_target(%Ash.Resource.Change{
+         change: {AshStateMachine.BuiltinChanges.TransitionState, opts}
+       }),
+       do: [Keyword.get(opts, :target)]
+
+  defp transition_state_target(_change), do: []
 
   defp validate_step_configs(steps) do
     Enum.reduce_while(steps, :ok, fn step, :ok ->
@@ -510,15 +552,16 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
   end
 
   defp validate_reachability(steps) do
-    case Step.find_initial(steps) do
-      nil -> :ok
-      initial -> do_validate_reachability(initial, steps)
+    case Step.find_initials(steps) do
+      [] -> :ok
+      initial_steps -> do_validate_reachability(initial_steps, steps)
     end
   end
 
-  defp do_validate_reachability(first_step, steps) do
+  defp do_validate_reachability(initial_steps, steps) do
     step_map = Map.new(steps, &{&1.name, &1})
-    reachable = MapSet.new(bfs([first_step.name], step_map, []))
+    initial_names = Enum.map(initial_steps, & &1.name)
+    reachable = MapSet.new(bfs(initial_names, step_map, []))
     all_names = MapSet.new(steps, & &1.name)
     unreachable = MapSet.difference(all_names, reachable)
 
@@ -531,10 +574,14 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
        DslError.exception(
          path: [:workflow],
          message:
-           "The following steps are not reachable from the first step :#{first_step.name}: #{inspect(unreachable_list)}"
+           "The following steps are not reachable from #{describe_initial(initial_names)}: #{inspect(unreachable_list)}" <>
+             entry_hint(unreachable_list, steps)
        )}
     end
   end
+
+  defp describe_initial([name]), do: "the initial step #{inspect(name)}"
+  defp describe_initial(names), do: "any initial step #{inspect(names)}"
 
   # `visited` is a plain list rather than a MapSet: workflows have a handful of
   # steps, so the linear membership check costs nothing at compile time.
@@ -549,26 +596,36 @@ defmodule AshWorkflow.Verifiers.ValidateWorkflow do
 
       neighbors =
         case Map.get(step_map, name) do
-          nil ->
-            []
-
-          step ->
-            successors =
-              Step.on_success_targets(step) ++ ([step.on_error] |> Enum.reject(&is_nil/1))
-
-            transition_targets =
-              Enum.flat_map(step.transitions, &Transition.all_targets/1)
-
-            timeout_targets =
-              step.timeouts |> Enum.map(& &1.transition_to) |> Enum.reject(&is_nil/1)
-
-            on_signal_targets =
-              step.on_signals |> Enum.map(& &1.transition_to) |> Enum.reject(&is_nil/1)
-
-            successors ++ transition_targets ++ timeout_targets ++ on_signal_targets
+          nil -> []
+          step -> successors(step)
         end
 
       bfs(rest ++ neighbors, step_map, visited)
+    end
+  end
+
+  defp successors(step) do
+    Step.on_success_targets(step) ++
+      Enum.reject([step.on_error], &is_nil/1) ++
+      Enum.flat_map(step.transitions, &Transition.all_targets/1) ++
+      (step.timeouts |> Enum.map(& &1.transition_to) |> Enum.reject(&is_nil/1)) ++
+      (step.on_signals |> Enum.map(& &1.transition_to) |> Enum.reject(&is_nil/1))
+  end
+
+  # A step nothing leads into can only be a starting step, so the likely fix is
+  # `initial true` rather than a missing transition.
+  defp entry_hint(unreachable_names, steps) do
+    entered = MapSet.new(Enum.flat_map(steps, &successors/1))
+
+    case Enum.reject(unreachable_names, &MapSet.member?(entered, &1)) do
+      [] ->
+        ""
+
+      [name] ->
+        ". No step leads into #{inspect(name)}. Mark it `initial true` if records start there."
+
+      names ->
+        ". No step leads into #{inspect(names)}. Mark each one that records start in with `initial true`."
     end
   end
 

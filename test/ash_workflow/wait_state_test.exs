@@ -278,7 +278,7 @@ defmodule AshWorkflow.WaitStateTest do
           end
         end
         """,
-        ~r/not reachable from the first step :review: \[:stranded\]/
+        ~r/not reachable from the initial step :review: \[:stranded\]/
       )
     end
 

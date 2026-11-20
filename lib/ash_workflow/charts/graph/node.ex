@@ -11,7 +11,7 @@ defmodule AshWorkflow.Charts.Graph.Node do
     A timeout is the only way out.
   * `:terminal` — an end state.
 
-  `initial?` is `true` for the step the workflow starts in. `notes` holds what
+  `initial?` is `true` for each step a record can be created in. `notes` holds what
   the step does without leaving it, so it has no edge: its policy, its retry
   policy, the timeouts that run an action, and its `every` entries.
   """

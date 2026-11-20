@@ -281,6 +281,53 @@ workflow do
 end
 ```
 
-At most one step can have `initial true`. If none do, the first non-terminal step is used.
+If no step has `initial true`, the first non-terminal step is used.
 
-The extension sets `default_initial_state` and `initial_states` on the generated state machine.
+### Several initial steps
+
+A workflow whose records start in different places marks each starting step with `initial true`. A create action that sets no state starts in the first of them by declaration order. Any other create action names its starting step with `transition_state`:
+
+```elixir
+workflow do
+  step :self_service_intake do
+    initial true
+    transition :submit, to: :review
+  end
+
+  step :staff_intake do
+    initial true
+    transition :submit, to: :review
+  end
+
+  step :review do
+    transition :approve, to: :done
+  end
+
+  step :done, terminal: true
+end
+
+actions do
+  # Starts in :self_service_intake, the first initial step.
+  create :open do
+    accept [:title]
+  end
+
+  create :open_by_staff do
+    accept [:title]
+    change transition_state(:staff_intake)
+  end
+end
+```
+
+Every step must be reachable from at least one initial step. The compiler also reports:
+
+- A create whose `transition_state` names a step that is not marked initial is a compile error.
+- An unreachable step that no other step leads into gets a hint to mark it `initial true`.
+
+Once any step sets `initial true`, the first non-terminal step is no longer initial unless it sets `initial true` too.
+
+#### Upserting creates
+
+An upserting create cannot name its starting step. ash_state_machine only lets an upsert move to a state that a transition declares for that action, and the workflow declares none for creates. A create with `upsert? true` and `transition_state` is a compile error, even for a step marked initial. An upserting create starts a new record in the first initial step. An upsert onto an existing record leaves it in the step it was in, as long as `upsert_fields` does not include the state attribute.
+
+The extension sets `initial_states` to every initial step, and `default_initial_state` to the first, on the generated state machine.

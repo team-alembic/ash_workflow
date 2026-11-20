@@ -21,6 +21,7 @@ defmodule AshWorkflowTest.Domain do
     resource AshWorkflowTest.AcceptWorkflow
     resource AshWorkflowTest.AcceptedRouteWorkflow
     resource AshWorkflowTest.InitialFlagWorkflow
+    resource AshWorkflowTest.MultipleInitialWorkflow
     resource AshWorkflowTest.DerivedTerminalWorkflow
     resource AshWorkflowTest.RepeatingTimeoutWorkflow
     resource AshWorkflowTest.EveryUntilWorkflow
@@ -90,5 +91,7 @@ defmodule AshWorkflowTest.Domain do
     resource AshWorkflowTest.OrderWorkflow
     resource AshWorkflowTest.AuthorizedOrderWorkflow
     resource AshWorkflowTest.Payment
+    resource AshWorkflowTest.MultipleInitialRuntimeWorkflow
+    resource AshWorkflowTest.MultipleInitialRuntimeLog
   end
 end
