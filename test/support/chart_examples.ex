@@ -18,17 +18,20 @@ defmodule AshWorkflowTest.ChartExamples do
     source file, so a guide shows the definition next to its chart.
   * `mermaid` — the chart, from `AshWorkflow.Charts.render/3`.
   * `json` — the chart as indented JSON.
+  * `d2` — the chart as D2 source.
   * `dot` — the chart as Graphviz DOT source.
 
   `test/documentation_charts_test.exs` fails when a block is out of date, and
   `bin/update-chart-examples` rewrites every block. The comments do not show
   in ExDoc or on GitHub.
 
-  Neither GitHub nor ExDoc draws DOT, so the guide shows each DOT chart as an
-  SVG file under `documentation/topics/assets/`, which `svgs/0` lists.
-  `update!/0` draws them with the `dot` command of Graphviz. The test checks
-  only that each file exists and is an SVG, because another `dot` version
-  lays out the same diagram differently.
+  Neither GitHub nor ExDoc draws D2 or DOT, so the guide shows each of these
+  charts as an SVG file under `documentation/topics/assets/`, which `svgs/0`
+  lists. `update!/0` draws a D2 chart with the pinned `d2`, and downloads
+  `d2` when it is not installed. It draws a DOT chart with the `dot` command
+  of Graphviz. The test checks only that each file exists and is an SVG,
+  because another `d2` or `dot` version lays out the same diagram
+  differently.
 
   The examples come from `examples/`, which compiles only in the test
   environment, where this module also compiles. That is why the script runs a
@@ -40,7 +43,7 @@ defmodule AshWorkflowTest.ChartExamples do
 
   # The body may not hold another opening marker, so a block with a missing
   # closing marker is left alone, and `count/1` then reports one block fewer.
-  @marker ~r/(<!-- chart: ([A-Z][\w.]*) (mermaid|json|dot|workflow) -->\n)((?:(?!<!-- chart:).)*?)(<!-- \/chart -->)/s
+  @marker ~r/(<!-- chart: ([A-Z][\w.]*) (mermaid|json|d2|dot|workflow) -->\n)((?:(?!<!-- chart:).)*?)(<!-- \/chart -->)/s
 
   @doc """
   The guides that can hold generated blocks.
@@ -68,8 +71,10 @@ defmodule AshWorkflowTest.ChartExamples do
   One fenced block: a resource's workflow definition, or its chart in a
   format.
   """
-  @spec block(Ash.Resource.t(), :workflow | :mermaid | :json | :dot) :: String.t()
+  @spec block(Ash.Resource.t(), :workflow | :mermaid | :json | :d2 | :dot) :: String.t()
   def block(resource, :workflow), do: "```elixir\n" <> workflow_source(resource) <> "```\n"
+
+  def block(resource, :d2), do: "```d2\n" <> Charts.render(resource, :d2) <> "```\n"
 
   def block(resource, :dot), do: "```dot\n" <> Charts.render(resource, :dot) <> "```\n"
 
@@ -129,9 +134,12 @@ defmodule AshWorkflowTest.ChartExamples do
   The SVG files the guides show: the path, the resource each one draws, its
   format, and the options it uses.
   """
-  @spec svgs() :: [{Path.t(), Ash.Resource.t(), :dot, keyword()}]
+  @spec svgs() :: [{Path.t(), Ash.Resource.t(), :d2 | :dot, keyword()}]
   def svgs do
     [
+      {"documentation/topics/assets/incident-d2.svg", BasicWorkflow.Incident, :d2, []},
+      {"documentation/topics/assets/incident-d2-dark.svg", BasicWorkflow.Incident, :d2,
+       [theme: :dark]},
       {"documentation/topics/assets/incident-dot.svg", BasicWorkflow.Incident, :dot, []},
       {"documentation/topics/assets/incident-dot-dark.svg", BasicWorkflow.Incident, :dot,
        [theme: :dark]}
@@ -141,8 +149,8 @@ defmodule AshWorkflowTest.ChartExamples do
   @doc """
   Rewrites every guide whose generated blocks are out of date, and every SVG
   whose content changed, and returns the paths it wrote. It draws every
-  chart before it writes a file, so with no `dot` it raises and changes
-  nothing.
+  chart before it writes a file, so with no `dot`, or when the download of
+  `d2` fails, it raises and changes nothing.
   """
   @spec update!() :: [Path.t()]
   def update! do
